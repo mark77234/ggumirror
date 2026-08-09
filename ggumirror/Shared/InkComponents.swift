@@ -13,7 +13,7 @@ import SwiftUI
 
 /// SF Symbol을 잉크 테두리 안에 담아 종이 위에서 겉돌지 않게 한다.
 struct InkIconBadge: View {
-    let systemName: String
+    let glyph: InkGlyph
     var size: CGFloat = 44
     var tint: Color = PaperTheme.ink
 
@@ -23,9 +23,7 @@ struct InkIconBadge: View {
     private var side: CGFloat { size * scale }
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: side * 0.45, weight: .regular))
-            .foregroundStyle(tint)
+        InkGlyphView(glyph: glyph, size: side * 0.45, tint: tint)
             .frame(width: side, height: side)
             .overlay(
                 UnevenRoundedRectangle.ink(15, 12, 13, 16)
@@ -71,7 +69,7 @@ private struct InkOutline: View {
 
 /// Home의 주요 액션 줄. 아이콘 + 제목 + 설명 + chevron.
 struct InkActionButton: View {
-    let icon: String
+    let glyph: InkGlyph
     let title: String
     let subtitle: String
     var tilt: Double = 0
@@ -86,7 +84,7 @@ struct InkActionButton: View {
         Button(action: action) {
             InkCard(tilt: tilt) {
                 HStack(spacing: 14) {
-                    InkIconBadge(systemName: icon, tint: foreground)
+                    InkIconBadge(glyph: glyph, tint: foreground)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
@@ -153,14 +151,14 @@ struct InkChip: View {
     VStack(alignment: .leading, spacing: 16) {
         InkChip(icon: "oval.portrait", text: "거울 8개", tilt: -0.35)
         InkActionButton(
-            icon: "iphone",
+            glyph: .mirror,
             title: "거울 보기",
             subtitle: "카메라를 거울처럼 사용",
             tilt: -0.22,
             action: {}
         )
         InkActionButton(
-            icon: "pencil",
+            glyph: .system("pencil"),
             title: "거울 꾸미기",
             subtitle: "지금 쓰는 거울을 바로 편집",
             tilt: 0.26,
@@ -277,6 +275,8 @@ struct InkFilterBar<Item: Identifiable & Equatable>: View {
                     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                 }
             }
+            // stroke가 frame 밖으로 0.75pt 나가므로 상하좌우 여백을 줘서 잘리지 않게 한다.
+            .padding(.vertical, 4)
             .padding(.horizontal, 20)
         }
         .scrollIndicators(.hidden)
@@ -376,4 +376,55 @@ struct InkAvatar: View {
             }
             .accessibilityHidden(true)
     }
+}
+
+// MARK: - Mirror glyph
+
+/// 세로형 거울 실루엣. "거울 보기"와 "내 거울"이 같은 아이콘을 쓴다.
+struct MirrorIcon: View {
+    var size: CGFloat
+    var tint: Color = PaperTheme.ink
+
+    var body: some View {
+        let width = size * 0.60
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.24)
+                .stroke(tint, lineWidth: max(size * 0.075, 1.2))
+                .frame(width: width, height: size)
+            RoundedRectangle(cornerRadius: size * 0.15)
+                .stroke(tint.opacity(0.55), lineWidth: max(size * 0.05, 1))
+                .frame(width: width * 0.56, height: size * 0.70)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// 아이콘 자리에 SF Symbol이나 거울 아이콘을 같은 방식으로 넣기 위한 최소 추상화.
+enum InkGlyph: Hashable {
+    case system(String)
+    case mirror
+}
+
+struct InkGlyphView: View {
+    let glyph: InkGlyph
+    var size: CGFloat
+    var tint: Color = PaperTheme.ink
+
+    var body: some View {
+        switch glyph {
+        case .system(let name):
+            Image(systemName: name)
+                .font(.system(size: size, weight: .regular))
+                .foregroundStyle(tint)
+        case .mirror:
+            MirrorIcon(size: size * 1.15, tint: tint)
+        }
+    }
+}
+
+// MARK: - 조각 잔액
+
+/// 실제 ledger가 생기기 전까지 Home / Store가 함께 보는 임시 잔액.
+enum ShardWallet {
+    static let temporaryBalance = 32
 }

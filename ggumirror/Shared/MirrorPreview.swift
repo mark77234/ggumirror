@@ -28,8 +28,8 @@ struct MirrorStyle: Hashable {
 }
 
 extension MirrorStyle {
-    /// 템플릿 규격과 같은 세로 비율 (1080 x 2340).
-    static let aspectRatio: CGFloat = 1080.0 / 2340.0
+    /// 모든 미리보기가 쓰는 단일 비율. Master Canvas와 같은 값이다.
+    static var aspectRatio: CGFloat { MirrorCanvas.aspectRatio }
 }
 
 struct MirrorPreview: View {

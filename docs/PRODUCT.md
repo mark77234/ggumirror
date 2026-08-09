@@ -41,6 +41,13 @@ Mirror 화면의 액션은 **홈으로 / 촬영** 둘뿐이다.
 - Text, Frame, Background Color, Layers, Preview, Save.
 - 위치/크기는 0...1 normalized coordinate 우선.
 
+## Mirror Frame 규격 (MVP 확정)
+- 모든 거울의 프레임 두께는 동일하다.
+- Master 1080 × 2340 기준 좌우 108px(0.10) / 상하 180px(약 0.0769).
+- 중앙 Mirror Area 크기도 모든 거울에서 같다 (864 × 1980).
+- 사용자가 프레임 두께를 바꾸는 기능은 없다.
+- 상점 거울의 가치는 두꺼운 프레임이 아니라 같은 공간 안의 artwork 밀도로 만든다.
+
 ## Basic Mirrors
 White / Black / Cream / Soft Pink / Lavender / Sky / Mint / Gray.
 기본 거울은 단색 프레임 + 은은한 종이 질감만 사용.

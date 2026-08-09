@@ -13,6 +13,8 @@ import SwiftUI
 struct EditorGeometryTests {
 
     private let viewport = CGSize(width: 320, height: 520)
+    /// 제품에서는 쓰지 않지만 engine이 frameInsets를 따르는지 확인하기 위한 값.
+    private static let thickInsets = MirrorFrameInsets(top: 0.115, right: 0.17, bottom: 0.115, left: 0.17)
 
     // MARK: - 좌표 변환
 
@@ -32,10 +34,10 @@ struct EditorGeometryTests {
     @Test("frameInsets가 다르면 같은 화면 좌표가 다른 Master 좌표가 된다")
     func transformFollowsInsets() {
         let standard = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let wide = SideDetailTransform(side: .left, insets: .wide, viewport: viewport)
+        let thick = SideDetailTransform(side: .left, insets: Self.thickInsets, viewport: viewport)
         let screenPoint = CGPoint(x: 40, y: 120)
 
-        #expect(standard.masterPoint(from: screenPoint) != wide.masterPoint(from: screenPoint))
+        #expect(standard.masterPoint(from: screenPoint) != thick.masterPoint(from: screenPoint))
     }
 
     @Test("선택한 밴드가 화면 안에 들어온다", arguments: EditorSide.allCases)
@@ -62,9 +64,9 @@ struct EditorGeometryTests {
     @Test("frameInsets가 달라지면 mask 경계도 달라진다")
     func maskFollowsInsets() {
         let point = NormalizedPoint(x: 0.5, y: 0.09)
-        // standard(상하 0.0769)에서는 이미 거울 영역, wide(0.115)에서는 아직 프레임
+        // standard(상하 0.0769)에서는 이미 거울 영역, 더 두꺼운 값에서는 아직 프레임
         #expect(MirrorFrameInsets.standard.isInsideMirrorArea(point))
-        #expect(!MirrorFrameInsets.wide.isInsideMirrorArea(point))
+        #expect(!Self.thickInsets.isInsideMirrorArea(point))
     }
 
     // MARK: - 밴드 분할

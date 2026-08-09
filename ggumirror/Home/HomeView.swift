@@ -3,7 +3,7 @@
 //  ggumirror
 //
 //  Main Tab 컨테이너 + 홈 탭.
-//  홈에는 보유 거울 개수 / 설정 / 거울 보기 / 거울 꾸미기 4개만 둔다.
+//  홈은 스크롤 없이 한 화면에 들어온다: 조각 / 설정 · 현재 거울 · 두 액션 · 탭바.
 //
 
 import SwiftUI
@@ -14,6 +14,7 @@ struct HomeView: View {
     var onEditMirror: (MyMirror) -> Void
 
     @State private var tab: MainTab = .home
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -35,17 +36,19 @@ struct HomeView: View {
 
     private var homeTab: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 40) {
-                    header
-                    actions
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    // 큰 글씨에서는 한 화면에 물리적으로 담기지 않아 접근성을 우선한다.
+                    // 미리보기 높이를 제한해 두 액션이 바로 아래에 오게 한다.
+                    ScrollView { content(previewMaxHeight: 300) }
+                        .scrollIndicators(.hidden)
+                } else {
+                    content(previewMaxHeight: nil)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, InkTabBar.reservedHeight + 24)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, InkTabBar.reservedHeight)
             .navigationDestination(for: SettingsRoute.self) { route in
                 switch route {
                 case .settings: SettingsView()
@@ -59,11 +62,34 @@ struct HomeView: View {
         .tint(PaperTheme.ink)
     }
 
+    private func content(previewMaxHeight: CGFloat?) -> some View {
+        VStack(spacing: 14) {
+            header
+
+            // 남는 공간을 미리보기가 차지한다. 비율은 다른 화면과 같은 9:19.5.
+            currentMirror
+                .frame(maxWidth: .infinity, maxHeight: previewMaxHeight ?? .infinity)
+
+            actions
+        }
+    }
+
     private var header: some View {
-        HStack(alignment: .center) {
-            InkChip(icon: "oval.portrait", text: "거울 \(library.mirrors.count)개", tilt: -0.35)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("보유 거울 \(library.mirrors.count)개")
+        HStack {
+            ShardAmount(
+                amount: ShardWallet.temporaryBalance,
+                font: InkFont.cardTitle,
+                iconSize: 17
+            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background {
+                UnevenRoundedRectangle.ink(17, 14, 18, 13)
+                    .stroke(PaperTheme.ink, lineWidth: 1.7)
+                    .rotationEffect(.degrees(-0.35))
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("보유 \(ShardWallet.temporaryBalance) 조각")
 
             Spacer(minLength: 12)
 
@@ -77,19 +103,33 @@ struct HomeView: View {
             .buttonStyle(InkPressStyle())
             .accessibilityLabel("설정")
         }
+        .padding(.vertical, 2)
+    }
+
+    private var currentMirror: some View {
+        let mirror = library.currentMirror
+        return VStack(spacing: 8) {
+            MirrorPreview(style: mirror.style, strokes: mirror.strokes)
+            Text(mirror.name)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("지금 쓰는 거울, \(mirror.name)")
     }
 
     private var actions: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             InkActionButton(
-                icon: "iphone",
+                glyph: .mirror,
                 title: "거울 보기",
                 subtitle: "카메라를 거울처럼 사용",
                 tilt: -0.22,
                 action: onOpenMirror
             )
             InkActionButton(
-                icon: "pencil",
+                glyph: .system("pencil"),
                 title: "거울 꾸미기",
                 subtitle: "지금 쓰는 거울을 바로 편집",
                 tilt: 0.26,

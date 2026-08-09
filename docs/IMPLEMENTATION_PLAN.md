@@ -130,6 +130,19 @@ Phase 1의 Home은 4개만 표시:
 5. `feat(home): add home routing`
 6. `test(mirror): validate phase one device flows`
 
+## Phase 3-3A — Side Detail Pan (다음 Phase 최우선)
+
+현재 Left / Right Side Detail은 확대 배율이 고정이라
+프레임 전체 높이를 편집할 수 없다. 다음 Phase에서 반드시 해결한다.
+
+- Left / Right에서 상단 → 중간 → 하단까지 세로 pan / scroll
+- Top / Bottom도 편집 영역이 화면보다 크면 같은 축으로 이동 허용
+- 확대 배율은 유지
+- Canvas 바깥 빈 공간이 보이지 않게 clamp
+- Mini Map viewport가 실제 위치를 따라 이동
+- Drawing / Sticker 모두 같은 viewport / pan 구조를 사용
+- 기존 SideDetailTransform을 기반으로 구현 (임시 scroll 구조를 새로 만들지 않는다)
+
 ## Later
 Phase 2: Home + Design System
 Phase 3: Editor Canvas

@@ -19,11 +19,11 @@ enum MainTab: CaseIterable {
         }
     }
 
-    var icon: String {
+    var glyph: InkGlyph {
         switch self {
-        case .home: "house"
-        case .store: "bag"
-        case .mine: "rectangle.split.2x1"
+        case .home: .system("house")
+        case .store: .system("bag")
+        case .mine: .mirror
         }
     }
 }
@@ -63,8 +63,11 @@ struct InkTabBar: View {
     private func item(for tab: MainTab) -> some View {
         let isSelected = selection == tab
         return VStack(spacing: 3) {
-            Image(systemName: tab.icon)
-                .font(InkFont.body)
+            InkGlyphView(
+                glyph: tab.glyph,
+                size: 19,
+                tint: isSelected ? PaperTheme.subtleSurface : PaperTheme.ink
+            )
             Text(tab.title)
                 .font(InkFont.caption)
                 .lineLimit(1)

@@ -296,10 +296,6 @@ struct EditorView: View {
         HStack(spacing: 10) {
             toolbarButton("배경", icon: "paintpalette") { isChoosingBackground = true }
             toolbarButton("미리보기", icon: "eye") { isPreviewing = true }
-            toolbarButton("저장", icon: "tray.and.arrow.down") {
-                onSave(design)
-                dismiss()
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

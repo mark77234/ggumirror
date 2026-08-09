@@ -9,9 +9,6 @@
 import SwiftUI
 
 struct StoreView: View {
-    /// 아직 조각 ledger가 없어 표시용 임시 잔액.
-    private static let temporaryShardBalance = 32
-
     @State private var category: StoreCategory = .all
     @State private var tag: TagFilter = .all
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -48,7 +45,7 @@ struct StoreView: View {
             // 조각 잔액 (표시 전용)
             HStack(spacing: 6) {
                 ShardIcon(size: 15)
-                Text("\(Self.temporaryShardBalance) 조각")
+                Text("\(ShardWallet.temporaryBalance) 조각")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.ink)
             }
@@ -60,7 +57,7 @@ struct StoreView: View {
                     .rotationEffect(.degrees(0.3))
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("보유 \(Self.temporaryShardBalance) 조각")
+            .accessibilityLabel("보유 \(ShardWallet.temporaryBalance) 조각")
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)

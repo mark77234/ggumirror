@@ -100,16 +100,23 @@ enum StoreCatalog {
             categories: ["추천", "인기"],
             style: MirrorStyle(
                 frame: Color(red: 0.976, green: 0.910, blue: 0.906),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "heart", x: 0.085, y: 0.055, size: 0.10, rotation: -12),
-                    .init(symbol: "sparkle", x: 0.50, y: 0.052, size: 0.08, rotation: 8),
-                    .init(symbol: "heart", x: 0.915, y: 0.058, size: 0.09, rotation: 15),
-                    .init(symbol: "drop", x: 0.085, y: 0.34, size: 0.075, rotation: -6),
-                    .init(symbol: "heart", x: 0.915, y: 0.46, size: 0.075, rotation: 12),
-                    .init(symbol: "sparkle", x: 0.085, y: 0.66, size: 0.07),
-                    .init(symbol: "heart", x: 0.30, y: 0.945, size: 0.09, rotation: 10),
-                    .init(symbol: "sparkle", x: 0.70, y: 0.945, size: 0.08, rotation: -14)
+                    .init(symbol: "heart", x: 0.05, y: 0.038, size: 0.058, rotation: -12),
+                    .init(symbol: "sparkle", x: 0.22, y: 0.036, size: 0.05, rotation: 8),
+                    .init(symbol: "heart", x: 0.5, y: 0.04, size: 0.055),
+                    .init(symbol: "sparkle", x: 0.78, y: 0.036, size: 0.05, rotation: -8),
+                    .init(symbol: "heart", x: 0.95, y: 0.038, size: 0.058, rotation: 15),
+                    .init(symbol: "drop", x: 0.05, y: 0.22, size: 0.05, rotation: -6),
+                    .init(symbol: "heart", x: 0.95, y: 0.3, size: 0.05, rotation: 12),
+                    .init(symbol: "sparkle", x: 0.05, y: 0.45, size: 0.045),
+                    .init(symbol: "heart", x: 0.95, y: 0.55, size: 0.05, rotation: -10),
+                    .init(symbol: "drop", x: 0.05, y: 0.7, size: 0.045, rotation: 8),
+                    .init(symbol: "sparkle", x: 0.95, y: 0.78, size: 0.045),
+                    .init(symbol: "heart", x: 0.06, y: 0.962, size: 0.058, rotation: 10),
+                    .init(symbol: "sparkle", x: 0.3, y: 0.962, size: 0.05, rotation: -14),
+                    .init(symbol: "heart", x: 0.55, y: 0.962, size: 0.055, rotation: 6),
+                    .init(symbol: "sparkle", x: 0.78, y: 0.962, size: 0.05),
+                    .init(symbol: "heart", x: 0.95, y: 0.962, size: 0.058, rotation: -8)
                 ]
             )
         ),
@@ -122,16 +129,23 @@ enum StoreCatalog {
             categories: ["인기", "신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.898, green: 0.914, blue: 0.965),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "star", x: 0.085, y: 0.055, size: 0.10, rotation: 12),
-                    .init(symbol: "circle.dashed", x: 0.50, y: 0.05, size: 0.085),
-                    .init(symbol: "star", x: 0.915, y: 0.058, size: 0.09, rotation: -8),
-                    .init(symbol: "sparkle", x: 0.085, y: 0.36, size: 0.075, rotation: -10),
-                    .init(symbol: "star", x: 0.915, y: 0.52, size: 0.08, rotation: -18),
-                    .init(symbol: "circle.dashed", x: 0.085, y: 0.70, size: 0.07),
-                    .init(symbol: "star", x: 0.32, y: 0.945, size: 0.095, rotation: 6),
-                    .init(symbol: "sparkle", x: 0.70, y: 0.945, size: 0.08)
+                    .init(symbol: "star", x: 0.05, y: 0.038, size: 0.058, rotation: 12),
+                    .init(symbol: "circle.dashed", x: 0.24, y: 0.036, size: 0.05),
+                    .init(symbol: "star", x: 0.5, y: 0.04, size: 0.055, rotation: -6),
+                    .init(symbol: "sparkle", x: 0.76, y: 0.036, size: 0.048),
+                    .init(symbol: "star", x: 0.95, y: 0.038, size: 0.058, rotation: -8),
+                    .init(symbol: "sparkle", x: 0.05, y: 0.24, size: 0.048, rotation: -10),
+                    .init(symbol: "star", x: 0.95, y: 0.32, size: 0.05, rotation: -18),
+                    .init(symbol: "circle.dashed", x: 0.05, y: 0.48, size: 0.045),
+                    .init(symbol: "star", x: 0.95, y: 0.58, size: 0.05, rotation: 10),
+                    .init(symbol: "sparkle", x: 0.05, y: 0.72, size: 0.045),
+                    .init(symbol: "circle.dashed", x: 0.95, y: 0.8, size: 0.045),
+                    .init(symbol: "star", x: 0.06, y: 0.962, size: 0.058, rotation: 6),
+                    .init(symbol: "sparkle", x: 0.3, y: 0.962, size: 0.05),
+                    .init(symbol: "star", x: 0.55, y: 0.962, size: 0.055, rotation: -12),
+                    .init(symbol: "circle.dashed", x: 0.78, y: 0.962, size: 0.048),
+                    .init(symbol: "star", x: 0.95, y: 0.962, size: 0.058, rotation: 8)
                 ]
             )
         ),
@@ -144,15 +158,22 @@ enum StoreCatalog {
             categories: ["추천", "신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.976, green: 0.965, blue: 0.937),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "hare", x: 0.10, y: 0.055, size: 0.11, rotation: -8),
-                    .init(symbol: "heart", x: 0.52, y: 0.05, size: 0.075),
-                    .init(symbol: "pawprint", x: 0.915, y: 0.058, size: 0.085, rotation: 14),
-                    .init(symbol: "pawprint", x: 0.085, y: 0.40, size: 0.07, rotation: -12),
-                    .init(symbol: "heart", x: 0.915, y: 0.55, size: 0.07),
-                    .init(symbol: "hare", x: 0.68, y: 0.945, size: 0.10, rotation: 10),
-                    .init(symbol: "pawprint", x: 0.30, y: 0.945, size: 0.08, rotation: -6)
+                    .init(symbol: "hare", x: 0.06, y: 0.038, size: 0.062, rotation: -8),
+                    .init(symbol: "heart", x: 0.28, y: 0.036, size: 0.045),
+                    .init(symbol: "pawprint", x: 0.52, y: 0.038, size: 0.05, rotation: 14),
+                    .init(symbol: "heart", x: 0.76, y: 0.036, size: 0.045),
+                    .init(symbol: "hare", x: 0.95, y: 0.038, size: 0.06, rotation: 10),
+                    .init(symbol: "pawprint", x: 0.05, y: 0.26, size: 0.048, rotation: -12),
+                    .init(symbol: "heart", x: 0.95, y: 0.36, size: 0.045),
+                    .init(symbol: "pawprint", x: 0.05, y: 0.52, size: 0.045, rotation: 6),
+                    .init(symbol: "heart", x: 0.95, y: 0.62, size: 0.045),
+                    .init(symbol: "pawprint", x: 0.05, y: 0.76, size: 0.045),
+                    .init(symbol: "hare", x: 0.07, y: 0.962, size: 0.06, rotation: 10),
+                    .init(symbol: "pawprint", x: 0.32, y: 0.962, size: 0.05, rotation: -6),
+                    .init(symbol: "heart", x: 0.56, y: 0.962, size: 0.045),
+                    .init(symbol: "pawprint", x: 0.8, y: 0.962, size: 0.05, rotation: 8),
+                    .init(symbol: "hare", x: 0.95, y: 0.962, size: 0.058, rotation: -10)
                 ]
             )
         ),
@@ -165,16 +186,22 @@ enum StoreCatalog {
             categories: ["추천"],
             style: MirrorStyle(
                 frame: Color(red: 0.949, green: 0.937, blue: 0.898),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "camera.macro", x: 0.09, y: 0.055, size: 0.10, rotation: -10),
-                    .init(symbol: "leaf", x: 0.50, y: 0.05, size: 0.08, rotation: 20),
-                    .init(symbol: "camera.macro", x: 0.915, y: 0.058, size: 0.09, rotation: 8),
-                    .init(symbol: "leaf", x: 0.085, y: 0.38, size: 0.075, rotation: -24),
-                    .init(symbol: "camera.macro", x: 0.915, y: 0.50, size: 0.08),
-                    .init(symbol: "leaf", x: 0.085, y: 0.68, size: 0.07, rotation: 12),
-                    .init(symbol: "camera.macro", x: 0.32, y: 0.945, size: 0.09, rotation: -6),
-                    .init(symbol: "leaf", x: 0.70, y: 0.945, size: 0.08, rotation: 16)
+                    .init(symbol: "camera.macro", x: 0.05, y: 0.038, size: 0.058, rotation: -10),
+                    .init(symbol: "leaf", x: 0.24, y: 0.036, size: 0.05, rotation: 20),
+                    .init(symbol: "camera.macro", x: 0.5, y: 0.04, size: 0.055),
+                    .init(symbol: "leaf", x: 0.76, y: 0.036, size: 0.048, rotation: -16),
+                    .init(symbol: "camera.macro", x: 0.95, y: 0.038, size: 0.058, rotation: 8),
+                    .init(symbol: "leaf", x: 0.05, y: 0.24, size: 0.048, rotation: -24),
+                    .init(symbol: "camera.macro", x: 0.95, y: 0.34, size: 0.05),
+                    .init(symbol: "leaf", x: 0.05, y: 0.5, size: 0.045, rotation: 12),
+                    .init(symbol: "camera.macro", x: 0.95, y: 0.6, size: 0.05),
+                    .init(symbol: "leaf", x: 0.05, y: 0.74, size: 0.045, rotation: -8),
+                    .init(symbol: "camera.macro", x: 0.06, y: 0.962, size: 0.058, rotation: -6),
+                    .init(symbol: "leaf", x: 0.3, y: 0.962, size: 0.05, rotation: 16),
+                    .init(symbol: "camera.macro", x: 0.55, y: 0.962, size: 0.055),
+                    .init(symbol: "leaf", x: 0.78, y: 0.962, size: 0.048, rotation: -20),
+                    .init(symbol: "camera.macro", x: 0.95, y: 0.962, size: 0.058, rotation: 10)
                 ]
             )
         ),
@@ -187,13 +214,20 @@ enum StoreCatalog {
             categories: ["신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.969, green: 0.969, blue: 0.961),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "star", x: 0.09, y: 0.055, size: 0.09, rotation: -14),
-                    .init(symbol: "sparkle", x: 0.915, y: 0.055, size: 0.075, rotation: 10),
-                    .init(symbol: "moon", x: 0.085, y: 0.44, size: 0.075, rotation: -8),
-                    .init(symbol: "sparkle", x: 0.915, y: 0.58, size: 0.065),
-                    .init(symbol: "star", x: 0.55, y: 0.945, size: 0.085, rotation: 16)
+                    .init(symbol: "star", x: 0.05, y: 0.038, size: 0.052, rotation: -14),
+                    .init(symbol: "sparkle", x: 0.28, y: 0.036, size: 0.042),
+                    .init(symbol: "moon", x: 0.52, y: 0.038, size: 0.048),
+                    .init(symbol: "sparkle", x: 0.76, y: 0.036, size: 0.042, rotation: 10),
+                    .init(symbol: "star", x: 0.95, y: 0.038, size: 0.052, rotation: 8),
+                    .init(symbol: "moon", x: 0.05, y: 0.3, size: 0.045, rotation: -8),
+                    .init(symbol: "sparkle", x: 0.95, y: 0.42, size: 0.04),
+                    .init(symbol: "star", x: 0.05, y: 0.58, size: 0.045),
+                    .init(symbol: "sparkle", x: 0.95, y: 0.68, size: 0.04),
+                    .init(symbol: "star", x: 0.07, y: 0.962, size: 0.05, rotation: 16),
+                    .init(symbol: "sparkle", x: 0.34, y: 0.962, size: 0.042),
+                    .init(symbol: "moon", x: 0.6, y: 0.962, size: 0.048),
+                    .init(symbol: "star", x: 0.95, y: 0.962, size: 0.05, rotation: -10)
                 ]
             )
         ),
@@ -206,14 +240,22 @@ enum StoreCatalog {
             categories: ["인기"],
             style: MirrorStyle(
                 frame: Color(red: 0.941, green: 0.925, blue: 0.906),
-                insets: .wide,
                 doodles: [
-                    .init(symbol: "paperclip", x: 0.10, y: 0.055, size: 0.095, rotation: -18),
-                    .init(symbol: "heart", x: 0.52, y: 0.05, size: 0.075, rotation: 12),
-                    .init(symbol: "sparkle", x: 0.915, y: 0.058, size: 0.08),
-                    .init(symbol: "pencil", x: 0.085, y: 0.42, size: 0.085, rotation: -30),
-                    .init(symbol: "heart", x: 0.915, y: 0.56, size: 0.07),
-                    .init(symbol: "paperclip", x: 0.62, y: 0.945, size: 0.09, rotation: 8)
+                    .init(symbol: "paperclip", x: 0.06, y: 0.038, size: 0.055, rotation: -18),
+                    .init(symbol: "heart", x: 0.28, y: 0.036, size: 0.045, rotation: 12),
+                    .init(symbol: "sparkle", x: 0.52, y: 0.038, size: 0.048),
+                    .init(symbol: "pencil", x: 0.76, y: 0.036, size: 0.05, rotation: -30),
+                    .init(symbol: "paperclip", x: 0.95, y: 0.038, size: 0.055, rotation: 8),
+                    .init(symbol: "pencil", x: 0.05, y: 0.28, size: 0.048, rotation: -30),
+                    .init(symbol: "heart", x: 0.95, y: 0.38, size: 0.045),
+                    .init(symbol: "sparkle", x: 0.05, y: 0.54, size: 0.042),
+                    .init(symbol: "paperclip", x: 0.95, y: 0.64, size: 0.048, rotation: 10),
+                    .init(symbol: "heart", x: 0.05, y: 0.78, size: 0.042),
+                    .init(symbol: "paperclip", x: 0.07, y: 0.962, size: 0.055, rotation: 8),
+                    .init(symbol: "sparkle", x: 0.32, y: 0.962, size: 0.045),
+                    .init(symbol: "heart", x: 0.58, y: 0.962, size: 0.045, rotation: -8),
+                    .init(symbol: "pencil", x: 0.82, y: 0.962, size: 0.05, rotation: 20),
+                    .init(symbol: "paperclip", x: 0.95, y: 0.962, size: 0.055, rotation: -12)
                 ]
             )
         )

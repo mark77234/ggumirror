@@ -42,16 +42,14 @@ struct MirrorFrameInsets: Hashable {
     var bottom: Double
     var left: Double
 
-    /// 기본 거울 기준값. 108/1080, 180/2340.
+    /// MVP 정책: 모든 거울(기본 / 상점 / 사용자 제작)이 이 값을 쓴다.
+    /// 두께를 바꾸는 UI는 제공하지 않는다. 모델은 향후 확장을 위해 남겨둔다.
     static let standard = MirrorFrameInsets(
         top: 180.0 / 2340.0,
         right: 108.0 / 1080.0,
         bottom: 180.0 / 2340.0,
         left: 108.0 / 1080.0
     )
-
-    /// 장식을 더 담는 상점 템플릿용 넓은 밴드.
-    static let wide = MirrorFrameInsets(top: 0.115, right: 0.17, bottom: 0.115, left: 0.17)
 
     init(top: Double, right: Double, bottom: Double, left: Double) {
         self.top = top
