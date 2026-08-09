@@ -232,7 +232,8 @@ struct EditorViewportState: Equatable {
     /// fit 기준 위치에서의 이동량(화면 pt).
     var pan: CGSize = .zero
 
-    static let zoomRange: ClosedRange<CGFloat> = 1...3
+    /// 정책상 허용 범위. 실제 하한은 Side / viewport geometry에 따라 더 좁아질 수 있다.
+    static let zoomRange: ClosedRange<CGFloat> = 0.65...3
 
     var isFitted: Bool { self == EditorViewportState() }
 }
@@ -261,21 +262,17 @@ struct SideDetailTransform {
             availableHeight / MirrorCanvas.size.height
         )
 
-        // 밴드가 작업 가능한 크기가 되도록 키운다.
-        // 가로 밴드(위/아래)는 폭 전체가 보여야 하므로 폭에 맞추고,
-        // 세로 밴드(왼쪽/오른쪽)는 밴드 두께가 화면 폭의 45%가 되도록 키운다.
-        let targetScale: CGFloat = switch side {
-        case .top, .bottom:
-            availableWidth / MirrorCanvas.size.width
-        case .left, .right:
-            availableWidth * 0.45 / (band.width * MirrorCanvas.size.width)
-        }
+        let base = max(fitScale, Self.targetScale(for: side, band: band, availableWidth: availableWidth))
 
-        let zoom = min(max(state.zoom, EditorViewportState.zoomRange.lowerBound),
-                       EditorViewportState.zoomRange.upperBound)
+        // 축소해도 캔버스가 화면보다 좁아져 떠다니지 않도록 하한을 한 번 더 좁힌다.
+        let minimumZoom = max(
+            EditorViewportState.zoomRange.lowerBound,
+            min(1, viewport.width / (MirrorCanvas.size.width * base))
+        )
+        let zoom = min(max(state.zoom, minimumZoom), EditorViewportState.zoomRange.upperBound)
         appliedZoom = zoom
 
-        let scale = max(fitScale, targetScale) * zoom
+        let scale = base * zoom
         canvasSize = CGSize(
             width: MirrorCanvas.size.width * scale,
             height: MirrorCanvas.size.height * scale
@@ -314,6 +311,43 @@ struct SideDetailTransform {
             width: Double(min(viewport.width, canvasSize.width) / canvasSize.width),
             height: Double(min(viewport.height, canvasSize.height) / canvasSize.height)
         )
+    }
+
+    /// Side별 기본 배율(zoom 1.0 기준).
+    /// 가로 밴드는 폭 전체가 보이도록, 세로 밴드는 밴드 두께가 화면 폭의 일정 비율이 되도록 맞춘다.
+    /// 임의의 magic number를 흩뿌리지 않고 이 한 곳에서만 정한다.
+    static func targetScale(for side: EditorSide, band: NormalizedRect, availableWidth: CGFloat) -> CGFloat {
+        switch side {
+        case .top, .bottom:
+            availableWidth / MirrorCanvas.size.width
+        case .left, .right:
+            availableWidth * Self.verticalBandScreenShare / (band.width * MirrorCanvas.size.width)
+        }
+    }
+
+    /// 세로 밴드가 화면 폭에서 차지할 비율. 낮출수록 주변 맥락이 더 보인다.
+    static let verticalBandScreenShare: CGFloat = 0.25
+
+    /// 이 viewport에서 실제로 허용되는 최소 배율.
+    static func minimumZoom(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize) -> CGFloat {
+        SideDetailTransform(side: side, insets: insets, viewport: viewport,
+                            state: .init(zoom: EditorViewportState.zoomRange.lowerBound)).appliedZoom
+    }
+
+    /// Scroll Handle이 track 위치를 그대로 viewport 위치로 바꿀 때 쓰는 값.
+    /// 0 = 프레임 최상단, 1 = 최하단.
+    func pan(forVerticalProgress progress: Double, viewport: CGSize) -> CGSize {
+        let travel = max(canvasSize.height - viewport.height, 0)
+        let desiredOffsetY = -CGFloat(min(max(progress, 0), 1)) * travel
+        let baseOffsetY = offset.y - appliedPan.height
+        return CGSize(width: appliedPan.width, height: desiredOffsetY - baseOffsetY)
+    }
+
+    /// 현재 세로 위치 0...1. Mini Map / Scroll Handle이 같은 값을 쓴다.
+    var verticalProgress: Double {
+        let travel = 1 - visibleRect.height
+        guard travel > 0.0001 else { return 0 }
+        return min(max(visibleRect.y / travel, 0), 1)
     }
 
     /// 화면 좌표 → Master Canvas normalized 좌표. Drawing / Eraser가 모두 이걸 쓴다.

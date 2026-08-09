@@ -36,6 +36,11 @@ struct SideDetailCanvas: View {
     @State private var pendingErase: Set<UUID> = []
     /// 두 손가락 조작 시작 시점의 viewport.
     @State private var viewportAtGestureStart: EditorViewportState?
+    /// 제스처 힌트는 한 번 이해하면 다시 보여주지 않는다.
+    @AppStorage("editorGestureHintSeen") private var hasSeenGestureHint = false
+    @State private var didInteract = false
+
+    private var showsGestureHint: Bool { !hasSeenGestureHint && !didInteract }
 
     /// 화면 기준 지우개 반경. Master 반경은 배율에 따라 환산된다.
     private let eraserScreenRadius: CGFloat = 22
@@ -74,9 +79,14 @@ struct SideDetailCanvas: View {
 
                 ScrollHandle(
                     side: side,
-                    progress: verticalProgress(transform),
-                    onDrag: { delta in movePan(byHandle: delta, viewportSize: proxy.size) }
+                    progress: transform.verticalProgress,
+                    visibleFraction: transform.visibleRect.height,
+                    onScrub: { progress in scrub(to: progress, transform: transform, viewportSize: proxy.size) }
                 )
+
+                if showsGestureHint {
+                    GestureHint()
+                }
             }
             .onChange(of: transform.visibleRect, initial: true) { _, newValue in
                 visibleRect = newValue
@@ -95,6 +105,7 @@ struct SideDetailCanvas: View {
     private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform) {
         switch phase {
         case .began(let location), .moved(let location):
+            dismissGestureHint()
             let point = transform.masterPoint(from: location)
             switch tool {
             case .draw: extendStroke(to: point)
@@ -156,17 +167,18 @@ struct SideDetailCanvas: View {
 
     // MARK: - Scroll Handle
 
-    /// 현재 세로 위치(0 = 맨 위, 1 = 맨 아래). Mini Map과 같은 visibleRect에서 계산한다.
-    private func verticalProgress(_ transform: SideDetailTransform) -> Double {
-        let travel = 1 - transform.visibleRect.height
-        guard travel > 0.0001 else { return 0 }
-        return min(max(transform.visibleRect.y / travel, 0), 1)
+    private func dismissGestureHint() {
+        guard !didInteract else { return }
+        didInteract = true
+        hasSeenGestureHint = true
     }
 
-    /// Handle 드래그도 두 손가락 Pan과 같은 viewport state를 바꾼다.
-    private func movePan(byHandle delta: CGFloat, viewportSize: CGSize) {
-        var next = viewport
-        next.pan.height -= delta
+    /// track 위치를 그대로 viewport 위치로 바꾼다. 두 손가락 Pan과 같은 state를 쓴다.
+    private func scrub(to progress: Double, transform: SideDetailTransform, viewportSize: CGSize) {
+        let next = EditorViewportState(
+            zoom: viewport.zoom,
+            pan: transform.pan(forVerticalProgress: progress, viewport: viewportSize)
+        )
         let clamped = SideDetailTransform(
             side: side,
             insets: design.insets,
@@ -183,6 +195,7 @@ struct SideDetailCanvas: View {
             viewportAtGestureStart = nil
             return
         }
+        dismissGestureHint()
         if viewportAtGestureStart == nil {
             viewportAtGestureStart = viewport
             // 두 손가락이 시작되면 한 손가락 작업은 이미 확정된 상태여야 한다.

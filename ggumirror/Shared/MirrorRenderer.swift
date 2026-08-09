@@ -114,7 +114,7 @@ enum MirrorRenderer {
             context.stroke(
                 path,
                 with: shading,
-                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: stroke.brush.lineCap, lineJoin: .round)
             )
         }
     }

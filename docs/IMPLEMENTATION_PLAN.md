@@ -143,6 +143,41 @@ Phase 1의 Home은 4개만 표시:
 - Drawing / Sticker 모두 같은 viewport / pan 구조를 사용
 - 기존 SideDetailTransform을 기반으로 구현 (임시 scroll 구조를 새로 만들지 않는다)
 
+## Advanced Drawing Polish (후속)
+
+MVP Editor가 끝난 뒤 진행한다. 지금은 현재 renderer로 표현 가능한
+preset(가는 펜 / 기본 펜 / 연필 / 마커 / 형광펜)만 쓴다.
+
+- 종이 질감 graphite pencil
+- 크레용 / 오일 브러시 / 수채 느낌
+- textured brush stamp engine
+- 필압 기반 가변 굵기 (Apple Pencil 포함)
+- 더 풍부한 팔레트, 최근/즐겨찾는 색
+
+## Editor Coach Mark Tutorial (후속)
+
+Editor 기능이 전부 완성된 뒤에 만든다.
+지금은 Overview 프레임 선택 힌트 + Side Detail 제스처 힌트만 유지하고,
+onboarding state machine은 만들지 않는다.
+
+순서 예:
+
+1. Overview — "상·하·좌·우 중 꾸미고 싶은 프레임을 선택해주세요"
+2. Side Detail — "한 손가락으로 그릴 수 있어요"
+3. Scroll Handle — "스크롤바를 움직여 프레임 전체를 꾸며보세요"
+4. Pinch Zoom — "두 손가락으로 확대·축소할 수 있어요"
+5. Drawing Settings — "펜과 색상, 굵기를 바꿀 수 있어요"
+6. Sticker 구현 후 — 추가 / 이동 / 크기 안내
+7. Preview / Save — 완성 확인과 저장 안내
+
+방식:
+
+- 실제 UI 위 Coach Mark, 설명 중인 control만 강조
+- 전체 화면을 과도하게 가리지 않음
+- Skip 가능
+- 한 번 완료하면 반복 노출하지 않음
+- 설정에서 다시 보기는 후속 검토
+
 ## Later
 Phase 2: Home + Design System
 Phase 3: Editor Canvas

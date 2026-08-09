@@ -61,7 +61,7 @@ struct EditorView: View {
         }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
-                .presentationDetents([.height(380), .medium])
+                .presentationDetents([.medium, .large])
                 .presentationBackground { PaperBackground() }
         }
         .sheet(isPresented: $isChoosingBackground) {
@@ -172,9 +172,12 @@ struct EditorView: View {
 
     /// 처음 들어온 사용자에게 무엇을 눌러야 하는지 알려준다.
     private var sideHint: some View {
-        Text("꾸미고 싶은 프레임을 눌러보세요")
+        Text("상·하·좌·우 중 꾸미고 싶은 프레임을 선택해주세요")
             .font(InkFont.caption)
             .foregroundStyle(PaperTheme.ink)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background {
@@ -186,7 +189,7 @@ struct EditorView: View {
                     )
             }
             .allowsHitTesting(false)
-            .accessibilityLabel("꾸미고 싶은 프레임을 눌러보세요")
+            .accessibilityLabel("상·하·좌·우 중 꾸미고 싶은 프레임을 선택해주세요")
     }
 
     /// 캔버스는 aspect fit으로 놓이므로 실제 그려진 사각형을 다시 계산한다.
@@ -272,9 +275,11 @@ struct EditorView: View {
             isEditingDrawSettings = true
         } label: {
             HStack(spacing: 10) {
+                StrokeSample(brush: brush, color: brushColor, width: brushWidth)
+                    .frame(width: 44, height: 20)
                 Circle()
                     .fill(brushColor)
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
                     .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
                 Text(brush.title)
                     .font(InkFont.secondary)

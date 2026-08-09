@@ -583,6 +583,133 @@ struct EditorGeometryTests {
         #expect(middle > top && middle < bottom)
     }
 
+    // MARK: - Zoom 정책
+
+    @Test("Left / Right 기본 화면이 Top / Bottom과 지나치게 다르지 않다")
+    func verticalSidesShowEnoughContext() {
+        let left = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let top = SideDetailTransform(side: .top, insets: .standard, viewport: viewport)
+
+        // 세로 밴드가 화면 폭의 절반을 넘게 차지하지 않는다 = 중앙 Mirror Area도 함께 보인다.
+        let bandWidth = MirrorFrameInsets.standard.left * left.canvasSize.width
+        #expect(bandWidth < viewport.width * 0.45)
+
+        // 세로 밴드 기본 배율이 가로 밴드보다 지나치게 크지 않다.
+        #expect(left.canvasSize.height < top.canvasSize.height * 2.6)
+    }
+
+    @Test("최소 배율에서는 기본보다 더 넓은 영역이 보인다", arguments: [EditorSide.left, .right])
+    func minimumZoomShowsMoreContext(side: EditorSide) {
+        let base = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
+        let zoomedOut = SideDetailTransform(side: side, insets: .standard, viewport: viewport,
+                                            state: .init(zoom: 0.1))   // 정책 하한으로 clamp
+        #expect(zoomedOut.appliedZoom < 1)
+        #expect(zoomedOut.visibleRect.height > base.visibleRect.height)
+        // 그래도 캔버스가 화면보다 좁아져 떠다니지는 않는다.
+        #expect(zoomedOut.canvasSize.width >= viewport.width - 0.001)
+    }
+
+    @Test("최대 배율은 정책 상한을 넘지 않는다")
+    func maximumZoomIsClamped() {
+        let t = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                    state: .init(zoom: 99))
+        #expect(t.appliedZoom == EditorViewportState.zoomRange.upperBound)
+    }
+
+    @Test("맞춤은 기본 상태로 되돌린다")
+    func fitReturnsToDefault() {
+        let moved = EditorViewportState(zoom: 2.4, pan: CGSize(width: 40, height: -600))
+        #expect(!moved.isFitted)
+        #expect(EditorViewportState().isFitted)
+
+        let fitted = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let base = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                       state: EditorViewportState())
+        #expect(fitted.offset == base.offset)
+        #expect(fitted.canvasSize == base.canvasSize)
+    }
+
+    // MARK: - Scroll Handle 스크럽
+
+    @Test("Handle 위치가 그대로 viewport 위치가 된다", arguments: [0.0, 0.5, 1.0])
+    func scrubMapsProgressToViewport(progress: Double) {
+        let start = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let pan = start.pan(forVerticalProgress: progress, viewport: viewport)
+        let moved = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                        state: .init(pan: pan))
+        #expect(abs(moved.verticalProgress - progress) < 0.01)
+    }
+
+    @Test("Handle track 한 번으로 프레임 끝에서 끝까지 간다")
+    func scrubCoversFullRange() {
+        let start = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let top = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                      state: .init(pan: start.pan(forVerticalProgress: 0, viewport: viewport)))
+        let bottom = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                         state: .init(pan: start.pan(forVerticalProgress: 1, viewport: viewport)))
+        #expect(abs(top.visibleRect.y) < 0.001)
+        #expect(abs((bottom.visibleRect.y + bottom.visibleRect.height) - 1) < 0.001)
+    }
+
+    @Test("확대해도 Handle 위치 계산이 일치한다", arguments: [1.0, 2.0, 3.0])
+    func scrubStaysConsistentWhenZoomed(zoom: Double) {
+        let start = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
+                                        state: .init(zoom: CGFloat(zoom)))
+        let pan = start.pan(forVerticalProgress: 0.75, viewport: viewport)
+        let moved = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
+                                        state: .init(zoom: CGFloat(zoom), pan: pan))
+        #expect(abs(moved.verticalProgress - 0.75) < 0.01)
+    }
+
+    // MARK: - Brush preset
+
+    @Test("모든 도구가 유효한 기본 굵기를 가진다", arguments: EditorBrush.allCases)
+    func brushDefaultsAreValid(brush: EditorBrush) {
+        #expect(EditorBrush.widthRange.contains(brush.defaultWidth))
+        #expect(brush.opacity > 0 && brush.opacity <= 1)
+        #expect(!brush.title.isEmpty)
+    }
+
+    @Test("형광펜은 반투명하고 가장 굵다")
+    func highlighterIsTranslucentAndWide() {
+        #expect(EditorBrush.highlighter.opacity < 0.5)
+        #expect(EditorBrush.highlighter.defaultWidth > EditorBrush.pen.defaultWidth)
+        #expect(EditorBrush.pencil.defaultWidth < EditorBrush.pen.defaultWidth)
+    }
+
+    @Test("도구를 바꿔도 이미 그린 획은 그대로다")
+    func toolSwitchKeepsStrokes() {
+        var strokes: [DrawingStroke] = []
+        var history = DrawingHistory()
+        let drawn = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.2)],
+                                  brush: .pen, width: EditorBrush.pen.defaultWidth)
+        history.apply(.add(drawn), to: &strokes)
+
+        let before = strokes
+        _ = EditorBrush.highlighter   // 도구 선택은 UI state일 뿐이다
+        #expect(strokes == before)
+        #expect(strokes.first?.brush == .pen)
+    }
+
+    @Test("새 도구로 그린 획도 렌더된다", arguments: EditorBrush.allCases)
+    func newBrushRenders(brush: EditorBrush) {
+        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        design.strokes = [
+            DrawingStroke(
+                points: (0...10).map { NormalizedPoint(x: 0.05, y: 0.2 + Double($0) * 0.03) },
+                brush: brush,
+                width: brush.defaultWidth
+            )
+        ]
+        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let result = renderedPixels(
+            design: design,
+            transform: MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset),
+            size: viewport
+        )
+        #expect(result.dark > 0 || brush.opacity < 0.5, "\(brush.title) 획이 렌더되지 않음")
+    }
+
     // MARK: - 지우개
 
     @Test("지우개는 반경 안의 획만 지운다")

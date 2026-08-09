@@ -31,7 +31,7 @@ struct NormalizedPoint: Hashable {
 
 /// Clean Pen Sketch에 맞는 최소 preset. 굵기는 Master Canvas 폭 기준 normalized 값이다.
 enum EditorBrush: String, CaseIterable, Identifiable {
-    case fine, pen, marker
+    case fine, pen, pencil, marker, highlighter
 
     var id: String { rawValue }
 
@@ -39,7 +39,9 @@ enum EditorBrush: String, CaseIterable, Identifiable {
         switch self {
         case .fine: "가는 펜"
         case .pen: "기본 펜"
-        case .marker: "굵은 마커"
+        case .pencil: "연필"
+        case .marker: "마커"
+        case .highlighter: "형광펜"
         }
     }
 
@@ -48,14 +50,28 @@ enum EditorBrush: String, CaseIterable, Identifiable {
         switch self {
         case .fine: 5 / MirrorCanvas.size.width
         case .pen: 11 / MirrorCanvas.size.width
+        case .pencil: 8 / MirrorCanvas.size.width
         case .marker: 30 / MirrorCanvas.size.width
+        case .highlighter: 46 / MirrorCanvas.size.width
         }
     }
 
+    /// 현재 renderer로 표현 가능한 범위의 차이만 쓴다.
+    /// 종이 질감 연필 / 크레용 같은 texture brush는 후속 Phase.
     var opacity: Double {
         switch self {
-        case .marker: 0.75
+        case .pencil: 0.85
+        case .marker: 0.8
+        case .highlighter: 0.32
         default: 1
+        }
+    }
+
+    /// 형광펜만 끝을 각지게 해서 마커 느낌을 준다.
+    var lineCap: CGLineCap {
+        switch self {
+        case .highlighter: .square
+        default: .round
         }
     }
 
@@ -162,7 +178,7 @@ enum StrokeRenderer {
                 with: shading,
                 style: StrokeStyle(
                     lineWidth: stroke.width * size.width,
-                    lineCap: .round,
+                    lineCap: stroke.brush.lineCap,
                     lineJoin: .round
                 )
             )
