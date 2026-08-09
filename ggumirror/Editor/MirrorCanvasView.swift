@@ -10,15 +10,17 @@ import SwiftUI
 
 struct MirrorCanvasView: View {
     let design: MirrorDesign
-    /// 그리는 중에만 쓰는 임시 획 목록. nil이면 design.strokes를 그린다.
-    var strokesOverride: [DrawingStroke]?
+    /// 지우는 중 화면에서만 감출 획. 데이터는 건드리지 않는다.
+    var hiddenStrokeIDs: Set<UUID> = []
     /// 손가락을 떼기 전의 진행 중인 획.
     var activeStroke: DrawingStroke?
     /// 편집 중임을 알려주는 밴드 경계선. Preview에서는 끈다.
     var showsBandGuides = false
 
     private var strokes: [DrawingStroke] {
-        (strokesOverride ?? design.strokes).sorted { $0.zIndex < $1.zIndex }
+        design.strokes
+            .filter { !hiddenStrokeIDs.contains($0.id) }
+            .sorted { $0.zIndex < $1.zIndex }
     }
 
     var body: some View {

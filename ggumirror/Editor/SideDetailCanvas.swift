@@ -3,10 +3,18 @@
 //  ggumirror
 //
 //  Side Detail은 같은 Master Canvas를 uniform scale + translation으로 확대해서 볼 뿐이다.
-//  그리기 / 지우기도 화면 좌표를 역변환해 Master normalized 좌표로만 다룬다.
+//  그리기 / 지우기는 화면 좌표를 역변환해 Master normalized 좌표로만 다룬다.
+//  Pan / Zoom은 viewport state만 바꾸고 디자인 데이터는 건드리지 않는다.
 //
 
 import SwiftUI
+
+/// 캔버스가 요청하는 편집. 배열 스냅샷을 통째로 넘기지 않아서
+/// 오래된 design 복사본이 최신 획을 덮어쓰는 일이 생기지 않는다.
+enum DrawingEdit {
+    case add(DrawingStroke)
+    case erase(removedIDs: Set<UUID>)
+}
 
 struct SideDetailCanvas: View {
     let design: MirrorDesign
@@ -16,23 +24,25 @@ struct SideDetailCanvas: View {
     let brushWidth: Double
     let brushColor: Color
 
-    /// 이 side의 현재 이동 위치. Editor session UI state이고 디자인 데이터가 아니다.
-    @Binding var pan: CGFloat
+    /// 이 side의 보기 상태. Editor session UI state이고 디자인 데이터가 아니다.
+    @Binding var viewport: EditorViewportState
     @Binding var visibleRect: NormalizedRect
     /// 제스처가 끝났을 때만 확정한다. 그리는 동안에는 design을 건드리지 않는다.
-    let onCommit: ([DrawingStroke]) -> Void
+    let onEdit: (DrawingEdit) -> Void
 
     /// 손가락을 떼기 전의 진행 중인 획. 여기만 자주 갱신된다.
     @State private var activeStroke: DrawingStroke?
-    /// 지우는 동안의 임시 결과.
-    @State private var erasedPreview: [DrawingStroke]?
-    /// 드래그 시작 시점의 pan. 이동 중 누적 오차가 생기지 않게 한다.
-    @State private var panAtGestureStart: CGFloat?
+    /// 지우는 동안 지워질 예정인 획.
+    @State private var pendingErase: Set<UUID> = []
+    /// 두 손가락 조작 시작 시점의 viewport.
+    @State private var viewportAtGestureStart: EditorViewportState?
 
-    /// 화면 기준 지우개 반경.
+    /// 화면 기준 지우개 반경. Master 반경은 배율에 따라 환산된다.
     private let eraserScreenRadius: CGFloat = 22
     /// 너무 촘촘한 점은 버려 성능과 곡선 품질을 지킨다 (Master Canvas 픽셀 기준).
     private let minimumPointSpacing: Double = 6
+    /// 이 개수 이상이면 제스처가 취소돼도 살릴 가치가 있는 획으로 본다.
+    private let minimumCommittablePoints = 2
 
     var body: some View {
         GeometryReader { proxy in
@@ -40,66 +50,58 @@ struct SideDetailCanvas: View {
                 side: side,
                 insets: design.insets,
                 viewport: proxy.size,
-                pan: pan
+                state: viewport
             )
 
-            MirrorCanvasView(
-                design: design,
-                strokesOverride: erasedPreview,
-                activeStroke: activeStroke,
-                showsBandGuides: true
-            )
-            .frame(width: transform.canvasSize.width, height: transform.canvasSize.height)
-            .offset(x: transform.offset.x, y: transform.offset.y)
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-            .clipped()
-            .contentShape(.rect)
-            .gesture(drawGesture(transform))
-            .onChange(of: proxy.size, initial: true) { _, _ in
-                // clamp된 값을 되돌려 저장해 범위를 벗어난 pan이 쌓이지 않게 한다.
-                pan = transform.appliedPan
-                visibleRect = transform.visibleRect
+            ZStack {
+                // Master Canvas content → FrameMask (캔버스 좌표계 안에서) → viewport transform → clip
+                MirrorCanvasView(
+                    design: design,
+                    hiddenStrokeIDs: pendingErase,
+                    activeStroke: activeStroke,
+                    showsBandGuides: true
+                )
+                .frame(width: transform.canvasSize.width, height: transform.canvasSize.height)
+                .offset(x: transform.offset.x, y: transform.offset.y)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                .clipped()
+                .allowsHitTesting(false)
+
+                EditorCanvasGestureOverlay(
+                    onTouch: { handleTouch($0, transform: transform) },
+                    onNavigate: { navigate($0, transform: transform, viewportSize: proxy.size) }
+                )
             }
-            .onChange(of: transform.visibleRect) { _, newValue in
+            .onChange(of: transform.visibleRect, initial: true) { _, newValue in
                 visibleRect = newValue
             }
-            .onChange(of: tool) { _, _ in cancelGesture() }
+            .onChange(of: tool) { _, _ in
+                // 도구가 바뀌어도 이미 그린 획은 버리지 않는다.
+                commitActiveWork()
+            }
+            .onChange(of: side) { _, _ in commitActiveWork() }
         }
         .padding(.vertical, 8)
     }
 
-    private func drawGesture(_ transform: SideDetailTransform) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                switch tool {
-                case .pan:
-                    movePan(by: value.translation, side: side, transform: transform)
-                case .draw:
-                    extendStroke(to: transform.masterPoint(from: value.location))
-                case .erase:
-                    erase(at: transform.masterPoint(from: value.location), transform: transform)
-                }
+    // MARK: - 한 손가락
+
+    private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform) {
+        switch phase {
+        case .began(let location), .moved(let location):
+            let point = transform.masterPoint(from: location)
+            switch tool {
+            case .draw: extendStroke(to: point)
+            case .erase: erase(at: point, transform: transform)
             }
-            .onEnded { _ in finish() }
-    }
-
-    // MARK: - Pan
-
-    /// 선택한 side의 축으로만 움직인다. 범위를 벗어나면 transform이 clamp한다.
-    private func movePan(by translation: CGSize, side: EditorSide, transform: SideDetailTransform) {
-        let start = panAtGestureStart ?? pan
-        if panAtGestureStart == nil { panAtGestureStart = start }
-        let delta = switch side.panAxis {
-        case .vertical: translation.height
-        case .horizontal: translation.width
+        case .ended, .cancelled:
+            // 취소여도 유효한 작업이면 저장한다. 사용자가 그린 선이 이유 없이 사라지지 않게.
+            commitActiveWork()
         }
-        pan = min(max(start + delta, transform.panRange.lowerBound), transform.panRange.upperBound)
     }
-
-    // MARK: - Draw
 
     private func extendStroke(to point: NormalizedPoint) {
-        // 중앙 Mirror Area에는 그리지 않는다. 두께는 template의 frameInsets에서 온다.
+        // 중앙 Mirror Area에는 그리지 않는다. 두께는 design의 frameInsets에서 온다.
         guard !design.insets.isInsideMirrorArea(point) else { return }
 
         if var stroke = activeStroke {
@@ -113,6 +115,7 @@ struct SideDetailCanvas: View {
                 points: [point],
                 brush: brush,
                 color: brushColor,
+                // 배율과 무관하게 Master Canvas 기준 굵기를 그대로 저장한다.
                 width: brushWidth,
                 opacity: brush.opacity,
                 zIndex: (design.strokes.map(\.zIndex).max() ?? 0) + 1
@@ -120,49 +123,84 @@ struct SideDetailCanvas: View {
         }
     }
 
-    // MARK: - Erase
-
     private func erase(at point: NormalizedPoint, transform: SideDetailTransform) {
         guard !design.insets.isInsideMirrorArea(point) else { return }
+        // 화면 반경을 Master 반경으로 환산하므로 확대해도 체감 반경이 같다.
         let radius = transform.masterLength(fromScreen: eraserScreenRadius)
-        var working = erasedPreview ?? design.strokes
-        working.removeAll { $0.isHit(by: point, radius: radius) }
-        erasedPreview = working
+        let hits = design.strokes
+            .filter { !pendingErase.contains($0.id) && $0.isHit(by: point, radius: radius) }
+            .map(\.id)
+        guard !hits.isEmpty else { return }
+        pendingErase.formUnion(hits)
     }
 
-    // MARK: - Commit
-
-    private func finish() {
-        switch tool {
-        case .pan:
-            break
-        case .draw:
-            if let stroke = activeStroke {
-                onCommit(design.strokes + [stroke])
+    /// 진행 중이던 작업을 확정한다. 아직 아무것도 안 그린 제스처만 조용히 버린다.
+    private func commitActiveWork() {
+        if let stroke = activeStroke {
+            if stroke.points.count >= minimumCommittablePoints || tool == .draw {
+                onEdit(.add(stroke))
             }
-        case .erase:
-            if let erasedPreview {
-                onCommit(erasedPreview)
-            }
+            activeStroke = nil
         }
-        cancelGesture()
+        if !pendingErase.isEmpty {
+            onEdit(.erase(removedIDs: pendingErase))
+            pendingErase = []
+        }
     }
 
-    private func cancelGesture() {
-        activeStroke = nil
-        erasedPreview = nil
-        panAtGestureStart = nil
+    // MARK: - 두 손가락
+
+    private func navigate(_ navigation: CanvasNavigation, transform: SideDetailTransform, viewportSize: CGSize) {
+        guard !navigation.isEnded else {
+            viewportAtGestureStart = nil
+            return
+        }
+        if viewportAtGestureStart == nil {
+            viewportAtGestureStart = viewport
+            // 두 손가락이 시작되면 한 손가락 작업은 이미 확정된 상태여야 한다.
+            commitActiveWork()
+        }
+
+        var next = viewport
+        next.pan.width += navigation.translationDelta.width
+        next.pan.height += navigation.translationDelta.height
+
+        if navigation.scaleDelta != 1 {
+            // 손가락 사이 지점이 그대로 있도록 배율 변경 후 위치를 보정한다.
+            let anchor = transform.masterPoint(from: navigation.center)
+            next.zoom = min(
+                max(viewport.zoom * navigation.scaleDelta, EditorViewportState.zoomRange.lowerBound),
+                EditorViewportState.zoomRange.upperBound
+            )
+            let zoomed = SideDetailTransform(
+                side: side,
+                insets: design.insets,
+                viewport: viewportSize,
+                state: next
+            )
+            let moved = zoomed.screenPoint(from: anchor)
+            next.pan.width += navigation.center.x - moved.x
+            next.pan.height += navigation.center.y - moved.y
+        }
+
+        // 배율이 바뀌면 pan 범위도 달라지므로 항상 다시 clamp된 값을 저장한다.
+        let clamped = SideDetailTransform(
+            side: side,
+            insets: design.insets,
+            viewport: viewportSize,
+            state: next
+        )
+        viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 }
 
 enum EditorTool: String, CaseIterable, Identifiable {
-    case pan, draw, erase
+    case draw, erase
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .pan: "이동"
         case .draw: "그리기"
         case .erase: "지우개"
         }
@@ -170,7 +208,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .pan: "hand.draw"
         case .draw: "scribble"
         case .erase: "eraser"
         }

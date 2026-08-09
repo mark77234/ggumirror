@@ -222,7 +222,20 @@ enum EditorBackground {
     }
 }
 
-// MARK: - Side Detail transform
+// MARK: - Side Detail viewport
+
+/// Side Detail의 보기 상태. 디자인 데이터가 아니라 Editor session UI state다.
+/// Pan / Zoom은 오직 이 값만 바꾼다.
+struct EditorViewportState: Equatable {
+    /// fit 상태를 1.0으로 보는 배율.
+    var zoom: CGFloat = 1
+    /// fit 기준 위치에서의 이동량(화면 pt).
+    var pan: CGSize = .zero
+
+    static let zoomRange: ClosedRange<CGFloat> = 1...3
+
+    var isFitted: Bool { self == EditorViewportState() }
+}
 
 /// Side Detail의 화면 변환. uniform scale + translation만 쓴다.
 /// 좌표계를 회전시키거나 side별 데이터를 만들지 않는다.
@@ -232,12 +245,11 @@ struct SideDetailTransform {
     /// 지금 실제로 보이는 영역 (Master Canvas 기준 0...1). Mini Map이 이 값을 그린다.
     let visibleRect: NormalizedRect
     /// 요청한 pan 중 실제로 반영된 값. 뷰는 이 값을 되돌려 받아 저장한다.
-    let appliedPan: CGFloat
-    /// pan으로 움직일 수 있는 범위. 끝에 닿으면 더 이상 움직이지 않는다.
-    let panRange: ClosedRange<CGFloat>
+    let appliedPan: CGSize
+    /// 실제로 반영된 배율. zoomRange로 제한된다.
+    let appliedZoom: CGFloat
 
-    /// - Parameter pan: 선택한 side의 pan 축 이동량(화면 pt). 캔버스 밖으로는 나가지 않도록 clamp된다.
-    init(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize, pan: CGFloat = 0) {
+    init(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize, state: EditorViewportState = .init()) {
         let band = side.boundingBox(with: insets)
         let inset: CGFloat = 24
         let availableWidth = max(viewport.width - inset, 1)
@@ -259,7 +271,11 @@ struct SideDetailTransform {
             availableWidth * 0.45 / (band.width * MirrorCanvas.size.width)
         }
 
-        let scale = max(fitScale, targetScale)
+        let zoom = min(max(state.zoom, EditorViewportState.zoomRange.lowerBound),
+                       EditorViewportState.zoomRange.upperBound)
+        appliedZoom = zoom
+
+        let scale = max(fitScale, targetScale) * zoom
         canvasSize = CGSize(
             width: MirrorCanvas.size.width * scale,
             height: MirrorCanvas.size.height * scale
@@ -267,21 +283,30 @@ struct SideDetailTransform {
 
         // pan이 0일 때의 기준 위치 — 밴드를 화면 중앙에 둔다.
         let bandRect = band.rect(in: canvasSize)
-        let baseX = Self.base(center: bandRect.midX, canvas: canvasSize.width, viewport: viewport.width)
-        let baseY = Self.base(center: bandRect.midY, canvas: canvasSize.height, viewport: viewport.height)
+        let baseX = Self.clampOffset(
+            viewport.width / 2 - bandRect.midX,
+            canvas: canvasSize.width, viewport: viewport.width,
+            bandMin: bandRect.minX, bandMax: bandRect.maxX
+        )
+        let baseY = Self.clampOffset(
+            viewport.height / 2 - bandRect.midY,
+            canvas: canvasSize.height, viewport: viewport.height,
+            bandMin: bandRect.minY, bandMax: bandRect.maxY
+        )
 
-        switch side.panAxis {
-        case .vertical:
-            let moved = Self.clamp(baseY + pan, canvas: canvasSize.height, viewport: viewport.height)
-            offset = CGPoint(x: baseX, y: moved)
-            appliedPan = moved - baseY
-            panRange = Self.range(base: baseY, canvas: canvasSize.height, viewport: viewport.height)
-        case .horizontal:
-            let moved = Self.clamp(baseX + pan, canvas: canvasSize.width, viewport: viewport.width)
-            offset = CGPoint(x: moved, y: baseY)
-            appliedPan = moved - baseX
-            panRange = Self.range(base: baseX, canvas: canvasSize.width, viewport: viewport.width)
-        }
+        let movedX = Self.clampOffset(
+            baseX + state.pan.width,
+            canvas: canvasSize.width, viewport: viewport.width,
+            bandMin: bandRect.minX, bandMax: bandRect.maxX
+        )
+        let movedY = Self.clampOffset(
+            baseY + state.pan.height,
+            canvas: canvasSize.height, viewport: viewport.height,
+            bandMin: bandRect.minY, bandMax: bandRect.maxY
+        )
+
+        offset = CGPoint(x: movedX, y: movedY)
+        appliedPan = CGSize(width: movedX - baseX, height: movedY - baseY)
 
         visibleRect = NormalizedRect(
             x: Double(-offset.x / canvasSize.width),
@@ -292,7 +317,7 @@ struct SideDetailTransform {
     }
 
     /// 화면 좌표 → Master Canvas normalized 좌표. Drawing / Eraser가 모두 이걸 쓴다.
-    /// pan이 offset에 이미 반영돼 있으므로 별도 보정이 필요 없다.
+    /// zoom / pan은 canvasSize와 offset에 이미 반영돼 있어 별도 보정이 필요 없다.
     func masterPoint(from location: CGPoint) -> NormalizedPoint {
         NormalizedPoint(
             x: Double((location.x - offset.x) / canvasSize.width),
@@ -300,24 +325,42 @@ struct SideDetailTransform {
         )
     }
 
+    /// Master normalized 좌표 → 화면 좌표. pinch 기준점 유지에 쓴다.
+    func screenPoint(from master: NormalizedPoint) -> CGPoint {
+        CGPoint(
+            x: master.x * canvasSize.width + offset.x,
+            y: master.y * canvasSize.height + offset.y
+        )
+    }
+
     /// 화면 길이 → Master Canvas 픽셀 길이. 지우개 반경 환산에 쓴다.
+    /// zoom이 올라가면 화면 반경이 같아도 Master 반경은 작아진다.
     func masterLength(fromScreen length: CGFloat) -> Double {
         Double(length / canvasSize.width) * MirrorCanvas.size.width
     }
 
-    /// pan = 0 기준 위치. 밴드를 중앙에 두되 캔버스 밖 빈 공간이 생기지 않게 한다.
-    private static func base(center: CGFloat, canvas: CGFloat, viewport: CGFloat) -> CGFloat {
-        clamp(viewport / 2 - center, canvas: canvas, viewport: viewport)
-    }
-
-    /// 캔버스가 화면을 항상 덮도록 offset을 제한한다. rubber-band 없이 끝에서 멈춘다.
-    private static func clamp(_ value: CGFloat, canvas: CGFloat, viewport: CGFloat) -> CGFloat {
+    /// 캔버스가 화면을 덮도록, 그리고 선택한 밴드를 놓치지 않도록 offset을 제한한다.
+    /// rubber-band 없이 끝에서 멈춘다.
+    private static func clampOffset(
+        _ value: CGFloat,
+        canvas: CGFloat,
+        viewport: CGFloat,
+        bandMin: CGFloat,
+        bandMax: CGFloat
+    ) -> CGFloat {
+        // 캔버스가 화면보다 작으면 가운데 정렬 (의도된 여백)
         guard canvas > viewport else { return (viewport - canvas) / 2 }
-        return min(0, max(viewport - canvas, value))
-    }
 
-    private static func range(base: CGFloat, canvas: CGFloat, viewport: CGFloat) -> ClosedRange<CGFloat> {
-        guard canvas > viewport else { return 0...0 }
-        return (viewport - canvas - base)...(-base)
+        var lower = viewport - canvas
+        var upper: CGFloat = 0
+
+        // 선택한 밴드가 화면 밖으로 완전히 빠지지 않도록 한 번 더 좁힌다.
+        let keep = min(bandMax - bandMin, viewport) * 0.5
+        let bandLower = -bandMax + keep      // 밴드 아래쪽 끝이 화면 위에 걸치는 한계
+        let bandUpper = viewport - bandMin - keep
+        lower = max(lower, min(bandLower, upper))
+        upper = min(upper, max(bandUpper, lower))
+
+        return min(upper, max(lower, value))
     }
 }

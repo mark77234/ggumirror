@@ -194,6 +194,20 @@ struct DrawingHistory {
         strokes = previous
     }
 
+    /// 캔버스가 요청한 편집을 지금 시점의 배열에 적용한다.
+    /// 오래된 스냅샷을 덮어쓰지 않으므로 이전 획이 사라지지 않는다.
+    mutating func apply(_ edit: DrawingEdit, to strokes: inout [DrawingStroke]) {
+        var updated = strokes
+        switch edit {
+        case .add(let stroke):
+            guard !updated.contains(where: { $0.id == stroke.id }) else { return }
+            updated.append(stroke)
+        case .erase(let removedIDs):
+            updated.removeAll { removedIDs.contains($0.id) }
+        }
+        commit(updated, to: &strokes)
+    }
+
     mutating func redo(_ strokes: inout [DrawingStroke]) {
         guard let next = redoStack.popLast() else { return }
         undoStack.append(strokes)

@@ -23,8 +23,9 @@ struct EditorView: View {
     @State private var brushWidth: Double = EditorBrush.pen.defaultWidth
     @State private var brushColor: Color = PaperTheme.ink
     @State private var history = DrawingHistory()
-    /// Side별 마지막 이동 위치. Editor session UI state이고 저장되지 않는다.
-    @State private var panOffsets: [EditorSide: CGFloat] = [:]
+    /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
+    @State private var viewports: [EditorSide: EditorViewportState] = [:]
+    @State private var isEditingDrawSettings = false
     @Environment(\.dismiss) private var dismiss
 
     enum EditorMode: Hashable {
@@ -45,29 +46,19 @@ struct EditorView: View {
             case .overview:
                 overviewCanvas
             case .side(let side):
-                drawBar
-                InkSeparator()
-                SideDetailCanvas(
-                    design: design,
-                    side: side,
-                    tool: tool,
-                    brush: brush,
-                    brushWidth: brushWidth,
-                    brushColor: brushColor,
-                    pan: panBinding(for: side),
-                    visibleRect: $detailViewport,
-                    onCommit: { history.commit($0, to: &design.strokes) }
-                )
+                sideDetail(side)
             }
 
-            if mode == .overview {
-                InkSeparator()
-                toolbar
-            }
+            InkSeparator()
+            primaryToolBar
         }
         .paperBackground()
         .fullScreenCover(isPresented: $isPreviewing) {
             EditorPreviewView(design: design)
+        }
+        .sheet(isPresented: $isEditingDrawSettings) {
+            DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
+                .presentationDetents([.height(360), .medium])
         }
         .sheet(isPresented: $isChoosingBackground) {
             BackgroundColorSheet(color: $design.backgroundColor)
@@ -179,117 +170,172 @@ struct EditorView: View {
         )
     }
 
-    // MARK: - Draw bar
+    // MARK: - Side Detail
 
-    /// Claude Design의 draw bar 구조: 브러시 / 굵기 / 색상 + 지우개·Undo·Redo.
-    private var drawBar: some View {
-        VStack(spacing: 10) {
-            Picker("브러시", selection: $brush) {
-                ForEach(EditorBrush.allCases) { item in
-                    Text(item.title).tag(item)
-                }
+    private func sideDetail(_ side: EditorSide) -> some View {
+        SideDetailCanvas(
+            design: design,
+            side: side,
+            tool: tool,
+            brush: brush,
+            brushWidth: brushWidth,
+            brushColor: brushColor,
+            viewport: viewportBinding(for: side),
+            visibleRect: $detailViewport,
+            onEdit: { history.apply($0, to: &design.strokes) }
+        )
+        .overlay(alignment: .topTrailing) { historyControls }
+        .overlay(alignment: .bottomTrailing) { fitControl(side) }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if tool == .draw {
+                drawContextBar
             }
-            .pickerStyle(.segmented)
-            .onChange(of: brush) { _, newValue in brushWidth = newValue.defaultWidth }
+        }
+    }
 
-            HStack(spacing: 10) {
-                Text("굵기")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                Slider(value: $brushWidth, in: EditorBrush.widthRange)
-                    .tint(PaperTheme.ink)
-                    .accessibilityLabel("선 굵기")
-                Text("\(Int((brushWidth * MirrorCanvas.size.width).rounded()))")
+    /// Undo / Redo는 그리기 설정과 분리된 작은 독립 컨트롤로 둔다.
+    private var historyControls: some View {
+        HStack(spacing: 6) {
+            iconButton("실행 취소", icon: "arrow.uturn.backward", isEnabled: history.canUndo) {
+                history.undo(&design.strokes)
+            }
+            iconButton("다시 실행", icon: "arrow.uturn.forward", isEnabled: history.canRedo) {
+                history.redo(&design.strokes)
+            }
+        }
+        .padding(10)
+    }
+
+    /// 위치를 잃었을 때 기본 fit 상태로 되돌린다.
+    @ViewBuilder
+    private func fitControl(_ side: EditorSide) -> some View {
+        if !(viewports[side] ?? EditorViewportState()).isFitted {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { viewports[side] = EditorViewportState() }
+            } label: {
+                Label("맞춤", systemImage: "arrow.up.left.and.arrow.down.right")
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.ink)
-                    .monospacedDigit()
-                    .frame(width: 26, alignment: .trailing)
-            }
-
-            HStack(spacing: 8) {
-                // 색은 가로 스크롤로 흘려서 오른쪽 버튼이 어떤 폭에서도 잘리지 않게 한다.
-                ScrollView(.horizontal) {
-                    HStack(spacing: 4) {
-                        ForEach(Self.inkColors, id: \.self) { swatch in
-                            Button {
-                                brushColor = swatch
-                                tool = .draw
-                            } label: {
-                                Circle()
-                                    .fill(swatch)
-                                    .frame(width: 24, height: 24)
-                                    .overlay(
-                                        Circle().stroke(
-                                            PaperTheme.ink,
-                                            lineWidth: swatch == brushColor ? 2.6 : 1.4
-                                        )
-                                    )
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(.circle)
-                            }
-                            .buttonStyle(InkPressStyle())
-                            .accessibilityLabel("색 선택")
-                        }
-
-                        ColorPicker("직접 고르기", selection: $brushColor, supportsOpacity: false)
-                            .labelsHidden()
-                            .frame(width: 44, height: 44)
-                            .accessibilityLabel("색 직접 고르기")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .background {
+                        Capsule()
+                            .fill(PaperTheme.subtleSurface)
+                            .overlay(Capsule().stroke(PaperTheme.ink, lineWidth: 1.6))
                     }
-                }
-                .scrollIndicators(.hidden)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(InkPressStyle())
+            .padding(10)
+            .accessibilityLabel("보기 맞춤")
+        }
+    }
 
+    /// 그리기일 때만 보이는 최소 설정 요약. 누르면 상세 시트가 열린다.
+    private var drawContextBar: some View {
+        Button {
+            isEditingDrawSettings = true
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(brushColor)
+                    .frame(width: 22, height: 22)
+                    .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
+                Text(brush.title)
+                    .font(InkFont.secondary)
+                Text("\(Int((brushWidth * MirrorCanvas.size.width).rounded()))")
+                    .font(InkFont.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up")
+                    .font(.system(.footnote, weight: .bold))
+            }
+            .foregroundStyle(PaperTheme.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .background(PaperTheme.subtleSurface)
+        .overlay(alignment: .top) { InkSeparator() }
+        .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
+    }
+
+    private func viewportBinding(for side: EditorSide) -> Binding<EditorViewportState> {
+        Binding(
+            get: { viewports[side] ?? EditorViewportState() },
+            set: { viewports[side] = $0 }
+        )
+    }
+
+    // MARK: - Primary tools
+
+    /// 자주 바꾸는 큰 기능만. Undo/Redo와 색·굵기는 여기 넣지 않는다.
+    private var primaryToolBar: some View {
+        HStack(spacing: 10) {
+            if mode.side != nil {
                 ForEach(EditorTool.allCases) { item in
-                    iconButton(item.title, icon: item.icon, isActive: tool == item) {
+                    primaryButton(item.title, icon: item.icon, isActive: tool == item) {
                         tool = item
                     }
                 }
-                iconButton("실행 취소", icon: "arrow.uturn.backward", isEnabled: history.canUndo) {
-                    history.undo(&design.strokes)
-                }
-                iconButton("다시 실행", icon: "arrow.uturn.forward", isEnabled: history.canRedo) {
-                    history.redo(&design.strokes)
-                }
             }
+            primaryButton("배경", icon: "paintpalette") { isChoosingBackground = true }
+            primaryButton("미리보기", icon: "eye") { isPreviewing = true }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    /// Side별 pan 위치를 기억한다. Overview를 다녀와도 보던 자리로 돌아온다.
-    private func panBinding(for side: EditorSide) -> Binding<CGFloat> {
-        Binding(
-            get: { panOffsets[side] ?? 0 },
-            set: { panOffsets[side] = $0 }
-        )
+    private func primaryButton(
+        _ title: String,
+        icon: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(InkFont.body)
+                Text(title)
+                    .font(InkFont.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(isActive ? PaperTheme.subtleSurface : PaperTheme.ink)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 52)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                shape
+                    .fill(isActive ? PaperTheme.ink : PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.6))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
     }
-
-    private static let inkColors: [Color] = [
-        PaperTheme.ink,
-        Color(red: 0.78, green: 0.31, blue: 0.33),
-        Color(red: 0.36, green: 0.47, blue: 0.71),
-        Color(red: 0.44, green: 0.60, blue: 0.47),
-        Color(red: 0.85, green: 0.68, blue: 0.32)
-    ]
 
     private func iconButton(
         _ label: String,
         icon: String,
-        isActive: Bool = false,
         isEnabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(InkFont.body)
-                .foregroundStyle(
-                    isEnabled ? (isActive ? PaperTheme.subtleSurface : PaperTheme.ink) : PaperTheme.disabled
-                )
+                .foregroundStyle(isEnabled ? PaperTheme.ink : PaperTheme.disabled)
                 .frame(width: 44, height: 44)
                 .background {
                     let shape = UnevenRoundedRectangle.ink(13, 16, 12, 15)
                     shape
-                        .fill(isActive ? PaperTheme.ink : Color.clear)
+                        .fill(PaperTheme.subtleSurface)
                         .overlay(shape.stroke(
                             isEnabled ? PaperTheme.ink : PaperTheme.disabled,
                             lineWidth: 1.6
@@ -300,41 +346,6 @@ struct EditorView: View {
         .buttonStyle(InkPressStyle())
         .disabled(!isEnabled)
         .accessibilityLabel(label)
-        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
-    }
-
-    // MARK: - Toolbar
-
-    private var toolbar: some View {
-        HStack(spacing: 10) {
-            toolbarButton("배경", icon: "paintpalette") { isChoosingBackground = true }
-            toolbarButton("미리보기", icon: "eye") { isPreviewing = true }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private func toolbarButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(InkFont.body)
-                Text(title)
-                    .font(InkFont.caption)
-            }
-            .foregroundStyle(PaperTheme.ink)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 52)
-            .background {
-                let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                shape
-                    .fill(PaperTheme.subtleSurface)
-                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.6))
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(InkPressStyle())
-        .accessibilityLabel(title)
     }
 }
 
