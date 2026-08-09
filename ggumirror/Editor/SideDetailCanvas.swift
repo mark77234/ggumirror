@@ -16,6 +16,8 @@ struct SideDetailCanvas: View {
     let brushWidth: Double
     let brushColor: Color
 
+    /// 이 side의 현재 이동 위치. Editor session UI state이고 디자인 데이터가 아니다.
+    @Binding var pan: CGFloat
     @Binding var visibleRect: NormalizedRect
     /// 제스처가 끝났을 때만 확정한다. 그리는 동안에는 design을 건드리지 않는다.
     let onCommit: ([DrawingStroke]) -> Void
@@ -24,6 +26,8 @@ struct SideDetailCanvas: View {
     @State private var activeStroke: DrawingStroke?
     /// 지우는 동안의 임시 결과.
     @State private var erasedPreview: [DrawingStroke]?
+    /// 드래그 시작 시점의 pan. 이동 중 누적 오차가 생기지 않게 한다.
+    @State private var panAtGestureStart: CGFloat?
 
     /// 화면 기준 지우개 반경.
     private let eraserScreenRadius: CGFloat = 22
@@ -35,7 +39,8 @@ struct SideDetailCanvas: View {
             let transform = SideDetailTransform(
                 side: side,
                 insets: design.insets,
-                viewport: proxy.size
+                viewport: proxy.size,
+                pan: pan
             )
 
             MirrorCanvasView(
@@ -51,7 +56,12 @@ struct SideDetailCanvas: View {
             .contentShape(.rect)
             .gesture(drawGesture(transform))
             .onChange(of: proxy.size, initial: true) { _, _ in
+                // clamp된 값을 되돌려 저장해 범위를 벗어난 pan이 쌓이지 않게 한다.
+                pan = transform.appliedPan
                 visibleRect = transform.visibleRect
+            }
+            .onChange(of: transform.visibleRect) { _, newValue in
+                visibleRect = newValue
             }
             .onChange(of: tool) { _, _ in cancelGesture() }
         }
@@ -61,13 +71,29 @@ struct SideDetailCanvas: View {
     private func drawGesture(_ transform: SideDetailTransform) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let point = transform.masterPoint(from: value.location)
                 switch tool {
-                case .draw: extendStroke(to: point)
-                case .erase: erase(at: point, transform: transform)
+                case .pan:
+                    movePan(by: value.translation, side: side, transform: transform)
+                case .draw:
+                    extendStroke(to: transform.masterPoint(from: value.location))
+                case .erase:
+                    erase(at: transform.masterPoint(from: value.location), transform: transform)
                 }
             }
             .onEnded { _ in finish() }
+    }
+
+    // MARK: - Pan
+
+    /// 선택한 side의 축으로만 움직인다. 범위를 벗어나면 transform이 clamp한다.
+    private func movePan(by translation: CGSize, side: EditorSide, transform: SideDetailTransform) {
+        let start = panAtGestureStart ?? pan
+        if panAtGestureStart == nil { panAtGestureStart = start }
+        let delta = switch side.panAxis {
+        case .vertical: translation.height
+        case .horizontal: translation.width
+        }
+        pan = min(max(start + delta, transform.panRange.lowerBound), transform.panRange.upperBound)
     }
 
     // MARK: - Draw
@@ -108,6 +134,8 @@ struct SideDetailCanvas: View {
 
     private func finish() {
         switch tool {
+        case .pan:
+            break
         case .draw:
             if let stroke = activeStroke {
                 onCommit(design.strokes + [stroke])
@@ -123,16 +151,18 @@ struct SideDetailCanvas: View {
     private func cancelGesture() {
         activeStroke = nil
         erasedPreview = nil
+        panAtGestureStart = nil
     }
 }
 
 enum EditorTool: String, CaseIterable, Identifiable {
-    case draw, erase
+    case pan, draw, erase
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .pan: "이동"
         case .draw: "그리기"
         case .erase: "지우개"
         }
@@ -140,6 +170,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .pan: "hand.draw"
         case .draw: "scribble"
         case .erase: "eraser"
         }

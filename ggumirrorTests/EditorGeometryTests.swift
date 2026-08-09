@@ -132,6 +132,95 @@ struct EditorGeometryTests {
         #expect(!history.canRedo)
     }
 
+    // MARK: - Side Detail Pan
+
+    /// 세로 밴드는 pan으로 캔버스 맨 위 / 맨 아래까지 닿아야 한다.
+    @Test("Left / Right는 위·아래 끝까지 이동한다", arguments: [EditorSide.left, .right])
+    func verticalPanReachesBothEnds(side: EditorSide) {
+        let top = SideDetailTransform(side: side, insets: .standard, viewport: viewport, pan: 100_000)
+        let bottom = SideDetailTransform(side: side, insets: .standard, viewport: viewport, pan: -100_000)
+
+        // 위쪽 끝: 캔버스 상단이 화면 상단에 맞는다
+        #expect(abs(top.offset.y) < 0.001)
+        #expect(abs(top.visibleRect.y) < 0.001)
+
+        // 아래쪽 끝: 캔버스 하단이 화면 하단에 맞는다
+        #expect(abs(bottom.offset.y - (viewport.height - bottom.canvasSize.height)) < 0.001)
+        #expect(abs((bottom.visibleRect.y + bottom.visibleRect.height) - 1) < 0.001)
+    }
+
+    /// 캔버스가 화면보다 큰 축에서는 어떤 pan에서도 빈 공간이 보이면 안 된다.
+    /// 캔버스가 화면보다 작은 축은 가운데 정렬된다(의도된 여백).
+    @Test("캔버스 밖으로는 pan 되지 않는다", arguments: EditorSide.allCases)
+    func panNeverShowsEmptySpace(side: EditorSide) {
+        for pan in [-5000.0, -500.0, 0.0, 500.0, 5000.0] {
+            let t = SideDetailTransform(side: side, insets: .standard, viewport: viewport, pan: CGFloat(pan))
+
+            if t.canvasSize.width > viewport.width {
+                #expect(t.offset.x <= 0.001)
+                #expect(t.offset.x + t.canvasSize.width >= viewport.width - 0.001)
+            } else {
+                #expect(abs(t.offset.x - (viewport.width - t.canvasSize.width) / 2) < 0.001)
+            }
+
+            if t.canvasSize.height > viewport.height {
+                #expect(t.offset.y <= 0.001)
+                #expect(t.offset.y + t.canvasSize.height >= viewport.height - 0.001)
+            } else {
+                #expect(abs(t.offset.y - (viewport.height - t.canvasSize.height) / 2) < 0.001)
+            }
+        }
+    }
+
+    @Test("요청한 pan이 범위를 넘으면 clamp된 값이 돌아온다")
+    func appliedPanIsClamped() {
+        let t = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, pan: 100_000)
+        #expect(t.appliedPan < 100_000)
+        #expect(t.panRange.contains(t.appliedPan))
+    }
+
+    @Test("Mini Map viewport가 pan을 따라 움직인다")
+    func visibleRectFollowsPan() {
+        let middle = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let up = SideDetailTransform(side: .left, insets: .standard, viewport: viewport, pan: 200)
+        let down = SideDetailTransform(side: .left, insets: .standard, viewport: viewport, pan: -200)
+
+        #expect(up.visibleRect.y < middle.visibleRect.y)
+        #expect(down.visibleRect.y > middle.visibleRect.y)
+        // 크기는 그대로 — 배율은 변하지 않는다
+        #expect(abs(up.visibleRect.height - middle.visibleRect.height) < 0.0001)
+    }
+
+    @Test("pan 후에도 화면 좌표 왕복 변환이 일치한다")
+    func masterRoundTripAfterPan() {
+        let t = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, pan: -240)
+        let screenPoint = CGPoint(x: 210, y: 380)
+        let master = t.masterPoint(from: screenPoint)
+
+        #expect(abs(master.x * t.canvasSize.width + t.offset.x - screenPoint.x) < 0.001)
+        #expect(abs(master.y * t.canvasSize.height + t.offset.y - screenPoint.y) < 0.001)
+    }
+
+    @Test("pan하면 같은 화면 좌표가 다른 Master 좌표를 가리킨다")
+    func panChangesMasterPoint() {
+        let before = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let after = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, pan: -300)
+        let screenPoint = CGPoint(x: 200, y: 300)
+
+        #expect(after.masterPoint(from: screenPoint).y > before.masterPoint(from: screenPoint).y)
+        // 배율은 그대로여야 한다
+        #expect(before.canvasSize == after.canvasSize)
+    }
+
+    @Test("아래 끝까지 pan하면 Bottom corner가 화면에 들어온다")
+    func bottomCornerReachable() {
+        let t = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, pan: -100_000)
+        let bottom = t.visibleRect.y + t.visibleRect.height
+        #expect(bottom > 1 - 0.001)
+        // Bottom 밴드 시작점(1 - 0.0769)이 보이는 범위 안에 있다
+        #expect(t.visibleRect.y < 1 - MirrorFrameInsets.standard.bottom)
+    }
+
     // MARK: - 지우개
 
     @Test("지우개는 반경 안의 획만 지운다")

@@ -89,6 +89,17 @@ enum EditorSide: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// 이 side를 편집할 때 움직일 수 있는 축.
+    /// 세로 밴드는 위→아래, 가로 밴드는 좌→우. 자유로운 2D 이동은 만들지 않는다.
+    var panAxis: PanAxis {
+        switch self {
+        case .left, .right: .vertical
+        case .top, .bottom: .horizontal
+        }
+    }
+
+    enum PanAxis { case vertical, horizontal }
+
     /// 이 side 밴드의 bounding box (Master Canvas 기준 0...1).
     func boundingBox(with insets: MirrorFrameInsets) -> NormalizedRect {
         switch self {
@@ -220,8 +231,13 @@ struct SideDetailTransform {
     let offset: CGPoint
     /// 지금 실제로 보이는 영역 (Master Canvas 기준 0...1). Mini Map이 이 값을 그린다.
     let visibleRect: NormalizedRect
+    /// 요청한 pan 중 실제로 반영된 값. 뷰는 이 값을 되돌려 받아 저장한다.
+    let appliedPan: CGFloat
+    /// pan으로 움직일 수 있는 범위. 끝에 닿으면 더 이상 움직이지 않는다.
+    let panRange: ClosedRange<CGFloat>
 
-    init(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize) {
+    /// - Parameter pan: 선택한 side의 pan 축 이동량(화면 pt). 캔버스 밖으로는 나가지 않도록 clamp된다.
+    init(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize, pan: CGFloat = 0) {
         let band = side.boundingBox(with: insets)
         let inset: CGFloat = 24
         let availableWidth = max(viewport.width - inset, 1)
@@ -249,11 +265,23 @@ struct SideDetailTransform {
             height: MirrorCanvas.size.height * scale
         )
 
+        // pan이 0일 때의 기준 위치 — 밴드를 화면 중앙에 둔다.
         let bandRect = band.rect(in: canvasSize)
-        offset = CGPoint(
-            x: Self.clamp(center: bandRect.midX, canvas: canvasSize.width, viewport: viewport.width),
-            y: Self.clamp(center: bandRect.midY, canvas: canvasSize.height, viewport: viewport.height)
-        )
+        let baseX = Self.base(center: bandRect.midX, canvas: canvasSize.width, viewport: viewport.width)
+        let baseY = Self.base(center: bandRect.midY, canvas: canvasSize.height, viewport: viewport.height)
+
+        switch side.panAxis {
+        case .vertical:
+            let moved = Self.clamp(baseY + pan, canvas: canvasSize.height, viewport: viewport.height)
+            offset = CGPoint(x: baseX, y: moved)
+            appliedPan = moved - baseY
+            panRange = Self.range(base: baseY, canvas: canvasSize.height, viewport: viewport.height)
+        case .horizontal:
+            let moved = Self.clamp(baseX + pan, canvas: canvasSize.width, viewport: viewport.width)
+            offset = CGPoint(x: moved, y: baseY)
+            appliedPan = moved - baseX
+            panRange = Self.range(base: baseX, canvas: canvasSize.width, viewport: viewport.width)
+        }
 
         visibleRect = NormalizedRect(
             x: Double(-offset.x / canvasSize.width),
@@ -264,6 +292,7 @@ struct SideDetailTransform {
     }
 
     /// 화면 좌표 → Master Canvas normalized 좌표. Drawing / Eraser가 모두 이걸 쓴다.
+    /// pan이 offset에 이미 반영돼 있으므로 별도 보정이 필요 없다.
     func masterPoint(from location: CGPoint) -> NormalizedPoint {
         NormalizedPoint(
             x: Double((location.x - offset.x) / canvasSize.width),
@@ -276,9 +305,19 @@ struct SideDetailTransform {
         Double(length / canvasSize.width) * MirrorCanvas.size.width
     }
 
-    /// 밴드를 중앙에 두되, 캔버스 밖 빈 공간이 생기지 않도록 이동량을 제한한다.
-    private static func clamp(center: CGFloat, canvas: CGFloat, viewport: CGFloat) -> CGFloat {
+    /// pan = 0 기준 위치. 밴드를 중앙에 두되 캔버스 밖 빈 공간이 생기지 않게 한다.
+    private static func base(center: CGFloat, canvas: CGFloat, viewport: CGFloat) -> CGFloat {
+        clamp(viewport / 2 - center, canvas: canvas, viewport: viewport)
+    }
+
+    /// 캔버스가 화면을 항상 덮도록 offset을 제한한다. rubber-band 없이 끝에서 멈춘다.
+    private static func clamp(_ value: CGFloat, canvas: CGFloat, viewport: CGFloat) -> CGFloat {
         guard canvas > viewport else { return (viewport - canvas) / 2 }
-        return min(0, max(viewport - canvas, viewport / 2 - center))
+        return min(0, max(viewport - canvas, value))
+    }
+
+    private static func range(base: CGFloat, canvas: CGFloat, viewport: CGFloat) -> ClosedRange<CGFloat> {
+        guard canvas > viewport else { return 0...0 }
+        return (viewport - canvas - base)...(-base)
     }
 }

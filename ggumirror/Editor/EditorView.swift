@@ -23,6 +23,8 @@ struct EditorView: View {
     @State private var brushWidth: Double = EditorBrush.pen.defaultWidth
     @State private var brushColor: Color = PaperTheme.ink
     @State private var history = DrawingHistory()
+    /// Side별 마지막 이동 위치. Editor session UI state이고 저장되지 않는다.
+    @State private var panOffsets: [EditorSide: CGFloat] = [:]
     @Environment(\.dismiss) private var dismiss
 
     enum EditorMode: Hashable {
@@ -52,6 +54,7 @@ struct EditorView: View {
                     brush: brush,
                     brushWidth: brushWidth,
                     brushColor: brushColor,
+                    pan: panBinding(for: side),
                     visibleRect: $detailViewport,
                     onCommit: { history.commit($0, to: &design.strokes) }
                 )
@@ -236,8 +239,10 @@ struct EditorView: View {
                 }
                 .scrollIndicators(.hidden)
 
-                iconButton(tool == .erase ? "지우개 끄기" : "지우개", icon: "eraser", isActive: tool == .erase) {
-                    tool = tool == .erase ? .draw : .erase
+                ForEach(EditorTool.allCases) { item in
+                    iconButton(item.title, icon: item.icon, isActive: tool == item) {
+                        tool = item
+                    }
                 }
                 iconButton("실행 취소", icon: "arrow.uturn.backward", isEnabled: history.canUndo) {
                     history.undo(&design.strokes)
@@ -249,6 +254,14 @@ struct EditorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// Side별 pan 위치를 기억한다. Overview를 다녀와도 보던 자리로 돌아온다.
+    private func panBinding(for side: EditorSide) -> Binding<CGFloat> {
+        Binding(
+            get: { panOffsets[side] ?? 0 },
+            set: { panOffsets[side] = $0 }
+        )
     }
 
     private static let inkColors: [Color] = [
