@@ -54,22 +54,28 @@ struct SideDetailCanvas: View {
             )
 
             ZStack {
-                // Master Canvas content → FrameMask (캔버스 좌표계 안에서) → viewport transform → clip
+                // 뷰는 항상 viewport 크기다. 확대/이동은 그리는 좌표에만 반영한다.
                 MirrorCanvasView(
                     design: design,
+                    transform: MirrorViewTransform(
+                        canvasSize: transform.canvasSize,
+                        offset: transform.offset
+                    ),
                     hiddenStrokeIDs: pendingErase,
                     activeStroke: activeStroke,
                     showsBandGuides: true
                 )
-                .frame(width: transform.canvasSize.width, height: transform.canvasSize.height)
-                .offset(x: transform.offset.x, y: transform.offset.y)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                .clipped()
                 .allowsHitTesting(false)
 
                 EditorCanvasGestureOverlay(
                     onTouch: { handleTouch($0, transform: transform) },
                     onNavigate: { navigate($0, transform: transform, viewportSize: proxy.size) }
+                )
+
+                ScrollHandle(
+                    side: side,
+                    progress: verticalProgress(transform),
+                    onDrag: { delta in movePan(byHandle: delta, viewportSize: proxy.size) }
                 )
             }
             .onChange(of: transform.visibleRect, initial: true) { _, newValue in
@@ -146,6 +152,28 @@ struct SideDetailCanvas: View {
             onEdit(.erase(removedIDs: pendingErase))
             pendingErase = []
         }
+    }
+
+    // MARK: - Scroll Handle
+
+    /// 현재 세로 위치(0 = 맨 위, 1 = 맨 아래). Mini Map과 같은 visibleRect에서 계산한다.
+    private func verticalProgress(_ transform: SideDetailTransform) -> Double {
+        let travel = 1 - transform.visibleRect.height
+        guard travel > 0.0001 else { return 0 }
+        return min(max(transform.visibleRect.y / travel, 0), 1)
+    }
+
+    /// Handle 드래그도 두 손가락 Pan과 같은 viewport state를 바꾼다.
+    private func movePan(byHandle delta: CGFloat, viewportSize: CGSize) {
+        var next = viewport
+        next.pan.height -= delta
+        let clamped = SideDetailTransform(
+            side: side,
+            insets: design.insets,
+            viewport: viewportSize,
+            state: next
+        )
+        viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 
     // MARK: - 두 손가락

@@ -26,6 +26,9 @@ struct EditorView: View {
     /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
     @State private var viewports: [EditorSide: EditorViewportState] = [:]
     @State private var isEditingDrawSettings = false
+    @State private var hintPulse = false
+    /// 한 번 프레임을 눌러본 사용자에게는 다시 힌트를 보여주지 않는다.
+    @AppStorage("editorSideHintSeen") private var hasSeenSideHint = false
     @Environment(\.dismiss) private var dismiss
 
     enum EditorMode: Hashable {
@@ -58,11 +61,13 @@ struct EditorView: View {
         }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
-                .presentationDetents([.height(360), .medium])
+                .presentationDetents([.height(380), .medium])
+                .presentationBackground { PaperBackground() }
         }
         .sheet(isPresented: $isChoosingBackground) {
             BackgroundColorSheet(color: $design.backgroundColor)
                 .presentationDetents([.height(320), .medium])
+                .presentationBackground { PaperBackground() }
         }
     }
 
@@ -127,10 +132,19 @@ struct EditorView: View {
     private var overviewCanvas: some View {
         GeometryReader { geometry in
             ZStack {
-                MirrorCanvasView(design: design, showsBandGuides: true)
+                MirrorCanvasView(
+                    design: design,
+                    showsBandGuides: true,
+                    highlightsBands: !hasSeenSideHint
+                )
+                .opacity(hintPulse ? 0.92 : 1)
 
                 // 네 밴드 전체가 tap target. 모서리는 45도로 나뉘어 겹치지 않는다.
                 sideHitTargets
+
+                if !hasSeenSideHint {
+                    sideHint
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -143,6 +157,7 @@ struct EditorView: View {
             let canvas = canvasRect(in: geometry.size)
             ForEach(EditorSide.allCases) { side in
                 Button {
+                    hasSeenSideHint = true
                     withAnimation(.easeOut(duration: 0.2)) { mode = .side(side) }
                 } label: {
                     Color.clear
@@ -153,6 +168,25 @@ struct EditorView: View {
                 .accessibilityLabel("\(side.title) 프레임 편집")
             }
         }
+    }
+
+    /// 처음 들어온 사용자에게 무엇을 눌러야 하는지 알려준다.
+    private var sideHint: some View {
+        Text("꾸미고 싶은 프레임을 눌러보세요")
+            .font(InkFont.caption)
+            .foregroundStyle(PaperTheme.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background {
+                UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(
+                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                            .stroke(PaperTheme.ink, lineWidth: 1.5)
+                    )
+            }
+            .allowsHitTesting(false)
+            .accessibilityLabel("꾸미고 싶은 프레임을 눌러보세요")
     }
 
     /// 캔버스는 aspect fit으로 놓이므로 실제 그려진 사각형을 다시 계산한다.
@@ -396,7 +430,6 @@ private struct BackgroundColorSheet: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .paperBackground()
     }
 }
 

@@ -26,7 +26,7 @@ struct EditorMiniMap: View {
             // 중앙 Mirror Area
             let mirror = insets.mirrorArea.rect(in: CGSize(width: width, height: height))
             RoundedRectangle(cornerRadius: 2)
-                .fill(MirrorPreview.glass)
+                .fill(MirrorRenderer.glass)
                 .frame(width: mirror.width, height: mirror.height)
                 .position(x: mirror.midX, y: mirror.midY)
 

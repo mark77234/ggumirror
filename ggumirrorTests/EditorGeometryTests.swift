@@ -386,6 +386,203 @@ struct EditorGeometryTests {
         #expect(strokes.map(\.id) == [a.id, b.id])
     }
 
+    // MARK: - Stroke clipping (부분만 보여도 렌더되어야 한다)
+
+    /// 렌더러가 실제로 쓰는 판정과 같은 규칙.
+    private func strokeIsRendered(
+        _ stroke: DrawingStroke,
+        transform: SideDetailTransform,
+        viewport: CGSize
+    ) -> Bool {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let path = StrokeRenderer.path(for: stroke, in: placement.canvasSize)
+            .offsetBy(dx: placement.offset.x, dy: placement.offset.y)
+        let lineWidth = stroke.width * placement.canvasSize.width
+        return path.boundingRect
+            .insetBy(dx: -lineWidth, dy: -lineWidth)
+            .intersects(CGRect(origin: .zero, size: viewport))
+    }
+
+    /// Left frame을 세로로 가로지르는 긴 획.
+    private var longLeftStroke: DrawingStroke {
+        DrawingStroke(
+            points: (0...20).map { NormalizedPoint(x: 0.05, y: 0.03 + Double($0) * 0.047) },
+            width: 14 / MirrorCanvas.size.width
+        )
+    }
+
+    @Test("일부만 화면에 걸친 긴 획도 렌더 대상이다", arguments: [1.0, 2.0, 3.0])
+    func partiallyVisibleStrokeIsRendered(zoom: Double) {
+        let stroke = longLeftStroke
+        for pan in [0.0, -400.0, -1200.0, 400.0, 1200.0] {
+            let transform = SideDetailTransform(
+                side: .left, insets: .standard, viewport: viewport,
+                state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: pan))
+            )
+            #expect(
+                strokeIsRendered(stroke, transform: transform, viewport: viewport),
+                "zoom \(zoom), pan \(pan)에서 획이 통째로 사라짐"
+            )
+        }
+    }
+
+    @Test("bounding box가 viewport보다 커도 skip하지 않는다")
+    func oversizedStrokeIsNotSkipped() {
+        let stroke = longLeftStroke
+        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                            state: .init(zoom: 3))
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let box = StrokeRenderer.path(for: stroke, in: placement.canvasSize)
+            .offsetBy(dx: placement.offset.x, dy: placement.offset.y)
+            .boundingRect
+        let screen = CGRect(origin: .zero, size: viewport)
+
+        // 화면을 완전히 포함하지 않는데도(= contains 조건이면 탈락) 렌더되어야 한다.
+        #expect(!screen.contains(box))
+        #expect(strokeIsRendered(stroke, transform: transform, viewport: viewport))
+    }
+
+    @Test("완전히 화면 밖일 때만 건너뛴다")
+    func fullyOffscreenStrokeIsCulled() {
+        // Bottom 밴드 끝의 짧은 획을 맨 위로 pan한 상태
+        let stroke = DrawingStroke(
+            points: [NormalizedPoint(x: 0.05, y: 0.985), NormalizedPoint(x: 0.06, y: 0.99)],
+            width: 8 / MirrorCanvas.size.width
+        )
+        let top = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                      state: .init(zoom: 3, pan: CGSize(width: 0, height: 100_000)))
+        let bottom = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                         state: .init(zoom: 3, pan: CGSize(width: 0, height: -100_000)))
+
+        #expect(!strokeIsRendered(stroke, transform: top, viewport: viewport))
+        #expect(strokeIsRendered(stroke, transform: bottom, viewport: viewport))
+    }
+
+    @Test("모서리를 걸친 획도 양쪽에서 렌더된다")
+    func cornerCrossingStrokeIsRendered() {
+        let stroke = DrawingStroke(
+            points: [
+                NormalizedPoint(x: 0.70, y: 0.03), NormalizedPoint(x: 0.90, y: 0.035),
+                NormalizedPoint(x: 0.96, y: 0.09), NormalizedPoint(x: 0.96, y: 0.20)
+            ],
+            width: 12 / MirrorCanvas.size.width
+        )
+        // Top은 fit 상태에서 상단이 보이고, Right는 위로 이동해야 같은 모서리가 보인다.
+        let top = SideDetailTransform(side: .top, insets: .standard, viewport: viewport,
+                                      state: .init(zoom: 2))
+        let right = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
+                                        state: .init(zoom: 2, pan: CGSize(width: 0, height: 100_000)))
+        #expect(strokeIsRendered(stroke, transform: top, viewport: viewport))
+        #expect(strokeIsRendered(stroke, transform: right, viewport: viewport))
+    }
+
+    @Test("Master 획 데이터는 viewport 기준으로 잘리지 않는다")
+    func strokePointsAreNeverTrimmed() {
+        let stroke = longLeftStroke
+        let original = stroke.points
+        for pan in [-1200.0, 0.0, 1200.0] {
+            _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                    state: .init(zoom: 3, pan: CGSize(width: 0, height: pan)))
+        }
+        #expect(stroke.points == original)
+    }
+
+    // MARK: - 실제 렌더 검증
+
+    /// 렌더러를 실제 이미지로 그려 픽셀을 확인한다. geometry 판정만으로는 잡히지 않는 문제를 잡는다.
+    private func renderedPixels(
+        design: MirrorDesign,
+        transform: MirrorViewTransform,
+        size: CGSize
+    ) -> (dark: Int, total: Int) {
+        let canvas = Canvas { context, canvasSize in
+            MirrorRenderer.draw(
+                style: design.style,
+                strokes: design.strokes,
+                transform: transform,
+                in: context,
+                viewport: canvasSize
+            )
+        }
+        .frame(width: size.width, height: size.height)
+
+        let renderer = ImageRenderer(content: canvas)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { return (0, 0) }
+
+        let width = image.width, height = image.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        // 중앙 Mirror Area(어두운 면)를 뺀 프레임 영역에서만 잉크 픽셀을 센다.
+        let mirror = transform.rect(design.insets.mirrorArea)
+        var dark = 0
+        var total = 0
+        for y in stride(from: 0, to: height, by: 2) {
+            for x in stride(from: 0, to: width, by: 2) {
+                let point = CGPoint(x: x, y: y)
+                guard !mirror.contains(point) else { continue }
+                total += 1
+                let i = (y * width + x) * 4
+                if data[i] < 90 && data[i + 1] < 90 && data[i + 2] < 90 { dark += 1 }
+            }
+        }
+        return (dark, total)
+    }
+
+    @Test("Side Detail에서도 획이 실제로 렌더된다", arguments: [1.0, 2.0, 3.0])
+    func strokeActuallyRendersInSideDetail(zoom: Double) {
+        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        design.strokes = [longLeftStroke]
+
+        let transform = SideDetailTransform(
+            side: .left, insets: .standard, viewport: viewport,
+            state: .init(zoom: CGFloat(zoom))
+        )
+        let result = renderedPixels(
+            design: design,
+            transform: MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset),
+            size: viewport
+        )
+
+        #expect(result.total > 0)
+        #expect(result.dark > 0, "zoom \(zoom) Side Detail에서 획이 한 픽셀도 그려지지 않음")
+    }
+
+    @Test("Overview에서도 획이 실제로 렌더된다")
+    func strokeActuallyRendersInOverview() {
+        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        design.strokes = [longLeftStroke]
+
+        let size = CGSize(width: 300, height: 650)
+        let result = renderedPixels(design: design, transform: .fitted(in: size), size: size)
+        #expect(result.dark > 0, "Overview에서 획이 그려지지 않음")
+    }
+
+    // MARK: - Scroll Handle
+
+    @Test("Handle 위치는 viewport 위치를 그대로 따른다")
+    func handleProgressFollowsViewport() {
+        func progress(_ pan: CGFloat) -> Double {
+            let t = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                        state: .init(pan: CGSize(width: 0, height: pan)))
+            let travel = 1 - t.visibleRect.height
+            return travel > 0.0001 ? min(max(t.visibleRect.y / travel, 0), 1) : 0
+        }
+        let top = progress(100_000)
+        let middle = progress(0)
+        let bottom = progress(-100_000)
+
+        #expect(abs(top) < 0.001)
+        #expect(abs(bottom - 1) < 0.001)
+        #expect(middle > top && middle < bottom)
+    }
+
     // MARK: - 지우개
 
     @Test("지우개는 반경 안의 획만 지운다")

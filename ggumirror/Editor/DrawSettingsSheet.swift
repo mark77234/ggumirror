@@ -90,7 +90,6 @@ struct DrawSettingsSheet: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .paperBackground()
     }
 }
 

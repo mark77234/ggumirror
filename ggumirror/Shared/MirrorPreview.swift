@@ -40,49 +40,21 @@ struct MirrorPreview: View {
     var lineWidth: CGFloat = 1.8
 
     var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            let shape = UnevenRoundedRectangle.ink(19, 22, 23, 18)
-
-            ZStack {
-                // 프레임: 단색 + 은은한 종이 질감
-                PaperBackground(color: style.frame)
-
-                // 중앙 Mirror Area. 실제 카메라에서는 투명하게 유지되는 영역이다.
-                UnevenRoundedRectangle.ink(10, 10, 10, 10)
-                    .fill(Self.glass)
-                    .padding(.top, size.height * style.insets.top)
-                    .padding(.bottom, size.height * style.insets.bottom)
-                    .padding(.leading, size.width * style.insets.left)
-                    .padding(.trailing, size.width * style.insets.right)
-
-                if !strokes.isEmpty {
-                    Canvas { context, canvasSize in
-                        for stroke in strokes.sorted(by: { $0.zIndex < $1.zIndex }) {
-                            StrokeRenderer.draw(stroke, in: context, size: canvasSize)
-                        }
-                    }
-                    .clipShape(FrameMaskShape(insets: style.insets), style: FrameMaskShape.fillStyle)
-                    .allowsHitTesting(false)
-                }
-
-                ForEach(Array(style.doodles.enumerated()), id: \.offset) { _, doodle in
-                    Image(systemName: doodle.symbol)
-                        .font(.system(size: size.width * doodle.size, weight: .light))
-                        .foregroundStyle(PaperTheme.ink.opacity(0.75))
-                        .rotationEffect(.degrees(doodle.rotation))
-                        .position(x: size.width * doodle.x, y: size.height * doodle.y)
-                }
-            }
-            .clipShape(shape)
-            .overlay(shape.stroke(PaperTheme.ink, lineWidth: lineWidth))
+        let shape = UnevenRoundedRectangle.ink(19, 22, 23, 18)
+        Canvas { context, size in
+            MirrorRenderer.draw(
+                style: style,
+                strokes: strokes,
+                transform: .fitted(in: size),
+                in: context,
+                viewport: size
+            )
         }
+        .clipShape(shape)
+        .overlay(shape.stroke(PaperTheme.ink, lineWidth: lineWidth))
         .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
         .accessibilityHidden(true)
     }
-
-    /// 거울 면. 그라디언트 없이 평평한 톤으로만 표현한다.
-    static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 }
 
 #Preview {
