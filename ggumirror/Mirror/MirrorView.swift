@@ -2,7 +2,7 @@
 //  MirrorView.swift
 //  ggumirror
 //
-//  Phase 1-1: app launches straight into the mirror camera.
+//  앱 실행 직후 첫 화면. 카메라 + 거울 장식만 보이고, 탭하면 홈으로/촬영이 나타난다.
 //
 
 import SwiftUI
@@ -12,13 +12,20 @@ struct MirrorView: View {
     private static let autoHideDelay = Duration.milliseconds(4200)
 
     @State private var camera = MirrorCamera()
-    @State private var screenBrightness = ScreenBrightness()
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var isDecorationOn = true
     @State private var areControlsVisible = false
     /// 값이 바뀔 때마다 auto-hide 타이머를 처음부터 다시 돌린다.
     @State private var lastInteraction = 0
+
+    @State private var flashOpacity = 0.0
+    @State private var saveAlert: SaveAlert?
+
+    private struct SaveAlert: Identifiable {
+        let id = UUID()
+        let message: String
+        let showsSettings: Bool
+    }
 
     private var isMirrorLive: Bool {
         if case .ready = camera.status { true } else { false }
@@ -40,24 +47,19 @@ struct MirrorView: View {
                 EmptyView()
             }
 
-            // 순서 = 레이어 순서. 카메라 → 장식 → 컨트롤.
+            // 순서 = 레이어 순서. 카메라 → 장식 → 컨트롤 → flash.
             if isMirrorLive {
-                if isDecorationOn {
-                    DecorationOverlay()
-                }
+                DecorationOverlay()
+
                 if areControlsVisible {
-                    MirrorControls(
-                        isDecorationOn: isDecorationOn,
-                        zoom: camera.zoomFactor,
-                        maxZoom: camera.maxZoomFactor,
-                        brightness: screenBrightness.level,
-                        onInteraction: registerInteraction,
-                        onToggleDecoration: { isDecorationOn.toggle() },
-                        onZoomChange: camera.setZoom,
-                        onBrightnessChange: screenBrightness.set
-                    )
-                    .transition(.opacity)
+                    MirrorControls(onInteraction: registerInteraction, onCapture: capture)
+                        .transition(.opacity)
                 }
+
+                Color.white
+                    .opacity(flashOpacity)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
             }
         }
         .ignoresSafeArea()
@@ -66,20 +68,71 @@ struct MirrorView: View {
         .onTapGesture { toggleControls() }
         .task { await camera.start() }
         .task(id: lastInteraction) { await autoHideControls() }
-        .onAppear { screenBrightness.takeOver() }
-        .onDisappear { screenBrightness.release() }   // Mirror를 완전히 벗어나면 원래 밝기로
+        .alert(
+            "저장",
+            isPresented: Binding(get: { saveAlert != nil }, set: { if !$0 { saveAlert = nil } }),
+            presenting: saveAlert
+        ) { alert in
+            if alert.showsSettings {
+                Button("설정 열기") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("닫기", role: .cancel) {}
+        } message: { alert in
+            Text(alert.message)
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active:
-                Task { await camera.start() }
-                screenBrightness.takeOver()
-            case .background:
-                camera.stop()
-                screenBrightness.restoreUserLevel()   // 앱 밖에 밝기가 남지 않게
-            default:
-                break
+            case .active: Task { await camera.start() }
+            case .background: camera.stop()
+            default: break
             }
         }
+    }
+
+    private func capture() {
+        // 화면 캡처가 아니라 원본 프레임 + 장식을 직접 합성한다.
+        guard let image = MirrorCapture.compose(
+            frame: camera.currentFrame(),
+            decoration: UIImage(named: DecorationOverlay.sampleAssetName),
+            size: screenPixelSize
+        ) else {
+            saveAlert = SaveAlert(message: "지금은 저장할 화면을 만들 수 없어요.", showsSettings: false)
+            return
+        }
+
+        flash()
+        Task {
+            switch await MirrorCapture.save(image) {
+            case .saved:
+                break
+            case .denied:
+                saveAlert = SaveAlert(
+                    message: "사진에 저장하려면 사진 추가 권한이 필요해요.",
+                    showsSettings: true
+                )
+            case .failed:
+                saveAlert = SaveAlert(message: "사진을 저장하지 못했어요.", showsSettings: false)
+            }
+        }
+    }
+
+    private func flash() {
+        flashOpacity = 0.9
+        withAnimation(.easeOut(duration: 0.45)) { flashOpacity = 0 }
+    }
+
+    /// 화면과 같은 비율, 화면 해상도 그대로 합성하기 위한 픽셀 크기.
+    private var screenPixelSize: CGSize {
+        guard let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen else {
+            return CGSize(width: 1080, height: 2340)
+        }
+        return CGSize(
+            width: screen.bounds.width * screen.scale,
+            height: screen.bounds.height * screen.scale
+        )
     }
 
     private func toggleControls() {
