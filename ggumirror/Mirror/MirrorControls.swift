@@ -58,10 +58,11 @@ struct MirrorControls: View {
         Button {
             onInteraction()   // Home은 Phase 1-2 범위 밖 — 아직 이동하지 않는다.
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .bold))
-                Text("뒤로")
+            HStack(spacing: 6) {
+                // iOS 기본 back처럼 보이지 않게 chevron 대신 집 아이콘을 쓴다.
+                Image(systemName: "house")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("홈으로")
                     .font(.system(size: 15, weight: .medium))
             }
             .foregroundStyle(.white)
