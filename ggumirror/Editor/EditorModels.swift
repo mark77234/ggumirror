@@ -183,6 +183,9 @@ struct MirrorDesign: Identifiable, Hashable {
     var name: String
     /// 프레임 색 / 밴드 두께 / 템플릿 장식. Gallery 미리보기와 같은 값을 쓴다.
     var style: MirrorStyle
+    /// 사용자가 그린 획. Master Canvas normalized 좌표만 담는다.
+    var strokes: [DrawingStroke] = []
+    /// Sticker / Text는 Phase 3-3에서 여기에 붙는다.
     var objects: [MirrorEditorObject] = []
 
     var insets: MirrorFrameInsets {
@@ -199,6 +202,7 @@ struct MirrorDesign: Identifiable, Hashable {
         id = mirror.id
         name = mirror.name
         style = mirror.style
+        strokes = mirror.strokes
     }
 }
 
@@ -259,6 +263,19 @@ struct SideDetailTransform {
             width: Double(min(viewport.width, canvasSize.width) / canvasSize.width),
             height: Double(min(viewport.height, canvasSize.height) / canvasSize.height)
         )
+    }
+
+    /// 화면 좌표 → Master Canvas normalized 좌표. Drawing / Eraser가 모두 이걸 쓴다.
+    func masterPoint(from location: CGPoint) -> NormalizedPoint {
+        NormalizedPoint(
+            x: Double((location.x - offset.x) / canvasSize.width),
+            y: Double((location.y - offset.y) / canvasSize.height)
+        )
+    }
+
+    /// 화면 길이 → Master Canvas 픽셀 길이. 지우개 반경 환산에 쓴다.
+    func masterLength(fromScreen length: CGFloat) -> Double {
+        Double(length / canvasSize.width) * MirrorCanvas.size.width
     }
 
     /// 밴드를 중앙에 두되, 캔버스 밖 빈 공간이 생기지 않도록 이동량을 제한한다.

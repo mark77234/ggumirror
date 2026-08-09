@@ -17,6 +17,12 @@ struct EditorView: View {
     @State private var detailViewport = NormalizedRect(x: 0, y: 0, width: 1, height: 1)
     @State private var isPreviewing = false
     @State private var isChoosingBackground = false
+
+    @State private var tool: EditorTool = .draw
+    @State private var brush: EditorBrush = .pen
+    @State private var brushWidth: Double = EditorBrush.pen.defaultWidth
+    @State private var brushColor: Color = PaperTheme.ink
+    @State private var history = DrawingHistory()
     @Environment(\.dismiss) private var dismiss
 
     enum EditorMode: Hashable {
@@ -37,11 +43,24 @@ struct EditorView: View {
             case .overview:
                 overviewCanvas
             case .side(let side):
-                SideDetailCanvas(design: design, side: side, visibleRect: $detailViewport)
+                drawBar
+                InkSeparator()
+                SideDetailCanvas(
+                    design: design,
+                    side: side,
+                    tool: tool,
+                    brush: brush,
+                    brushWidth: brushWidth,
+                    brushColor: brushColor,
+                    visibleRect: $detailViewport,
+                    onCommit: { history.commit($0, to: &design.strokes) }
+                )
             }
 
-            InkSeparator()
-            toolbar
+            if mode == .overview {
+                InkSeparator()
+                toolbar
+            }
         }
         .paperBackground()
         .fullScreenCover(isPresented: $isPreviewing) {
@@ -157,6 +176,120 @@ struct EditorView: View {
         )
     }
 
+    // MARK: - Draw bar
+
+    /// Claude Design의 draw bar 구조: 브러시 / 굵기 / 색상 + 지우개·Undo·Redo.
+    private var drawBar: some View {
+        VStack(spacing: 10) {
+            Picker("브러시", selection: $brush) {
+                ForEach(EditorBrush.allCases) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: brush) { _, newValue in brushWidth = newValue.defaultWidth }
+
+            HStack(spacing: 10) {
+                Text("굵기")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Slider(value: $brushWidth, in: EditorBrush.widthRange)
+                    .tint(PaperTheme.ink)
+                    .accessibilityLabel("선 굵기")
+                Text("\(Int((brushWidth * MirrorCanvas.size.width).rounded()))")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.ink)
+                    .monospacedDigit()
+                    .frame(width: 26, alignment: .trailing)
+            }
+
+            HStack(spacing: 8) {
+                // 색은 가로 스크롤로 흘려서 오른쪽 버튼이 어떤 폭에서도 잘리지 않게 한다.
+                ScrollView(.horizontal) {
+                    HStack(spacing: 4) {
+                        ForEach(Self.inkColors, id: \.self) { swatch in
+                            Button {
+                                brushColor = swatch
+                                tool = .draw
+                            } label: {
+                                Circle()
+                                    .fill(swatch)
+                                    .frame(width: 24, height: 24)
+                                    .overlay(
+                                        Circle().stroke(
+                                            PaperTheme.ink,
+                                            lineWidth: swatch == brushColor ? 2.6 : 1.4
+                                        )
+                                    )
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(.circle)
+                            }
+                            .buttonStyle(InkPressStyle())
+                            .accessibilityLabel("색 선택")
+                        }
+
+                        ColorPicker("직접 고르기", selection: $brushColor, supportsOpacity: false)
+                            .labelsHidden()
+                            .frame(width: 44, height: 44)
+                            .accessibilityLabel("색 직접 고르기")
+                    }
+                }
+                .scrollIndicators(.hidden)
+
+                iconButton(tool == .erase ? "지우개 끄기" : "지우개", icon: "eraser", isActive: tool == .erase) {
+                    tool = tool == .erase ? .draw : .erase
+                }
+                iconButton("실행 취소", icon: "arrow.uturn.backward", isEnabled: history.canUndo) {
+                    history.undo(&design.strokes)
+                }
+                iconButton("다시 실행", icon: "arrow.uturn.forward", isEnabled: history.canRedo) {
+                    history.redo(&design.strokes)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private static let inkColors: [Color] = [
+        PaperTheme.ink,
+        Color(red: 0.78, green: 0.31, blue: 0.33),
+        Color(red: 0.36, green: 0.47, blue: 0.71),
+        Color(red: 0.44, green: 0.60, blue: 0.47),
+        Color(red: 0.85, green: 0.68, blue: 0.32)
+    ]
+
+    private func iconButton(
+        _ label: String,
+        icon: String,
+        isActive: Bool = false,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(InkFont.body)
+                .foregroundStyle(
+                    isEnabled ? (isActive ? PaperTheme.subtleSurface : PaperTheme.ink) : PaperTheme.disabled
+                )
+                .frame(width: 44, height: 44)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(13, 16, 12, 15)
+                    shape
+                        .fill(isActive ? PaperTheme.ink : Color.clear)
+                        .overlay(shape.stroke(
+                            isEnabled ? PaperTheme.ink : PaperTheme.disabled,
+                            lineWidth: 1.6
+                        ))
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+
     // MARK: - Toolbar
 
     private var toolbar: some View {
@@ -193,36 +326,6 @@ struct EditorView: View {
         }
         .buttonStyle(InkPressStyle())
         .accessibilityLabel(title)
-    }
-}
-
-// MARK: - Side Detail
-
-/// 같은 Master Canvas를 uniform scale + translation으로만 확대해서 보여준다.
-/// 좌표계를 회전시키거나 side별 데이터를 새로 만들지 않는다.
-private struct SideDetailCanvas: View {
-    let design: MirrorDesign
-    let side: EditorSide
-    @Binding var visibleRect: NormalizedRect
-
-    var body: some View {
-        GeometryReader { proxy in
-            let transform = SideDetailTransform(
-                side: side,
-                insets: design.insets,
-                viewport: proxy.size
-            )
-
-            MirrorCanvasView(design: design, showsBandGuides: true)
-                .frame(width: transform.canvasSize.width, height: transform.canvasSize.height)
-                .offset(x: transform.offset.x, y: transform.offset.y)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                .clipped()
-                .onChange(of: proxy.size, initial: true) { _, _ in
-                    visibleRect = transform.visibleRect
-                }
-        }
-        .padding(.vertical, 8)
     }
 }
 

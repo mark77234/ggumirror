@@ -34,6 +34,8 @@ extension MirrorStyle {
 
 struct MirrorPreview: View {
     let style: MirrorStyle
+    /// 사용자가 그린 획. 중앙 Mirror Area에는 절대 그려지지 않는다.
+    var strokes: [DrawingStroke] = []
     /// 두꺼운 테두리를 쓸지. Detail의 큰 미리보기에서 사용한다.
     var lineWidth: CGFloat = 1.8
 
@@ -53,6 +55,16 @@ struct MirrorPreview: View {
                     .padding(.bottom, size.height * style.insets.bottom)
                     .padding(.leading, size.width * style.insets.left)
                     .padding(.trailing, size.width * style.insets.right)
+
+                if !strokes.isEmpty {
+                    Canvas { context, canvasSize in
+                        for stroke in strokes.sorted(by: { $0.zIndex < $1.zIndex }) {
+                            StrokeRenderer.draw(stroke, in: context, size: canvasSize)
+                        }
+                    }
+                    .clipShape(FrameMaskShape(insets: style.insets), style: FrameMaskShape.fillStyle)
+                    .allowsHitTesting(false)
+                }
 
                 ForEach(Array(style.doodles.enumerated()), id: \.offset) { _, doodle in
                     Image(systemName: doodle.symbol)

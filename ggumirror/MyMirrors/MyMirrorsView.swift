@@ -93,7 +93,7 @@ private struct MyMirrorItem: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            MirrorPreview(style: mirror.style)
+            MirrorPreview(style: mirror.style, strokes: mirror.strokes)
                 .padding(.bottom, 6)
 
             HStack(spacing: 6) {

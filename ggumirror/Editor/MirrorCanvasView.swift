@@ -3,15 +3,23 @@
 //  ggumirror
 //
 //  하나의 연속된 Master Canvas. Overview / Side Detail / Preview가 모두 이걸 그린다.
-//  side별로 잘라 그리지 않기 때문에 모서리 장식이 끊기지 않는다.
+//  side별로 잘라 그리지 않기 때문에 모서리 장식과 획이 끊기지 않는다.
 //
 
 import SwiftUI
 
 struct MirrorCanvasView: View {
     let design: MirrorDesign
+    /// 그리는 중에만 쓰는 임시 획 목록. nil이면 design.strokes를 그린다.
+    var strokesOverride: [DrawingStroke]?
+    /// 손가락을 떼기 전의 진행 중인 획.
+    var activeStroke: DrawingStroke?
     /// 편집 중임을 알려주는 밴드 경계선. Preview에서는 끈다.
     var showsBandGuides = false
+
+    private var strokes: [DrawingStroke] {
+        (strokesOverride ?? design.strokes).sorted { $0.zIndex < $1.zIndex }
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -20,7 +28,19 @@ struct MirrorCanvasView: View {
             ZStack {
                 MirrorPreview(style: design.style)
 
-                // 사용자 오브젝트. Phase 3-2의 Drawing / Sticker / Text가 여기에 얹힌다.
+                // 획은 프레임 영역에만 남는다. 중앙 Mirror Area는 항상 비워둔다.
+                Canvas { context, canvasSize in
+                    for stroke in strokes {
+                        StrokeRenderer.draw(stroke, in: context, size: canvasSize)
+                    }
+                    if let activeStroke {
+                        StrokeRenderer.draw(activeStroke, in: context, size: canvasSize)
+                    }
+                }
+                .clipShape(FrameMaskShape(insets: design.insets), style: FrameMaskShape.fillStyle)
+                .allowsHitTesting(false)
+
+                // Sticker / Text는 Phase 3-3에서 여기에 얹힌다.
                 ForEach(design.objects) { object in
                     let frame = object.frame.rect(in: size)
                     Rectangle()
