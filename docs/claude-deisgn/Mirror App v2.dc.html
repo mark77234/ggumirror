@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0;background:#E6E6EB}
+a{color:#1A1A1A}a:hover{color:#0060DF}
+@keyframes flash{0%{opacity:0}12%{opacity:.9}100%{opacity:0}}
+@keyframes scan{0%{transform:translateY(0)}100%{transform:translateY(196px)}}
+@keyframes rise{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+*{scrollbar-width:none;-ms-overflow-style:none}
+*::-webkit-scrollbar{width:0;height:0;display:none}
+</style>
+</helmet>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@300;400;700&display=swap" rel="stylesheet">
+<style>a{color:#1A1A1A}a:hover{color:#6E6A62}</style>
+</helmet>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:36px 0">
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="402px" height="874px" dark="true" hint-size="402px,874px">
+<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;font-family:'Gaegu','Apple SD Gothic Neo',system-ui,sans-serif;-webkit-font-smoothing:antialiased">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <filter id="pen" x="-6%" y="-6%" width="112%" height="112%" filterUnits="objectBoundingBox"><feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed="7" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="1.7" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter>
+  <filter id="pen2" x="-6%" y="-6%" width="112%" height="112%" filterUnits="objectBoundingBox"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="23" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter>
+  <filter id="paper" x="0%" y="0%" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="9" result="g"></feTurbulence><feColorMatrix in="g" type="saturate" values="0" result="gs"></feColorMatrix><feComponentTransfer in="gs" result="grain"><feFuncA type="linear" slope="0.12"></feFuncA></feComponentTransfer><feComposite in="grain" in2="SourceAlpha" operator="in" result="clip"></feComposite><feBlend in="SourceGraphic" in2="clip" mode="multiply"></feBlend></filter>
+  <filter id="pen3" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox"><feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="41" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="1.1" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter>
+</defs></svg>
+
+<sc-if value="{{ isMirror }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0" onClick="{{ tapMirror }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944 0%,#272430 55%,#17151D 100%);overflow:hidden">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;transform-origin:50% 42%;transition:transform .35s cubic-bezier(.32,.72,0,1);transform:{{ glassT }}">
+      <div style="position:absolute;left:50%;top:23%;transform:translateX(-50%);width:158px;height:196px;border-radius:50% 50% 46% 46%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.8),rgba(160,138,132,.14) 70%,transparent);filter:blur(12px)"></div>
+      <div style="position:absolute;left:50%;top:55%;transform:translateX(-50%);width:320px;height:280px;border-radius:52% 52% 0 0;background:radial-gradient(60% 60% at 50% 20%,rgba(122,106,112,.7),transparent 72%);filter:blur(16px)"></div>
+    </div>
+  </div>
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:#fff;pointer-events:none;opacity:{{ brightUp }}"></div>
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:#000;pointer-events:none;opacity:{{ brightDown }}"></div>
+
+  <sc-if value="{{ decorOn }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0">
+    <div style="{{ bgRingSt }}"></div>
+    <dc-import name="MirrorDecor" variant="{{ decorVariant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+    <sc-if value="{{ showEdits }}">
+    <div style="position:absolute;top:0;left:0;width:402px;height:874px;pointer-events:none">
+      <svg viewBox="0 0 402 874" style="position:absolute;top:0;left:0;width:402px;height:874px">
+        <defs><clipPath id="ring-m" clipPathUnits="userSpaceOnUse"><path d="M0 0H402V874H0Z M52 92H350V770H52Z" clipRule="evenodd"></path></clipPath></defs>
+        <g clipPath="url(#ring-m)">
+          <sc-for list="{{ strokeEls }}" as="k" hint-placeholder-count="0">
+            <polyline points="{{ k.pts }}" fill="none" stroke="{{ k.color }}" strokeWidth="{{ k.w }}" strokeOpacity="{{ k.op }}" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="{{ k.dash }}"></polyline>
+          </sc-for>
+        </g>
+      </svg>
+      <div style="position:absolute;top:0;left:0;width:402px;height:874px;clip-path:url(#ring-m)">
+        <sc-for list="{{ objEls }}" as="o" hint-placeholder-count="0">
+          <div style="{{ o.wrapSt }}">
+            <sc-if value="{{ o.isText }}"><div style="{{ o.textSt }}">{{ o.text }}</div></sc-if>
+            <sc-if value="{{ o.isShape }}"><div style="{{ o.shapeSt }}"></div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <div style="position:absolute;top:0;left:0;right:0;height:58px;background:linear-gradient(180deg,rgba(16,14,18,.5),rgba(16,14,18,0));pointer-events:none"></div>
+
+  <sc-if value="{{ frozen }}">
+  <div style="position:absolute;left:0;right:0;top:60px;display:flex;justify-content:center;pointer-events:none">
+    <span style="padding:5px 12px;border-radius:14px;background:#1A1A1A;color:#fff;font-size:13.5px;font-weight:500;animation:rise .2s ease-out">화면 고정</span>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ controls }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;animation:rise .18s ease-out">
+    <div style="position:absolute;left:60px;top:96px">
+      <div onClick="{{ leaveCamera }}" style="display:flex;align-items:center;gap:5px;padding:7px 12px 7px 9px;border-radius:17px;background:rgba(28,28,30,.5);cursor:pointer" style-active="opacity:.6">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M14 6l-6 6 6 6"></path></svg>
+        <span style="font-size:15px;font-weight:500;color:#fff">뒤로</span>
+      </div>
+    </div>
+
+    <sc-if value="{{ panelBright }}">
+    <div style="position:absolute;left:52px;right:52px;bottom:194px;padding:0 12px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;background:rgba(28,28,30,.7)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.7" strokeLinecap="round"><circle cx="12" cy="12" r="3.4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+        <div data-sl="bright" onPointerDown="{{ brightDown_ }}" onPointerMove="{{ brightMove }}" style="flex:1;height:26px;display:flex;align-items:center;cursor:pointer;touch-action:none">
+          <div style="width:100%;height:4px;border-radius:2px;background:rgba(120,120,128,.5);position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#fff;width:{{ brightPct }}"></div>
+            <div style="position:absolute;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.4);left:{{ brightPct }}"></div>
+          </div>
+        </div>
+        <span style="font-size:13.5px;color:rgba(255,255,255,.6);width:34px;text-align:right">{{ brightLabel }}</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ panelZoom }}">
+    <div style="position:absolute;left:52px;right:52px;bottom:194px;padding:0 12px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;background:rgba(28,28,30,.7)">
+        <span style="font-size:13.5px;color:rgba(255,255,255,.6)">1×</span>
+        <div data-sl="zoom" onPointerDown="{{ zoomDown }}" onPointerMove="{{ zoomMove }}" style="flex:1;height:26px;display:flex;align-items:center;cursor:pointer;touch-action:none">
+          <div style="width:100%;height:4px;border-radius:2px;background:rgba(120,120,128,.5);position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#fff;width:{{ zoomPct }}"></div>
+            <div style="position:absolute;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.4);left:{{ zoomPct }}"></div>
+          </div>
+        </div>
+        <span style="font-size:13.5px;color:#fff;width:34px;text-align:right">{{ zoomLabel }}</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <div style="position:absolute;left:52px;right:52px;bottom:118px;padding:0 8px;box-sizing:border-box">
+      <div style="height:64px;border-radius:20px;background:rgba(28,28,30,.66);display:grid;grid-template-columns:repeat(5,1fr);align-items:center;justify-items:center;padding:0 6px;box-sizing:border-box">
+        <div onClick="{{ toggleFreeze }}" style="{{ btnFreeze }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"></path></svg></div>
+        <div onClick="{{ toggleBright }}" style="{{ btnBright }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="12" cy="12" r="3.6"></circle><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"></path></svg></div>
+        <div onClick="{{ capture }}" style="width:52px;height:52px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:scale(.93)"><div style="width:42px;height:42px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(0,0,0,.18)"></div></div>
+        <div onClick="{{ toggleZoomPanel }}" style="{{ btnZoom }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5M8.5 11h5M11 8.5v5"></path></svg></div>
+        <div onClick="{{ toggleDecor }}" style="{{ btnDecor }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4z"></path></svg></div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ flashOn }}"><div style="position:absolute;top:0;left:0;right:0;bottom:0;background:#fff;animation:flash .45s ease-out;pointer-events:none"></div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isEditor }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background-color:#F1F0EB;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px">
+
+  <sc-if value="{{ isOverview }}">
+  <div style="flex:none;height:96px;background:#fff;border-bottom:1.7px solid #1A1A1A;display:flex;align-items:flex-end;justify-content:space-between;padding:0 16px 12px;box-sizing:border-box">
+    <span onClick="{{ leaveEditor }}" style="font-size:17.5px;color:#1A1A1A;cursor:pointer">취소</span>
+    <span style="font-size:17.5px;font-weight:600;color:#1A1A1A">{{ mirrorName }}</span>
+    <span onClick="{{ goPreview }}" style="font-size:17.5px;font-weight:600;color:#1A1A1A;cursor:pointer">완료</span>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isSide }}">
+  <div style="flex:none;background:#fff;border-bottom:1.7px solid #1A1A1A;padding:50px 16px 12px;box-sizing:border-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="display:flex;align-items:center;gap:11px">
+        <div onClick="{{ backToOverview }}" style="width:30px;height:56px;border-radius:7px;background:#F1EDE4;padding:2.5px;box-sizing:border-box;position:relative;cursor:pointer;flex:none">
+          <div style="width:100%;height:100%;border-radius:5px;background:#000"></div>
+          <div style="{{ miniBandSt }}"></div>
+          <div style="{{ miniViewSt }}"></div>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:600;color:#1A1A1A">{{ sideName }}</div>
+          <div style="font-size:13px;color:#6E6A62">{{ zoomText }}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div onClick="{{ zoomOut }}" style="width:32px;height:32px;border-radius:10px;background:#F1EDE4;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:19px;cursor:pointer">−</div>
+        <div onClick="{{ zoomIn }}" style="width:32px;height:32px;border-radius:10px;background:#F1EDE4;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:19px;cursor:pointer">+</div>
+        <div onClick="{{ backToOverview }}" style="margin-left:6px;font-size:17.5px;font-weight:600;color:#1A1A1A;cursor:pointer">완료</div>
+      </div>
+    </div>
+    <div style="display:flex;margin-top:12px;padding:2px;border-radius:9px;background:#F1EDE4">
+      <sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="4">
+        <div onClick="{{ t.pick }}" style="{{ t.st }}">{{ t.label }}</div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <div data-vp="1" onPointerDown="{{ canvasDown }}" onPointerMove="{{ canvasMove }}" onPointerUp="{{ canvasUp }}" onPointerCancel="{{ canvasUp }}" onDoubleClick="{{ canvasDouble }}" onWheel="{{ canvasWheel }}" style="flex:1;position:relative;overflow:hidden;background-color:#F1F0EB;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;touch-action:none;cursor:{{ canvasCursor }}">
+    <div style="position:absolute;top:0;left:0;width:402px;height:874px;transform-origin:0 0;transform:{{ worldT }}">
+      <div style="position:absolute;top:0;left:0;right:0;bottom:0;border-radius:46px;overflow:hidden;background:linear-gradient(180deg,#3C3944,#17151D)">
+        <div style="position:absolute;left:50%;top:23%;transform:translateX(-50%);width:158px;height:196px;border-radius:50% 50% 46% 46%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.65),transparent 70%);filter:blur(13px)"></div>
+        <div style="position:absolute;left:50%;top:55%;transform:translateX(-50%);width:320px;height:280px;border-radius:52% 52% 0 0;background:radial-gradient(60% 60% at 50% 20%,rgba(122,106,112,.6),transparent 72%);filter:blur(16px)"></div>
+      </div>
+      <div style="{{ bgRingSt }}"></div>
+    <dc-import name="MirrorDecor" variant="{{ decorVariant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+      <svg viewBox="0 0 402 874" style="position:absolute;top:0;left:0;width:402px;height:874px;pointer-events:none">
+        <defs><clipPath id="ring-e" clipPathUnits="userSpaceOnUse"><path d="M0 0H402V874H0Z M52 92H350V770H52Z" clipRule="evenodd"></path></clipPath></defs>
+        <g clipPath="url(#ring-e)">
+          <sc-for list="{{ strokeEls }}" as="k" hint-placeholder-count="0">
+            <polyline points="{{ k.pts }}" fill="none" stroke="{{ k.color }}" strokeWidth="{{ k.w }}" strokeOpacity="{{ k.op }}" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="{{ k.dash }}"></polyline>
+          </sc-for>
+        </g>
+      </svg>
+      <div style="position:absolute;top:0;left:0;width:402px;height:874px;clip-path:url(#ring-e)">
+        <sc-for list="{{ objEls }}" as="o" hint-placeholder-count="0">
+          <div style="{{ o.wrapSt }}" onPointerDown="{{ o.down }}">
+            <sc-if value="{{ o.isText }}"><div style="{{ o.textSt }}">{{ o.text }}</div></sc-if>
+            <sc-if value="{{ o.isShape }}"><div style="{{ o.shapeSt }}"></div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ isSide }}">
+      <div style="position:absolute;left:0;top:92px;width:402px;height:0;border-top:1.5px dashed rgba(255,255,255,.45);pointer-events:none"></div>
+      <div style="position:absolute;left:0;top:770px;width:402px;height:0;border-top:1.5px dashed rgba(255,255,255,.45);pointer-events:none"></div>
+      <div style="position:absolute;left:52px;top:0;width:0;height:874px;border-left:1.5px dashed rgba(255,255,255,.45);pointer-events:none"></div>
+      <div style="position:absolute;left:350px;top:0;width:0;height:874px;border-left:1.5px dashed rgba(255,255,255,.45);pointer-events:none"></div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ isOverview }}">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0">
+      <sc-for list="{{ zones }}" as="z" hint-placeholder-count="4">
+        <div onClick="{{ z.pick }}" style="{{ z.st }}"><span style="{{ z.pillSt }}">{{ z.label }}</span></div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ hasSel }}">
+    <div style="{{ selBoxSt }}">
+      <div style="position:absolute;left:-6px;top:-6px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #1A1A1A"></div>
+      <div style="position:absolute;right:-6px;top:-6px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #1A1A1A"></div>
+      <div style="position:absolute;left:-6px;bottom:-6px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #1A1A1A"></div>
+      <div onPointerDown="{{ handleDown }}" style="position:absolute;right:-13px;bottom:-13px;width:26px;height:26px;border-radius:50%;background:#1A1A1A;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;cursor:nwse-resize;touch-action:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14v6h6M20 10V4h-6"></path><path d="M4 20L20 4"></path></svg>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showGestureHint }}">
+    <div style="position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;pointer-events:none">
+      <span style="padding:5px 11px;border-radius:13px;background:rgba(28,28,30,.78);font-size:11.5px;color:#3A3733">{{ gestureHint }}</span>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ needSidePick }}">
+    <div style="position:absolute;left:0;right:0;top:12px;display:flex;justify-content:center;pointer-events:none">
+      <span style="padding:6px 13px;border-radius:14px;background:#1A1A1A;font-size:13.5px;font-weight:700;color:#fff;animation:pulse 1.6s ease-in-out infinite">꾸밀 영역을 선택하세요</span>
+    </div>
+    </sc-if>
+  </div>
+
+  <div style="flex:none;background:#fff;border-top:1.7px solid #1A1A1A">
+    <sc-if value="{{ isOverview }}">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 16px;border-bottom:1.4px solid #1A1A1A">
+      <span style="font-size:13px;color:#6E6A62">{{ overviewHint }}</span>
+      <div style="display:flex;gap:8px">
+        <div onClick="{{ undo }}" style="{{ undoSt }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 7L4 12l5 5"></path><path d="M4 12h9a5.5 5.5 0 010 11h-1"></path></svg></div>
+        <div onClick="{{ redo }}" style="{{ redoSt }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style="transform:scaleX(-1)"><path d="M9 7L4 12l5 5"></path><path d="M4 12h9a5.5 5.5 0 010 11h-1"></path></svg></div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showObjBar }}">
+    <div style="padding:10px 14px 12px;border-bottom:1.4px solid #1A1A1A">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:13px;color:#6E6A62;width:44px">투명도</span>
+        <div data-sl="op" onPointerDown="{{ opDown }}" onPointerMove="{{ opMove }}" style="flex:1;height:24px;display:flex;align-items:center;touch-action:none;cursor:pointer">
+          <div style="width:100%;height:4px;border-radius:2px;background:#DAD5CA;position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#1A1A1A;width:{{ selOpPct }}"></div>
+            <div style="position:absolute;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);left:{{ selOpPct }}"></div>
+          </div>
+        </div>
+        <span style="font-size:13px;color:#1A1A1A;width:30px;text-align:right">{{ selOpLabel }}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:7px">
+        <div onClick="{{ flipSel }}" style="padding:8px 0;border-radius:10px;background:#F1EDE4;text-align:center;font-size:13px;color:#1A1A1A;cursor:pointer">반전</div>
+        <div onClick="{{ dupSel }}" style="padding:8px 0;border-radius:10px;background:#F1EDE4;text-align:center;font-size:13px;color:#1A1A1A;cursor:pointer">복제</div>
+        <div onClick="{{ lockSel }}" style="padding:8px 0;border-radius:10px;background:#F1EDE4;text-align:center;font-size:13px;color:#1A1A1A;cursor:pointer">{{ lockLabel }}</div>
+        <div onClick="{{ resetSel }}" style="padding:8px 0;border-radius:10px;background:#F1EDE4;text-align:center;font-size:13px;color:#1A1A1A;cursor:pointer">각도 초기화</div>
+        <div onClick="{{ delSel }}" style="padding:8px 0;border-radius:10px;background:#F1EDE4;text-align:center;font-size:13px;color:#FF453A;cursor:pointer">삭제</div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showDrawBar }}">
+    <div style="padding:10px 14px 12px;border-bottom:1.4px solid #1A1A1A">
+      <div style="display:flex;padding:2px;border-radius:9px;background:#F1EDE4;margin-bottom:11px">
+        <sc-for list="{{ brushes }}" as="b" hint-placeholder-count="5">
+          <div onClick="{{ b.pick }}" style="{{ b.st }}">{{ b.label }}</div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+        <span style="font-size:13px;color:#6E6A62;width:34px">굵기</span>
+        <div data-sl="width" onPointerDown="{{ widthDown }}" onPointerMove="{{ widthMove }}" style="flex:1;height:22px;display:flex;align-items:center;touch-action:none;cursor:pointer">
+          <div style="width:100%;height:4px;border-radius:2px;background:#DAD5CA;position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#1A1A1A;width:{{ widthPct }}"></div>
+            <div style="position:absolute;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);left:{{ widthPct }}"></div>
+          </div>
+        </div>
+        <span style="font-size:13px;color:#1A1A1A;width:26px;text-align:right">{{ widthLabel }}</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:9px">
+          <sc-for list="{{ colors }}" as="c" hint-placeholder-count="5">
+            <div onClick="{{ c.pick }}" style="{{ c.st }}"></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:7px">
+          <div onClick="{{ toggleEraser }}" style="{{ eraserSt }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M8 20h11"></path><path d="M15.5 4.5l4 4L10 18H6l-1-4z"></path></svg></div>
+          <div onClick="{{ undo }}" style="{{ undoSt }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 7L4 12l5 5"></path><path d="M4 12h9a5.5 5.5 0 010 11h-1"></path></svg></div>
+          <div onClick="{{ redo }}" style="{{ redoSt }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style="transform:scaleX(-1)"><path d="M9 7L4 12l5 5"></path><path d="M4 12h9a5.5 5.5 0 010 11h-1"></path></svg></div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showStickerBar }}">
+    <div style="padding:11px 14px 12px;border-bottom:1.4px solid #1A1A1A">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px">
+        <sc-for list="{{ presets }}" as="p" hint-placeholder-count="5">
+          <div onClick="{{ p.add }}" style="height:52px;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;filter:url(#pen2);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:scale(.94)"><div style="{{ p.st }}"></div></div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showFrameBar }}">
+    <div style="padding:11px 14px 12px;border-bottom:1.4px solid #1A1A1A">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
+        <sc-for list="{{ frames }}" as="f" hint-placeholder-count="4">
+          <div onClick="{{ f.pick }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer">
+            <div style="{{ f.st }}"></div>
+            <span style="{{ f.labelSt }}">{{ f.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showTextBar }}">
+    <div style="padding:11px 14px 12px;border-bottom:1.4px solid #1A1A1A">
+      <input value="{{ textValue }}" onChange="{{ onTextInput }}" placeholder="문구 입력" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:14px 11px 15px 10px;border:1.6px solid #1A1A1A;background:#fff;color:#1A1A1A;font-size:15px;font-family:inherit;outline:none;margin-bottom:9px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ phrases }}" as="p" hint-placeholder-count="4">
+          <div onClick="{{ p.add }}" style="padding:7px 12px;border-radius:14px;background:#F1EDE4;font-size:13.5px;color:#1A1A1A;cursor:pointer">{{ p.label }}</div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showBgBar }}">
+    <div style="padding:12px 14px 13px;border-bottom:1.4px solid #1A1A1A">
+      <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px">
+        <sc-for list="{{ bgSwatches }}" as="b" hint-placeholder-count="8">
+          <div onClick="{{ b.pick }}" style="{{ b.st }}"></div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:13px">
+        <span style="font-size:13.5px;color:#6E6A62">직접 선택</span>
+        <input type="color" value="{{ bgColor }}" onChange="{{ onBgInput }}" style="width:44px;height:30px;border:1.8px solid #1A1A1A;border-radius:8px;background:#fff;padding:2px;cursor:pointer">
+        <span style="font-size:13.5px;color:#1A1A1A">{{ bgColor }}</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showLayerBar }}">
+    <div style="padding:6px 10px 8px;border-bottom:1.4px solid #1A1A1A;max-height:186px;overflow:auto">
+      <sc-for list="{{ layers }}" as="l" hint-placeholder-count="2">
+        <div style="{{ l.rowSt }}">
+          <div style="{{ l.chipSt }}"></div>
+          <span onClick="{{ l.select }}" style="flex:1;font-size:14px;color:#1A1A1A;cursor:pointer">{{ l.name }}</span>
+          <div onClick="{{ l.up }}" style="width:30px;height:30px;border-radius:8px;background:#F1EDE4;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer">↑</div>
+          <div onClick="{{ l.down }}" style="width:30px;height:30px;border-radius:8px;background:#F1EDE4;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer">↓</div>
+          <div onClick="{{ l.lock }}" style="{{ l.lockSt }}">{{ l.lockIcon }}</div>
+          <div onClick="{{ l.del }}" style="width:30px;height:30px;border-radius:8px;background:#F1EDE4;color:#FF453A;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer">×</div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ layersEmpty }}"><div style="padding:16px 6px;font-size:13.5px;color:#8A857C">아직 추가한 요소가 없어요.</div></sc-if>
+    </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:8px 4px 6px">
+      <div onClick="{{ pickSticker }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cSticker }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7a3 3 0 013-3h6l7 7v6a3 3 0 01-3 3H7a3 3 0 01-3-3z"></path><path d="M13 4v4a3 3 0 003 3h4"></path></svg>
+        <span style="font-size:10.5px">스티커</span>
+      </div>
+      <div onClick="{{ pickPhotoTool }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cPhoto }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"></rect><circle cx="9" cy="10" r="2"></circle><path d="M4 17l5-4 4 3 3-2 4 3"></path></svg>
+        <span style="font-size:10.5px">사진</span>
+      </div>
+      <div onClick="{{ pickDraw }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cDraw }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l3.5-1 10-10-2.5-2.5-10 10z"></path><path d="M15 6.5L17.5 4 20 6.5 17.5 9"></path></svg>
+        <span style="font-size:10.5px">그리기</span>
+      </div>
+      <div onClick="{{ pickText }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cText }}">
+        <span style="font-size:23px;font-weight:600;line-height:25px">T</span>
+        <span style="font-size:10.5px">텍스트</span>
+      </div>
+      <div onClick="{{ pickFrame }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cFrame }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"></rect><rect x="7.5" y="7.5" width="9" height="9" rx="1"></rect></svg>
+        <span style="font-size:10.5px">프레임</span>
+      </div>
+      <div onClick="{{ pickBgTool }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cBg }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5a8.5 8.5 0 100 17 2.2 2.2 0 001.9-3.3 2.2 2.2 0 011.9-3.3H19a1.5 1.5 0 001.5-1.6A8.6 8.6 0 0012 3.5z"></path><circle cx="8.6" cy="9.4" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="12" cy="7.4" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="15.6" cy="9.4" r="1.1" fill="currentColor" stroke="none"></circle></svg>
+        <span style="font-size:10.5px">배경</span>
+      </div>
+      <div onClick="{{ pickLayers }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;cursor:pointer;color:{{ cLayers }}">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"><path d="M12 3l8 4.5-8 4.5-8-4.5z"></path><path d="M4 12.5L12 17l8-4.5"></path></svg>
+        <span style="font-size:10.5px">레이어</span>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ sheetPhoto }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5)" onClick="{{ closeSheet }}"></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;background:#1C1C1E;border-radius:16px 16px 0 0;padding:10px 14px 30px;animation:rise .24s cubic-bezier(.32,.72,0,1)">
+    <div style="width:36px;height:5px;border-radius:3px;background:#1A1A1A;margin:0 auto 12px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-size:17.5px;font-weight:600;color:#1A1A1A">사진 선택</span>
+      <span onClick="{{ closeSheet }}" style="font-size:16px;color:#1A1A1A;cursor:pointer">취소</span>
+    </div>
+    <div style="font-size:13.5px;color:#6E6A62;margin-bottom:10px">배경은 자동으로 지워집니다</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+      <sc-for list="{{ photos }}" as="p" hint-placeholder-count="9">
+        <div onClick="{{ p.pick }}" style="{{ p.st }}" style-active="opacity:.7"></div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ sheetRemoving }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center">
+    <div style="width:262px;background:#1C1C1E;border-radius:18px;padding:20px;text-align:center">
+      <div style="position:relative;width:196px;height:196px;margin:0 auto 16px;border-radius:12px;overflow:hidden;background:{{ pickedPhotoBg }}">
+        <div style="position:absolute;left:0;right:0;top:-4px;height:4px;background:#1A1A1A;box-shadow:0 0 14px 4px rgba(255,255,255,.55);animation:scan 1.1s ease-in-out infinite"></div>
+      </div>
+      <div style="font-size:15.5px;font-weight:500;color:#1A1A1A;margin-bottom:5px">배경을 지우고 있어요</div>
+      <div style="font-size:13.5px;color:#6E6A62">잠시만 기다려 주세요</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ sheetExtract }}">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.62);display:flex;align-items:flex-end">
+    <div style="width:100%;background:#1C1C1E;border-radius:16px 16px 0 0;padding:10px 16px 30px;box-sizing:border-box;animation:rise .24s cubic-bezier(.32,.72,0,1)">
+      <div style="width:36px;height:5px;border-radius:3px;background:#1A1A1A;margin:0 auto 12px"></div>
+      <div style="font-size:17.5px;font-weight:600;color:#1A1A1A;margin-bottom:3px">배경을 지웠어요</div>
+      <div style="font-size:13.5px;color:#6E6A62;margin-bottom:14px">스티커로 추가한 뒤 자유롭게 옮길 수 있어요</div>
+      <div style="height:206px;border-radius:14px;background-color:#2C2C2E;background-image:linear-gradient(45deg,rgba(255,255,255,.05) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.05) 75%),linear-gradient(45deg,rgba(255,255,255,.05) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.05) 75%);background-size:16px 16px;background-position:0 0,8px 8px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+        <div style="{{ cutoutPreviewSt }}"></div>
+      </div>
+      <div style="display:flex;gap:9px">
+        <div onClick="{{ openPhoto }}" style="flex:1;padding:14px 0;border-radius:13px;background:#F1EDE4;text-align:center;font-size:16px;font-weight:500;color:#1A1A1A;cursor:pointer">다시 선택</div>
+        <div onClick="{{ addCutout }}" style="flex:2;padding:14px 0;border-radius:13px;background:#1A1A1A;text-align:center;font-size:16px;font-weight:600;color:#1A1A1A;cursor:pointer" style-active="opacity:.8">스티커로 추가</div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPreview }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:#000">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944 0%,#272430 55%,#17151D 100%)">
+    <div style="position:absolute;left:50%;top:23%;transform:translateX(-50%);width:158px;height:196px;border-radius:50% 50% 46% 46%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.8),rgba(160,138,132,.14) 70%,transparent);filter:blur(12px)"></div>
+    <div style="position:absolute;left:50%;top:55%;transform:translateX(-50%);width:320px;height:280px;border-radius:52% 52% 0 0;background:radial-gradient(60% 60% at 50% 20%,rgba(122,106,112,.7),transparent 72%);filter:blur(16px)"></div>
+  </div>
+  <div style="{{ bgRingSt }}"></div>
+    <dc-import name="MirrorDecor" variant="{{ decorVariant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+  <div style="position:absolute;top:0;left:0;width:402px;height:874px;pointer-events:none">
+    <svg viewBox="0 0 402 874" style="position:absolute;top:0;left:0;width:402px;height:874px">
+      <defs><clipPath id="ring-p" clipPathUnits="userSpaceOnUse"><path d="M0 0H402V874H0Z M52 92H350V770H52Z" clipRule="evenodd"></path></clipPath></defs>
+      <g clipPath="url(#ring-p)">
+        <sc-for list="{{ strokeEls }}" as="k" hint-placeholder-count="0">
+          <polyline points="{{ k.pts }}" fill="none" stroke="{{ k.color }}" strokeWidth="{{ k.w }}" strokeOpacity="{{ k.op }}" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="{{ k.dash }}"></polyline>
+        </sc-for>
+      </g>
+    </svg>
+    <div style="position:absolute;top:0;left:0;width:402px;height:874px;clip-path:url(#ring-p)">
+      <sc-for list="{{ objEls }}" as="o" hint-placeholder-count="0">
+        <div style="{{ o.wrapSt }}">
+          <sc-if value="{{ o.isText }}"><div style="{{ o.textSt }}">{{ o.text }}</div></sc-if>
+          <sc-if value="{{ o.isShape }}"><div style="{{ o.shapeSt }}"></div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="position:absolute;top:0;left:0;right:0;height:58px;background:linear-gradient(180deg,rgba(16,14,18,.5),rgba(16,14,18,0));pointer-events:none"></div>
+  <div style="position:absolute;left:52px;right:52px;top:100px;display:flex;justify-content:center">
+    <span style="padding:6px 13px;border-radius:15px;background:rgba(28,28,30,.6);font-size:13.5px;color:#3A3733">실제 거울 미리보기</span>
+  </div>
+  <div style="position:absolute;left:52px;right:52px;bottom:124px;padding:0 8px;box-sizing:border-box;display:flex;gap:9px">
+    <div onClick="{{ backToEditFromPreview }}" style="flex:1;padding:15px 0;border-radius:15px;background:rgba(28,28,30,.72);text-align:center;font-size:16px;font-weight:500;color:#1A1A1A;cursor:pointer">계속 꾸미기</div>
+    <div onClick="{{ save }}" style="flex:1.3;padding:15px 0;border-radius:15px;background:#1A1A1A;text-align:center;font-size:16px;font-weight:600;color:#1A1A1A;cursor:pointer" style-active="opacity:.8">저장</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ previewBar }}">
+<div style="position:absolute;left:52px;right:52px;top:98px;display:flex;justify-content:center;z-index:40">
+  <span style="padding:6px 13px;border-radius:15px;background:rgba(28,28,30,.62);font-size:13.5px;color:#fff">미리보기 · {{ previewName }}</span>
+</div>
+<div style="position:absolute;left:52px;right:52px;bottom:118px;padding:0 8px;box-sizing:border-box;display:flex;gap:9px;z-index:40">
+  <div onClick="{{ endPreview }}" style="flex:1;padding:15px 0;border-radius:15px;background:rgba(28,28,30,.72);text-align:center;font-size:16px;font-weight:500;color:#fff;cursor:pointer">그만두기</div>
+  <div onClick="{{ buyFromPreview }}" style="flex:1.4;padding:15px 0;border-radius:15px;background:#1A1A1A;text-align:center;font-size:16px;font-weight:600;color:#fff;cursor:pointer" style-active="opacity:.8">{{ previewCta }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMine }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:1;overflow:auto;padding:58px 20px 130px;box-sizing:border-box">
+    <div style="font-size:33px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em;margin-bottom:16px">내 거울</div>
+    <div style="display:flex;gap:7px;margin-bottom:22px">
+      <sc-for list="{{ mineFilters }}" as="c" hint-placeholder-count="4">
+        <div onClick="{{ c.pick }}" style="{{ c.st }}">{{ c.label }}</div>
+      </sc-for>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px 12px">
+      <sc-for list="{{ mineItems }}" as="m" hint-placeholder-count="4">
+        <div onClick="{{ m.tap }}" style="cursor:pointer" style-active="opacity:.7">
+          <div style="width:175px;height:380px;position:relative;overflow:hidden;border:1.8px solid #1A1A1A;border-radius:19px 22px 18px 23px/22px 18px 23px 19px;background-color:#F4F3EE;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;filter:url(#pen)">
+            <div style="position:absolute;top:0;left:0;width:402px;height:874px;transform-origin:0 0;transform:scale(0.4353)">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944,#17151D)"></div>
+        <div style="position:absolute;left:50%;top:24%;transform:translateX(-50%);width:158px;height:196px;border-radius:50%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.6),transparent 70%);filter:blur(14px)"></div>
+        <div style="{{ m.ringSt }}"></div>
+        <dc-import name="MirrorDecor" variant="{{ m.variant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+      </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:9px">
+            <span style="font-size:15px;font-weight:500;color:#1A1A1A">{{ m.name }}</span>
+            <span style="{{ m.badgeSt }}">사용 중</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ mineEmpty }}">
+    <div style="padding:70px 0 0;text-align:center">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.4" style="margin:0 auto"><rect x="5" y="2.5" width="14" height="19" rx="6.5"></rect></svg>
+      <div style="font-size:18.5px;font-weight:600;color:#1A1A1A;margin-top:16px">아직 거울이 없어요</div>
+      <div style="font-size:14.5px;color:#6E6A62;margin-top:7px;line-height:1.55">새로운 거울을 만들거나<br>상점에서 디자인을 둘러보세요.</div>
+      <div onClick="{{ tapNewMirror }}" style="display:inline-block;margin-top:20px;padding:12px 22px;border:1.8px solid #1A1A1A;border-radius:17px 20px 16px 21px/20px 16px 21px 17px;filter:url(#pen);background:#1A1A1A;font-size:16px;font-weight:600;color:#fff;cursor:pointer">새 거울 만들기</div>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStore }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;padding:58px 20px 14px;box-sizing:border-box;background:#fff">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <span style="font-size:33px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em">상점</span>
+      <div onClick="{{ openWallet }}" style="display:flex;align-items:center;gap:6px;padding:6px 13px;border:1.7px solid #1A1A1A;border-radius:16px 13px 17px 12px/13px 17px 12px 16px;transform:rotate(.3deg);filter:url(#pen2);cursor:pointer">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span style="font-size:15.5px;font-weight:600;color:#1A1A1A">{{ shards }}</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:7px;overflow-x:auto;margin-bottom:9px">
+      <sc-for list="{{ storeCats }}" as="c" hint-placeholder-count="5">
+        <div onClick="{{ c.pick }}" style="{{ c.st }}">{{ c.label }}</div>
+      </sc-for>
+    </div>
+    <div style="display:flex;gap:7px;overflow-x:auto">
+      <sc-for list="{{ storeTags }}" as="t" hint-placeholder-count="6">
+        <div onClick="{{ t.pick }}" style="{{ t.st }}">{{ t.label }}</div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:16px 20px 130px;box-sizing:border-box">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+      <sc-for list="{{ storeItems }}" as="t" hint-placeholder-count="6">
+        <div onClick="{{ t.open }}" style="cursor:pointer" style-active="opacity:.72">
+          <div style="width:175px;height:380px;position:relative;overflow:hidden;border:1.8px solid #1A1A1A;border-radius:19px 22px 18px 23px/22px 18px 23px 19px;background-color:#F4F3EE;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;filter:url(#pen)">
+            <div style="position:absolute;top:0;left:0;width:402px;height:874px;transform-origin:0 0;transform:scale(0.4353)">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944,#17151D)"></div>
+        <div style="position:absolute;left:50%;top:24%;transform:translateX(-50%);width:158px;height:196px;border-radius:50%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.6),transparent 70%);filter:blur(14px)"></div>
+        <div style="display:none"></div>
+        <dc-import name="MirrorDecor" variant="{{ t.variant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+      </div>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:#1A1A1A;margin-top:9px">{{ t.name }}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px">
+            <span style="font-size:13.5px;color:#6E6A62">{{ t.creator }}</span>
+            <div style="display:flex;align-items:center;gap:4px"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span style="{{ t.priceSt }}">{{ t.price }}</span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ storeEmpty }}"><div style="padding:60px 0;text-align:center;font-size:14.5px;color:#6E6A62">이 조건에 맞는 거울이 아직 없어요.</div></sc-if>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDetail }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;height:92px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 10px;box-sizing:border-box">
+    <span onClick="{{ detailBack }}" style="font-size:16.5px;color:#1A1A1A;cursor:pointer">뒤로</span>
+    <span style="font-size:16.5px;font-weight:600;color:#1A1A1A">{{ tplName }}</span>
+    <span style="width:32px"></span>
+  </div>
+  <div style="flex:1;overflow:auto;padding:8px 20px 40px;box-sizing:border-box">
+    <div style="display:flex;justify-content:center;margin-bottom:22px">
+      <div style="width:196px;height:426px;position:relative;overflow:hidden;border:1.8px solid #1A1A1A;border-radius:22px 25px 21px 26px/25px 21px 26px 22px;background-color:#F4F3EE;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;filter:url(#pen)">
+        <div style="position:absolute;top:0;left:0;width:402px;height:874px;transform-origin:0 0;transform:scale(0.4876)">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944,#17151D)"></div>
+        <div style="position:absolute;left:50%;top:24%;transform:translateX(-50%);width:158px;height:196px;border-radius:50%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.6),transparent 70%);filter:blur(14px)"></div>
+        <div style="display:none"></div>
+        <dc-import name="MirrorDecor" variant="{{ tplVariant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+      </div>
+      </div>
+    </div>
+    <div style="font-size:25px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em">{{ tplName }}</div>
+    <div style="font-size:14.5px;color:#6E6A62;margin-top:4px">{{ tplCreator }}</div>
+    <div style="display:flex;gap:18px;margin-top:14px">
+      <div><span style="font-size:16px;font-weight:600;color:#1A1A1A">{{ tplLikes }}</span><span style="font-size:13.5px;color:#6E6A62"> 좋아요</span></div>
+      <div><span style="font-size:16px;font-weight:600;color:#1A1A1A">{{ tplUses }}</span><span style="font-size:13.5px;color:#6E6A62"> 사용</span></div>
+    </div>
+    <div style="display:flex;gap:7px;margin-top:16px;flex-wrap:wrap">
+      <sc-for list="{{ tplTags }}" as="g" hint-placeholder-count="2">
+        <span style="padding:5px 13px;border:1.5px solid #1A1A1A;border-radius:16px 13px 17px 12px/13px 17px 12px 16px;filter:url(#pen2);font-size:13.5px;color:#3A3733">{{ g.label }}</span>
+      </sc-for>
+    </div>
+    <div style="margin-top:26px;display:flex;flex-direction:column;gap:9px">
+      <div onClick="{{ startPreview }}" style="padding:16px 0;border:1.9px solid #1A1A1A;border-radius:18px 21px 17px 22px/21px 17px 22px 18px;filter:url(#pen);background:#1A1A1A;text-align:center;font-size:17.5px;font-weight:600;color:#fff;cursor:pointer" style-active="opacity:.82">내 거울로 미리보기</div>
+      <sc-if value="{{ tplOwned }}">
+        <div onClick="{{ applyTpl }}" style="padding:15px 0;border-radius:21px 17px 22px 18px/17px 22px 18px 21px;filter:url(#pen);background:#fff;border:1.8px solid #1A1A1A;text-align:center;font-size:16.5px;font-weight:500;color:#1A1A1A;cursor:pointer">내 거울에 있어요 · 적용</div>
+      </sc-if>
+      <sc-if value="{{ tplBuyable }}">
+        <div onClick="{{ buyTpl }}" style="padding:15px 0;border-radius:21px 17px 22px 18px/17px 22px 18px 21px;filter:url(#pen);background:#fff;border:1.8px solid #1A1A1A;display:flex;align-items:center;justify-content:center;gap:6px;font-size:16.5px;font-weight:500;color:#1A1A1A;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span>{{ tplBuyLabel }}</span></div>
+      </sc-if>
+    </div>
+    <div style="font-size:13.5px;color:#8A857C;margin-top:14px;line-height:1.55">미리보기는 실제 거울 화면에 적용돼요. 마음에 들면 그때 받으세요.</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isWallet }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;height:92px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 10px;box-sizing:border-box">
+    <span onClick="{{ walletBack }}" style="font-size:16.5px;color:#1A1A1A;cursor:pointer">닫기</span>
+    <span style="font-size:16.5px;font-weight:600;color:#1A1A1A">조각</span>
+    <span style="width:32px"></span>
+  </div>
+  <div style="flex:1;overflow:auto;padding:0 20px 40px;box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:12px;padding:20px 0 26px">
+      <svg width="34" height="34" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span style="font-size:44px;font-weight:700;color:#1A1A1A;letter-spacing:-.03em">{{ shards }}</span>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:0 0 4px">오늘 받을 수 있는 조각</div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1.4px solid #1A1A1A">
+      <div style="flex:1"><div style="font-size:16.5px;color:#1A1A1A">출석</div><div style="font-size:13.5px;color:#6E6A62;margin-top:2px">하루 한 번 · +1</div></div>
+      <div onClick="{{ claimDaily }}" style="{{ dailySt }}">{{ dailyLabel }}</div>
+    </div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1.4px solid #1A1A1A">
+      <div style="flex:1"><div style="font-size:16.5px;color:#1A1A1A">광고 보고 조각 받기</div><div style="font-size:13.5px;color:#6E6A62;margin-top:2px">오늘 {{ adsToday }} / 5 · +1</div></div>
+      <div onClick="{{ watchAd }}" style="{{ adSt }}">{{ adLabel }}</div>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:26px 0 4px">조각 더 받기</div>
+    <sc-for list="{{ bundles }}" as="b" hint-placeholder-count="3">
+      <div onClick="{{ b.buy }}" style="display:flex;align-items:center;gap:10px;padding:15px 0;border-bottom:1.4px solid #1A1A1A;cursor:pointer">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg>
+        <div style="flex:1"><div style="font-size:16.5px;color:#1A1A1A">{{ b.amount }} 조각</div><div style="font-size:13.5px;color:#6E6A62;margin-top:2px">{{ b.note }}</div></div>
+        <span style="font-size:15px;font-weight:500;color:#1A1A1A">받기</span>
+      </div>
+    </sc-for>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:26px 0 4px">최근 내역</div>
+    <sc-for list="{{ ledger }}" as="l" hint-placeholder-count="2">
+      <div style="display:flex;align-items:center;padding:13px 0;border-bottom:1.2px solid #2E2B27">
+        <span style="flex:1;font-size:15px;color:#3A3733">{{ l.label }}</span>
+        <span style="{{ l.amtSt }}">{{ l.amount }}</span>
+      </div>
+    </sc-for>
+    <sc-if value="{{ ledgerEmpty }}"><div style="padding:14px 0;font-size:14px;color:#8A857C">아직 내역이 없어요.</div></sc-if>
+    <div style="font-size:13.5px;color:#8A857C;margin-top:18px;line-height:1.55">판매로 받은 조각은 다른 거울을 받거나 상점에 등록할 때 쓸 수 있어요. 현금 출금은 아직 지원하지 않아요.</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPublish }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;height:92px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 10px;box-sizing:border-box">
+    <span onClick="{{ backToMine }}" style="font-size:16.5px;color:#1A1A1A;cursor:pointer">취소</span>
+    <span style="font-size:16.5px;font-weight:600;color:#1A1A1A">상점에 올리기</span>
+    <span style="width:32px"></span>
+  </div>
+  <div style="flex:1;overflow:auto;padding:6px 20px 30px;box-sizing:border-box">
+    <div style="display:flex;justify-content:center;margin-bottom:22px">
+      <div style="width:150px;height:326px;position:relative;overflow:hidden;border:1.8px solid #1A1A1A;border-radius:19px 22px 18px 23px/22px 18px 23px 19px;background-color:#F4F3EE;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;filter:url(#pen)">
+        <div style="position:absolute;top:0;left:0;width:402px;height:874px;transform-origin:0 0;transform:scale(0.3731)">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,#3C3944,#17151D)"></div>
+        <div style="position:absolute;left:50%;top:24%;transform:translateX(-50%);width:158px;height:196px;border-radius:50%;background:radial-gradient(60% 55% at 50% 40%,rgba(228,208,198,.6),transparent 70%);filter:blur(14px)"></div>
+        <div style="{{ publishRingSt }}"></div>
+        <dc-import name="MirrorDecor" variant="{{ publishVariant }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="100%,100%"></dc-import>
+      </div>
+      </div>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:0 0 8px">이름</div>
+    <input value="{{ publishName }}" onChange="{{ onPublishName }}" placeholder="거울 이름" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:15px 18px 14px 19px/18px 14px 19px 15px;border:1.8px solid #1A1A1A;background:#fff;color:#1A1A1A;font-size:16px;font-family:inherit;outline:none">
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:24px 0 8px">태그</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <sc-for list="{{ publishTags }}" as="t" hint-placeholder-count="8">
+        <div onClick="{{ t.pick }}" style="{{ t.st }}">{{ t.label }}</div>
+      </sc-for>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:24px 0 8px">판매 가격</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div onClick="{{ priceDown }}" style="width:46px;height:46px;border-radius:16px 13px 17px 14px/13px 17px 14px 16px;filter:url(#pen2);border:1.8px solid #1A1A1A;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:23px;cursor:pointer">−</div>
+      <div style="flex:1;text-align:center;display:flex;align-items:center;justify-content:center;gap:7px"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span style="font-size:26px;font-weight:700;color:#1A1A1A">{{ publishPriceLabel }}</span></div>
+      <div onClick="{{ priceUp }}" style="width:46px;height:46px;border-radius:16px 13px 17px 14px/13px 17px 14px 16px;filter:url(#pen2);border:1.8px solid #1A1A1A;color:#1A1A1A;display:flex;align-items:center;justify-content:center;font-size:23px;cursor:pointer">+</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:26px;padding:14px 16px;border:1.6px solid #1A1A1A;border-radius:17px 20px 16px 21px/20px 16px 21px 17px;filter:url(#pen2);background:#FBF8F1">
+      <span style="flex:1;font-size:15.5px;color:#3A3733">등록 비용</span>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10.2 1.2 14.6 6.4 8.9 14.7 1.6 9.9 4.7 5.1Z" fill="#F2F0EA" stroke="#1A1A1A" strokeWidth="1.35" strokeLinejoin="round" strokeLinecap="round"></path><path d="M10.2 1.2 7.6 8.2 1.6 9.9M7.6 8.2l1.3 6.5" stroke="#1A1A1A" strokeWidth="1" strokeLinejoin="round" strokeLinecap="round"></path><path d="M9.4 3.2 6.4 6" stroke="#1A1A1A" strokeWidth=".8" strokeOpacity=".55" strokeLinecap="round"></path></svg><span style="font-size:16px;font-weight:600;color:#1A1A1A">20</span>
+    </div>
+    <div onClick="{{ publish }}" style="margin-top:12px;padding:16px 0;border:1.9px solid #1A1A1A;border-radius:18px 21px 17px 22px/21px 17px 22px 18px;filter:url(#pen);background:#1A1A1A;text-align:center;font-size:17.5px;font-weight:600;color:#fff;cursor:pointer" style-active="opacity:.82">20 조각을 사용해 등록</div>
+    <div style="font-size:13.5px;color:#8A857C;margin-top:12px;line-height:1.55">거울을 만들고 꾸미는 건 무료예요. 조각은 상점에 공개할 때만 사용해요. 0 조각으로 두면 무료로 나눠줄 수 있어요.</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ signinOpen }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.32);display:flex;align-items:flex-end;z-index:70">
+  <div style="width:100%;background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border-radius:26px 24px 0 0;border-top:2px solid #1A1A1A;padding:12px 22px 36px;box-sizing:border-box;animation:rise .24s cubic-bezier(.32,.72,0,1)">
+    <div style="width:38px;height:4px;border-radius:3px;background:#1A1A1A;filter:url(#pen3);margin:0 auto 20px"></div>
+    <div style="font-size:22px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em;line-height:1.35">상점을 이용하려면<br>로그인이 필요해요</div>
+    <div style="font-size:14.5px;color:#6E6A62;margin-top:9px;line-height:1.55">거울을 만들고 꾸미는 건 로그인 없이 계속 쓸 수 있어요. 구매 내역과 판매 조각을 지키기 위해서만 필요해요.</div>
+    <div onClick="{{ signIn }}" style="margin-top:24px;padding:15px 0;border:1.9px solid #1A1A1A;border-radius:19px 22px 18px 23px/22px 18px 23px 19px;filter:url(#pen);background:#1A1A1A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" style-active="opacity:.85">
+      <svg width="16" height="19" viewBox="0 0 17 20" fill="#fff"><path d="M14.1 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8C4.7 5.3 3 6.7 3 9.6c0 1.7.6 3.5 1.4 4.7.7 1 1.4 2 2.4 2s1.3-.6 2.5-.6 1.5.6 2.5.6 1.7-1 2.4-2c.5-.7.7-1.1.9-1.6-2.2-.8-2.4-2.8-2.4-2.9zM11.6 3.9c.5-.6.9-1.5.8-2.4-.8 0-1.8.6-2.4 1.2-.5.6-.9 1.5-.8 2.3.9.1 1.8-.5 2.4-1.1z"></path></svg>
+      <span style="font-size:17.5px;font-weight:600;color:#fff">Apple로 계속하기</span>
+    </div>
+    <div onClick="{{ cancelSignin }}" style="margin-top:8px;padding:15px 0;text-align:center;font-size:16.5px;color:#1A1A1A;cursor:pointer">나중에</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ newMirrorShort }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.32);display:flex;align-items:flex-end;z-index:70">
+  <div style="width:100%;background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border-radius:26px 24px 0 0;border-top:2px solid #1A1A1A;padding:12px 22px 36px;box-sizing:border-box;animation:rise .24s cubic-bezier(.32,.72,0,1)">
+    <div style="width:38px;height:4px;border-radius:3px;background:#1A1A1A;filter:url(#pen3);margin:0 auto 20px"></div>
+    <div style="font-size:22px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em">조각이 조금 부족해요</div>
+    <div style="display:flex;align-items:center;padding:18px 0 8px"><span style="flex:1;font-size:15.5px;color:#6E6A62">필요</span><span style="font-size:16.5px;font-weight:600;color:#1A1A1A">{{ shortNeed }} 조각</span></div>
+    <div style="display:flex;align-items:center;padding:0 0 16px;border-bottom:1.4px solid #1A1A1A"><span style="flex:1;font-size:15.5px;color:#6E6A62">보유</span><span style="font-size:16.5px;font-weight:600;color:#1A1A1A">{{ shards }} 조각</span></div>
+    <div style="font-size:15.5px;color:#1A1A1A;padding:16px 0 2px">{{ shortMsg }}</div>
+    <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+      <div onClick="{{ claimDaily }}" style="{{ shortDailySt }}">{{ shortDailyLabel }}</div>
+      <div onClick="{{ watchAd }}" style="{{ shortAdSt }}">{{ shortAdLabel }}</div>
+      <div onClick="{{ openWallet }}" style="padding:15px 0;border-radius:20px 17px 21px 18px/17px 21px 18px 20px;filter:url(#pen);border:1.8px solid #1A1A1A;text-align:center;font-size:16.5px;font-weight:500;color:#1A1A1A;cursor:pointer">조각 구매하기</div>
+    </div>
+    <div onClick="{{ closeSheets }}" style="margin-top:8px;padding:15px 0;text-align:center;font-size:16.5px;color:#1A1A1A;cursor:pointer">닫기</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ adPlaying }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:75">
+  <div style="width:274px;background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border-radius:18px;padding:18px;box-sizing:border-box;text-align:center">
+    <div style="height:150px;border-radius:12px;background:#EDE8DF;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8A857C;margin-bottom:16px">광고 영역</div>
+    <div style="font-size:16px;font-weight:500;color:#1A1A1A;margin-bottom:14px">광고를 보면 조각 1개를 받아요</div>
+    <div style="height:4px;border-radius:2px;background:#EAE5DB;overflow:hidden">
+      <div style="height:100%;border-radius:2px;background:#1A1A1A;transition:width .25s linear;width:{{ adPct }}"></div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ purchaseDone }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.32);display:flex;align-items:flex-end;z-index:72">
+  <div style="width:100%;background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border-radius:26px 24px 0 0;border-top:2px solid #1A1A1A;padding:12px 22px 36px;box-sizing:border-box;animation:rise .24s cubic-bezier(.32,.72,0,1)">
+    <div style="width:38px;height:4px;border-radius:3px;background:#1A1A1A;filter:url(#pen3);margin:0 auto 20px"></div>
+    <div style="font-size:22px;font-weight:700;color:#1A1A1A;letter-spacing:-.02em">{{ doneTitle }}</div>
+    <div style="font-size:14.5px;color:#6E6A62;margin-top:7px">내 거울에 계속 남아 있어요.</div>
+    <div style="display:flex;align-items:center;padding:20px 0 8px;border-top:1.4px solid #1A1A1A;margin-top:18px"><span style="flex:1;font-size:15.5px;color:#6E6A62">사용한 조각</span><span style="font-size:16.5px;font-weight:600;color:#1A1A1A">{{ doneSpent }}</span></div>
+    <div style="display:flex;align-items:center;padding:0 0 4px"><span style="flex:1;font-size:15.5px;color:#6E6A62">남은 조각</span><span style="font-size:16.5px;font-weight:600;color:#1A1A1A">{{ shards }}</span></div>
+    <div onClick="{{ applyBought }}" style="margin-top:22px;padding:16px 0;border:1.9px solid #1A1A1A;border-radius:18px 21px 17px 22px/21px 17px 22px 18px;filter:url(#pen);background:#1A1A1A;text-align:center;font-size:17.5px;font-weight:600;color:#fff;cursor:pointer" style-active="opacity:.82">내 거울에 적용하기</div>
+    <div onClick="{{ goMineAfterBuy }}" style="margin-top:8px;padding:15px 0;text-align:center;font-size:16.5px;color:#1A1A1A;cursor:pointer">내 거울 보기</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ rowSheet }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.32);z-index:68" onClick="{{ closeSheets }}"></div>
+<div style="position:absolute;left:12px;right:12px;bottom:16px;z-index:69;animation:rise .2s cubic-bezier(.32,.72,0,1)">
+  <div style="background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border:1.8px solid #1A1A1A;border-radius:19px 21px 18px 22px;filter:url(#pen);overflow:hidden;margin-bottom:8px">
+    <div style="padding:13px 0;text-align:center;font-size:13.5px;color:#6E6A62">{{ rowSheetName }}</div>
+    <sc-for list="{{ rowActions }}" as="a" hint-placeholder-count="3">
+      <div onClick="{{ a.run }}" style="{{ a.st }}">{{ a.label }}</div>
+    </sc-for>
+  </div>
+  <div onClick="{{ closeSheets }}" style="background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border:1.8px solid #1A1A1A;border-radius:21px 18px 22px 19px;filter:url(#pen);padding:15px 0;text-align:center;font-size:18.5px;font-weight:600;color:#1A1A1A;cursor:pointer">취소</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isHome }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:1;overflow:auto;padding:56px 20px 132px;box-sizing:border-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:44px">
+      <span style="flex:none;display:inline-block;padding:5px 14px;border:1.7px solid #1A1A1A;border-radius:17px 14px 18px 13px/14px 18px 13px 17px;transform:rotate(-.35deg);filter:url(#pen2);font-size:17.5px;font-weight:700;color:#1A1A1A;white-space:nowrap">거울 {{ mirrorCount }}개</span>
+      <div onClick="{{ openSettings }}" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a1.9 1.9 0 11-2.7 2.7l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5v.3a1.9 1.9 0 11-3.8 0V21a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a1.9 1.9 0 11-2.7-2.7l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2.4a1.9 1.9 0 110-3.8h.2a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a1.9 1.9 0 112.7-2.7l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V2.4a1.9 1.9 0 113.8 0v.2a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a1.9 1.9 0 112.7 2.7l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1h.3a1.9 1.9 0 110 3.8H21a1.6 1.6 0 00-1.5 1z"></path></svg>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div onClick="{{ openCamera }}" style="display:flex;align-items:center;gap:14px;padding:20px 18px;border:1.9px solid #1A1A1A;border-bottom-width:2.1px;border-radius:20px 24px 19px 25px/24px 19px 25px 20px;transform:rotate(-.22deg);filter:url(#pen);cursor:pointer" style-active="background:#F7F4ED">
+        <div style="width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;display:flex;align-items:center;justify-content:center;flex:none">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.6" strokeLinejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="5.5"></rect><path d="M9.5 7.5c-.8.7-1.2 1.6-1.3 2.6"></path></svg>
+        </div>
+        <div style="flex:1"><div style="font-size:18.5px;font-weight:600;color:#1A1A1A">거울 보기</div><div style="font-size:15px;color:#57544E;margin-top:3px">카메라를 거울처럼 사용</div></div>
+        <svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg>
+      </div>
+      <div onClick="{{ decorateCurrent }}" style="display:flex;align-items:center;gap:14px;padding:20px 18px;border:1.8px solid #1A1A1A;border-right-width:2.1px;border-radius:24px 20px 25px 19px/20px 25px 19px 24px;transform:rotate(.26deg);filter:url(#pen);cursor:pointer" style-active="background:#F7F4ED">
+        <div style="width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;display:flex;align-items:center;justify-content:center;flex:none">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l3.5-1 10-10-2.5-2.5-10 10z"></path><path d="M15 6.5L17.5 4 20 6.5 17.5 9"></path></svg>
+        </div>
+        <div style="flex:1"><div style="font-size:18.5px;font-weight:600;color:#1A1A1A">거울 꾸미기</div><div style="font-size:15px;color:#57544E;margin-top:3px">지금 쓰는 거울을 바로 편집</div></div>
+        <svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSettings }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;height:92px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 10px;box-sizing:border-box">
+    <span onClick="{{ goHome }}" style="font-size:16.5px;color:#1A1A1A;cursor:pointer">닫기</span>
+    <span style="font-size:16.5px;font-weight:600;color:#1A1A1A">설정</span>
+    <span style="width:32px"></span>
+  </div>
+  <div style="flex:1;overflow:auto;padding:10px 20px 40px;box-sizing:border-box">
+    <div onClick="{{ openProfile }}" style="display:flex;align-items:center;gap:14px;padding:16px 0 20px;cursor:pointer">
+      <div style="width:56px;height:56px;border:1.7px solid #1A1A1A;border-radius:50% 48% 52% 47%;filter:url(#pen2);background:#FBF8F1;display:flex;align-items:center;justify-content:center;flex:none">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.6" strokeLinecap="round"><circle cx="12" cy="8.5" r="3.6"></circle><path d="M4.5 20c1.5-3.4 4.2-5 7.5-5s6 1.6 7.5 5"></path></svg>
+      </div>
+      <div style="flex:1"><div style="font-size:18.5px;font-weight:600;color:#1A1A1A">{{ profileName }}</div><div style="font-size:13.5px;color:#6E6A62;margin-top:3px">{{ profileTagLine }}</div></div>
+      <svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg>
+    </div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-top:1.4px solid #1A1A1A"><span style="flex:1;font-size:16.5px;color:#1A1A1A">Apple 계정</span><span style="font-size:15px;color:#6E6A62">{{ appleState }}</span></div>
+    <div onClick="{{ restore }}" style="display:flex;align-items:center;padding:15px 0;border-top:1.4px solid #1A1A1A;cursor:pointer"><span style="flex:1;font-size:16.5px;color:#1A1A1A">구매 복원</span><svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg></div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-top:1.4px solid #1A1A1A"><span style="flex:1;font-size:16.5px;color:#1A1A1A">알림</span><div onClick="{{ toggleNoti }}" style="{{ notiSt }}"><div style="{{ notiKnobSt }}"></div></div></div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-top:1.4px solid #1A1A1A"><span style="flex:1;font-size:16.5px;color:#1A1A1A">개인정보 처리방침</span><svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg></div>
+    <div style="display:flex;align-items:center;padding:15px 0;border-top:1.4px solid #1A1A1A;border-bottom:1.4px solid #1A1A1A"><span style="flex:1;font-size:16.5px;color:#1A1A1A">이용약관</span><svg width="8" height="14" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5l6 6-6 6"></path></svg></div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isProfile }}">
+<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:#F9F8F4;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;display:flex;flex-direction:column">
+  <div style="flex:none;height:92px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 20px 10px;box-sizing:border-box">
+    <span onClick="{{ openSettings }}" style="font-size:16.5px;color:#1A1A1A;cursor:pointer">취소</span>
+    <span style="font-size:16.5px;font-weight:600;color:#1A1A1A">프로필</span>
+    <span onClick="{{ saveProfile }}" style="font-size:16.5px;font-weight:600;color:#1A1A1A;cursor:pointer">저장</span>
+  </div>
+  <div style="flex:1;overflow:auto;padding:14px 20px 40px;box-sizing:border-box">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:26px">
+      <div style="width:84px;height:84px;border:1.8px solid #1A1A1A;border-radius:49% 52% 47% 51%;filter:url(#pen);background:#FBF8F1;display:flex;align-items:center;justify-content:center">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="8.5" r="3.6"></circle><path d="M4.5 20c1.5-3.4 4.2-5 7.5-5s6 1.6 7.5 5"></path></svg>
+      </div>
+      <span style="font-size:14.5px;color:#1A1A1A;cursor:pointer">사진 변경</span>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:0 0 8px">이름</div>
+    <input value="{{ profileName }}" onChange="{{ onProfileName }}" placeholder="이름" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:15px 18px 14px 19px/18px 14px 19px 15px;border:1.8px solid #1A1A1A;background:#fff;color:#1A1A1A;font-size:16px;font-family:inherit;outline:none">
+    <div style="font-size:14px;font-weight:600;color:#6E6A62;padding:24px 0 8px">태그</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <sc-for list="{{ profileTags }}" as="t" hint-placeholder-count="6">
+        <div onClick="{{ t.pick }}" style="{{ t.st }}">{{ t.label }}</div>
+      </sc-for>
+    </div>
+    <div style="font-size:13.5px;color:#8A857C;margin-top:18px;line-height:1.55">태그는 나중에 크리에이터 프로필에서 내 거울 스타일을 소개할 때 쓰여요.</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showTabs }}">
+<div style="position:absolute;left:12px;right:12px;bottom:16px;z-index:50">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:7px;border-radius:25px 27px 24px 28px/27px 24px 28px 25px;background-color:#FCFBF8;background-image:radial-gradient(circle at 30% 32%,rgba(88,82,68,.055) 0 .6px,transparent .95px),radial-gradient(circle at 68% 61%,rgba(88,82,68,.045) 0 .55px,transparent .9px),radial-gradient(circle at 16% 74%,rgba(96,90,74,.04) 0 .5px,transparent .85px),radial-gradient(circle at 84% 19%,rgba(120,112,95,.032) 0 .7px,transparent 1.1px);background-size:7px 7px,11px 9px,13px 15px,17px 19px;border:1.9px solid #1A1A1A;filter:url(#pen)">
+    <div onClick="{{ goHome }}" style="{{ tabHomeSt }}">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5L12 4l8 6.5"></path><path d="M6 10v9h12v-9"></path></svg>
+      <span style="font-size:11px;font-weight:500">홈</span>
+    </div>
+    <div onClick="{{ goStore }}" style="{{ tabStoreSt }}">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h16l-1.3 11.2H5.3z"></path><path d="M9 8V6a3 3 0 016 0v2"></path></svg>
+      <span style="font-size:11px;font-weight:500">상점</span>
+    </div>
+    <div onClick="{{ goMine }}" style="{{ tabMineSt }}">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"><rect x="3.5" y="4" width="7.5" height="16" rx="3.4"></rect><rect x="13" y="4" width="7.5" height="16" rx="3.4"></rect></svg>
+      <span style="font-size:11px;font-weight:500">내 거울</span>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ toast }}">
+<div style="position:absolute;left:0;right:0;bottom:150px;display:flex;justify-content:center;pointer-events:none;z-index:80">
+  <span style="padding:9px 16px;border-radius:19px;background:rgba(28,28,30,.9);font-size:14.5px;color:#fff;animation:rise .22s ease-out">{{ toast }}</span>
+</div>
+</sc-if>
+
+</div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:480,&quot;height&quot;:960},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mirror&quot;,&quot;editor&quot;],&quot;default&quot;:&quot;mirror&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;프로토타입&quot;},&quot;autoHideMs&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:4200,&quot;min&quot;:1500,&quot;max&quot;:10000,&quot;step&quot;:100,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;프로토타입&quot;},&quot;showGestureHints&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;프로토타입&quot;}}">
+const BAND = { top: 92, right: 52, bottom: 104, left: 52 };
+const W = 402, H = 874;
+const MIRRORS = [
+  { id: 'pink', name: '핑크 리본', variant: 'pink', swatch: '#F3C3D2' },
+  { id: 'chrome', name: '크롬 Y2K', variant: 'chrome', swatch: '#C3C9D2' },
+  { id: 'bunny', name: '버니', variant: 'bunny', swatch: '#EFE4D6' },
+  { id: 'black', name: '미니멀 블랙', variant: 'minimal', swatch: '#121214' },
+  { id: 'mine', name: '내 거울', variant: 'pink', swatch: '#F3C3D2' },
+];
+const SIDES = [
+  { id: 'top', label: '위' }, { id: 'right', label: '오른쪽' },
+  { id: 'bottom', label: '아래' }, { id: 'left', label: '왼쪽' },
+];
+const TOOLS = [
+  { id: 'sticker', label: '스티커' }, { id: 'photo', label: '사진' }, { id: 'draw', label: '그리기' },
+  { id: 'text', label: '텍스트' }, { id: 'frame', label: '프레임' }, { id: 'layers', label: '레이어' },
+];
+const BRUSHES = [
+  { id: 'pen', label: '펜' }, { id: 'marker', label: '마커' }, { id: 'pencil', label: '연필' },
+  { id: 'neon', label: '네온' }, { id: 'glitter', label: '글리터' },
+];
+const COLORS = ['#FFFFFF', '#F3A8C0', '#1A1A1A', '#FFD60A', '#1C1C1E'];
+const PHOTO_BGS = [
+  'linear-gradient(140deg,#8E9AAF,#5C6B84)', 'linear-gradient(140deg,#D8C3A5,#A68A64)',
+  'linear-gradient(140deg,#B9C6C8,#7B8E92)', 'linear-gradient(140deg,#E0AFA0,#B07D62)',
+  'linear-gradient(140deg,#9DA9A0,#68766C)', 'linear-gradient(140deg,#C9BBCF,#8E7C93)',
+  'linear-gradient(140deg,#AEC3B0,#6B8068)', 'linear-gradient(140deg,#E4C7B7,#B08968)',
+  'linear-gradient(140deg,#A8B8D8,#6E7FA8)',
+];
+const SHAPES = {
+  cutout: { w: 96, h: 116, css: 'border-radius:48% 52% 44% 56%/54% 46% 56% 44%;background:linear-gradient(150deg,#E7C8B4,#A9755C 70%,#7E5340);box-shadow:0 0 0 4px #fff,0 2px 6px rgba(0,0,0,.35)' },
+  heart: { w: 62, h: 58, css: 'background:linear-gradient(150deg,#FF8FB1,#E4547F);clip-path:path("M31 57C31 57 2 39 2 20C2 8 11 2 19 2C25 2 29 6 31 9C33 6 37 2 43 2C51 2 60 8 60 20C60 39 31 57 31 57Z")' },
+  ribbon: { w: 74, h: 44, css: 'background:linear-gradient(150deg,#FFF0F5,#E58BA9);border-radius:70% 24% 66% 22%/60% 60% 40% 40%;box-shadow:inset 0 0 8px rgba(255,255,255,.7)' },
+  star: { w: 56, h: 56, css: 'background:linear-gradient(150deg,#FFF3B0,#FFD60A);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)' },
+  pearl: { w: 44, h: 44, css: 'border-radius:50%;background:radial-gradient(circle at 34% 28%,#fff,#E7C7D4 60%,#C79BAE)' },
+};
+
+const BASIC = [
+  { id: 'white', name: '화이트', bg: '#FFFFFF' },
+  { id: 'black', name: '블랙', bg: '#151517' },
+  { id: 'cream', name: '크림', bg: '#F0E6D5' },
+  { id: 'pink', name: '소프트 핑크', bg: '#F6D2DC' },
+  { id: 'lavender', name: '라벤더', bg: '#DDD5F1' },
+  { id: 'sky', name: '스카이', bg: '#CFE2F4' },
+  { id: 'mint', name: '민트', bg: '#CDEADE' },
+  { id: 'gray', name: '그레이', bg: '#DBD9D5' },
+];
+const PROFILE_TAGS = ['Y2K', 'Ribbon', 'Cute', 'Minimal', 'Vintage', 'Fashion'];
+const SWATCH = { pink: '#F3C3D2', chrome: '#C3C9D2', bunny: '#EFE4D6', minimal: '#121214' };
+const STORE_CATS = ['전체', '추천', '인기', '신규', '무료'];
+const STORE_TAGS = ['Cute', 'Ribbon', 'Y2K', 'Minimal', 'Vintage', 'Character', 'Seasonal', 'Hand Drawn'];
+const STORE = [
+  { id: 't1', name: '리본 하트', creator: '@yuna', variant: 'pink', price: 15, likes: 1240, uses: 3200, tags: ['Ribbon', 'Cute'], cat: ['추천', '인기'] },
+  { id: 't2', name: '크롬 버터플라이', creator: '@zed', variant: 'chrome', price: 20, likes: 980, uses: 2100, tags: ['Y2K'], cat: ['추천', '신규'] },
+  { id: 't3', name: '버니 프렌즈', creator: '@mmo', variant: 'bunny', price: 0, likes: 2310, uses: 8800, tags: ['Character', 'Cute'], cat: ['무료', '인기'] },
+  { id: 't4', name: '미드나이트', creator: '@noir', variant: 'minimal', price: 12, likes: 640, uses: 1500, tags: ['Minimal'], cat: ['추천', '인기'] },
+  { id: 't5', name: '빈티지 레이스', creator: '@sora', variant: 'bunny', price: 18, likes: 770, uses: 1900, tags: ['Vintage', 'Seasonal'], cat: ['신규'] },
+  { id: 't6', name: '손그림 데이지', creator: '@dot', variant: 'pink', price: 0, likes: 1520, uses: 4400, tags: ['Hand Drawn', 'Cute'], cat: ['무료', '신규'] },
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      screen: props.startScreen === 'editor' ? 'editor' : 'mirror', controls: false, frozen: false, zoom: 1, bright: 0.5, decorOn: true,
+      switcherOpen: false, panel: null, flashOn: false, toast: null,
+      mirrorId: 'p:pink', baseVariant: 'plain', savedMine: false,
+      side: null, tool: null, needSidePick: false,
+      view: { S: 0.66, panX: 68, panY: 13 },
+      strokes: [], objs: [], sel: null, seq: 1,
+      brush: 'pen', color: '#FFFFFF', width: 6, eraser: false,
+      sheet: null, pickedPhoto: 0, textValue: '오늘도 예뻐',
+      hist: [], future: [], gestureHint: null,
+      shards: 24, signedIn: false, mineFilter: '전체',
+      profileName: '민지', profileTagsSel: ['Ribbon', 'Cute'], noti: true, profileDraft: null,
+      bgColor: '#F6D2DC', dailyTaken: false, adsToday: 3, ledger: [],
+      made: [], bought: [], editingMadeId: null,
+      signinOpen: false, newMirrorOk: false, newMirrorShort: false, adPlaying: false, adPct: 0,
+      purchaseDone: null, rowSheet: null, tplId: null, previewTpl: null,
+      storeCat: '전체', storeTag: null, walletFrom: 'mine',
+      publishId: null, publishName: '', publishPrice: 15, publishTags: [],
+    };
+    this.ptrs = new Map();
+  }
+
+  componentDidMount() { this.deferFit(this.state.side); }
+
+  deferFit(side) {
+    cancelAnimationFrame(this.fitRaf);
+    clearTimeout(this.fitTo);
+    this.pendingSide = side;
+    const run = () => {
+      if (this.state.screen !== 'editor' || this.pendingSide !== side) return;
+      const v = this.fitView(side);
+      this.setState({ view: v });
+      const el = this.vpEl();
+      if (el && el.firstElementChild) el.firstElementChild.style.transform = 'translate(' + v.panX + 'px, ' + v.panY + 'px) scale(' + v.S + ')';
+    };
+    this.fitRaf = requestAnimationFrame(run);
+    this.fitTo = setTimeout(run, 70);
+  }
+  componentWillUnmount() { clearTimeout(this.hideT); clearTimeout(this.toastT); clearTimeout(this.procT); clearTimeout(this.hintT); }
+
+  vpEl() { return document.querySelector('[data-vp]'); }
+  cap(e, el) { try { (el || e.currentTarget).setPointerCapture(e.pointerId); } catch (_) {} }
+
+  vp() {
+    const el = this.vpEl();
+    if (!el) return { w: W, h: 600, left: 0, top: 0 };
+    const r = el.getBoundingClientRect();
+    return { w: r.width, h: r.height, left: r.left, top: r.top };
+  }
+
+  fitView(side) {
+    const { w, h } = this.vp();
+    if (!side) {
+      const S = Math.min((w - 56) / W, (h - 40) / H);
+      return { S, panX: (w - W * S) / 2, panY: (h - H * S) / 2 };
+    }
+    if (side === 'right' || side === 'left') {
+      const S = Math.max(2.2, Math.min(4.2, (w * 0.48) / BAND.right));
+      const panY = h / 2 - (H / 2) * S;
+      return side === 'right'
+        ? { S, panX: w - 12 - W * S, panY }
+        : { S, panX: 12, panY };
+    }
+    const S = Math.max(1.8, Math.min(3.4, (h * 0.5) / BAND.top));
+    const panX = w / 2 - (W / 2) * S;
+    return side === 'top'
+      ? { S, panX, panY: 12 }
+      : { S, panX, panY: h - 12 - H * S };
+  }
+
+  clampView(v) {
+    const { w, h } = this.vp();
+    const minX = Math.min(w - 24, w - W * v.S - 24), maxX = Math.max(24 - W * v.S + 48, 24);
+    const minY = Math.min(h - 24, h - H * v.S - 24), maxY = Math.max(24 - H * v.S + 48, 24);
+    return { S: v.S, panX: Math.max(minX, Math.min(maxX, v.panX)), panY: Math.max(minY, Math.min(maxY, v.panY)) };
+  }
+
+  toMirror(cx, cy) {
+    const { left, top } = this.vp(), v = this.state.view;
+    return { x: (cx - left - v.panX) / v.S, y: (cy - top - v.panY) / v.S };
+  }
+
+  inFrame(p) {
+    return !(p.x > BAND.left && p.x < W - BAND.right && p.y > BAND.top && p.y < H - BAND.bottom);
+  }
+
+  snap() {
+    const h = this.state.hist.slice(-24);
+    h.push({ strokes: this.state.strokes.map(s => ({ ...s, pts: s.pts.slice() })), objs: this.state.objs.map(o => ({ ...o })) });
+    this.setState({ hist: h, future: [] });
+  }
+  undo = () => {
+    const h = this.state.hist.slice();
+    if (!h.length) return;
+    const prev = h.pop();
+    const f = this.state.future.slice();
+    f.push({ strokes: this.state.strokes, objs: this.state.objs });
+    this.setState({ hist: h, future: f, strokes: prev.strokes, objs: prev.objs, sel: null });
+  };
+  redo = () => {
+    const f = this.state.future.slice();
+    if (!f.length) return;
+    const next = f.pop();
+    const h = this.state.hist.slice();
+    h.push({ strokes: this.state.strokes, objs: this.state.objs });
+    this.setState({ hist: h, future: f, strokes: next.strokes, objs: next.objs, sel: null });
+  };
+
+  toast(msg) {
+    clearTimeout(this.toastT);
+    this.setState({ toast: msg });
+    this.toastT = setTimeout(() => this.setState({ toast: null }), 1900);
+  }
+  hint(msg) {
+    if (this.props.showGestureHints === false) return;
+    clearTimeout(this.hintT);
+    this.setState({ gestureHint: msg });
+    this.hintT = setTimeout(() => this.setState({ gestureHint: null }), 2200);
+  }
+
+  armHide() {
+    clearTimeout(this.hideT);
+    this.hideT = setTimeout(() => this.setState({ controls: false, switcherOpen: false, panel: null }), this.props.autoHideMs ?? 4200);
+  }
+  tapMirror = () => {
+    if (this.state.controls) this.setState({ controls: false, switcherOpen: false, panel: null });
+    else { this.setState({ controls: true }); this.armHide(); }
+  };
+  stop = e => { e.stopPropagation(); this.armHide(); };
+
+  ratioFrom(key, cx) {
+    const el = document.querySelector('[data-sl="' + key + '"]'); if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (cx - r.left) / r.width));
+  }
+
+  render__() {}
+
+  renderVals() {
+    const s = this.state, v = s.view;
+    const am = this.activeMirror();
+    const editing = s.screen === 'editor' || s.screen === 'preview';
+    const decorVariant = s.previewTpl ? s.previewTpl.variant : (editing ? s.baseVariant : am.variant);
+    const showEdits = !s.previewTpl && (editing || am.kind === 'made');
+
+    const strokeEls = [];
+    s.strokes.forEach(st => {
+      if (st.pts.length < 2) return;
+      const pts = st.pts.map(p => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' ');
+      if (st.brush === 'neon') strokeEls.push({ pts, color: st.color, w: st.width * 2.8, op: 0.22, dash: 'none' });
+      strokeEls.push({
+        pts, color: st.color, w: st.width,
+        op: st.brush === 'marker' ? 0.55 : st.brush === 'pencil' ? 0.8 : 1,
+        dash: st.brush === 'glitter' ? `${st.width * 0.55} ${st.width * 0.9}` : 'none',
+      });
+    });
+
+    const objEls = s.objs.map(o => {
+      const sh = SHAPES[o.kind] || SHAPES.cutout;
+      const w = o.kind === 'text' ? 0 : sh.w, h = o.kind === 'text' ? 0 : sh.h;
+      const flip = o.flip ? ' scaleX(-1)' : '';
+      return {
+        id: o.id, isText: o.kind === 'text', isShape: o.kind !== 'text', text: o.text,
+        wrapSt: `position:absolute;left:${o.x}px;top:${o.y}px;transform:translate(-50%,-50%) rotate(${o.rot}deg) scale(${o.sc})${flip};opacity:${o.op};cursor:${o.locked ? 'default' : 'move'};touch-action:none`,
+        shapeSt: `width:${w}px;height:${h}px;${sh.css}`,
+        textSt: `font-size:26px;font-weight:700;color:${o.color};white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.35)`,
+        down: e => this.objDown(e, o.id),
+      };
+    });
+
+    const catalog = this.catalog();
+    const tpl = catalog.find(t => t.id === s.tplId) || null;
+    const owned = tpl ? this.ownsTpl(tpl) : false;
+    const sel = s.objs.find(o => o.id === s.sel);
+    let selBoxSt = 'display:none';
+    if (sel && s.screen === 'editor') {
+      const sh = SHAPES[sel.kind] || SHAPES.cutout;
+      const bw = (sel.kind === 'text' ? Math.max(60, (sel.text || '').length * 17) : sh.w) * sel.sc * v.S;
+      const bh = (sel.kind === 'text' ? 34 : sh.h) * sel.sc * v.S;
+      const cx = v.panX + sel.x * v.S, cy = v.panY + sel.y * v.S;
+      selBoxSt = `position:absolute;left:${cx - bw / 2}px;top:${cy - bh / 2}px;width:${bw}px;height:${bh}px;border:1.5px solid #1A1A1A;border-radius:3px;transform:rotate(${sel.rot}deg);pointer-events:none`;
+    }
+
+    const zones = !s.side && s.screen === 'editor' ? SIDES.map(sd => {
+      const r = sd.id === 'top' ? { x: 0, y: 0, w: W, h: BAND.top }
+        : sd.id === 'bottom' ? { x: 0, y: H - BAND.bottom, w: W, h: BAND.bottom }
+        : sd.id === 'left' ? { x: 0, y: 0, w: BAND.left, h: H }
+        : { x: W - BAND.right, y: 0, w: BAND.right, h: H };
+      const vert = sd.id === 'left' || sd.id === 'right';
+      const active = s.needSidePick;
+      return {
+        label: sd.label, pick: () => this.selectSide(sd.id),
+        st: `position:absolute;left:${v.panX + r.x * v.S}px;top:${v.panY + r.y * v.S}px;width:${r.w * v.S}px;height:${r.h * v.S}px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:${vert ? '4px' : '6px'};background:${active ? 'rgba(26,26,26,.10)' : 'transparent'};box-shadow:inset 0 0 0 1.5px ${active ? 'rgba(26,26,26,.9)' : 'rgba(255,255,255,.28)'}`,
+        pillSt: `padding:4px 9px;border-radius:11px;background:rgba(12,12,14,.72);font-size:11.5px;font-weight:600;color:#fff;white-space:nowrap;transform:rotate(${vert ? (sd.id === 'left' ? -90 : 90) : 0}deg)`,
+      };
+    }) : [];
+
+    const bandRect = s.side === 'top' ? { x: 0, y: 0, w: W, h: BAND.top }
+      : s.side === 'bottom' ? { x: 0, y: H - BAND.bottom, w: W, h: BAND.bottom }
+      : s.side === 'left' ? { x: 0, y: 0, w: BAND.left, h: H }
+      : { x: W - BAND.right, y: 0, w: BAND.right, h: H };
+    const MMW = 25, MMH = 51;
+    const miniBandSt = `position:absolute;left:${2.5 + (bandRect.x / W) * MMW}px;top:${2.5 + (bandRect.y / H) * MMH}px;width:${(bandRect.w / W) * MMW}px;height:${(bandRect.h / H) * MMH}px;background:#1A1A1A;border-radius:2px;opacity:.9`;
+    const vpb = this.vp();
+    const visX = Math.max(0, -v.panX / v.S), visY = Math.max(0, -v.panY / v.S);
+    const visW = Math.min(W - visX, vpb.w / v.S), visH = Math.min(H - visY, vpb.h / v.S);
+    const miniViewSt = `position:absolute;left:${2.5 + (visX / W) * MMW}px;top:${2.5 + (visY / H) * MMH}px;width:${Math.max(3, (visW / W) * MMW)}px;height:${Math.max(3, (visH / H) * MMH)}px;box-shadow:0 0 0 1.5px #fff;border-radius:2px`;
+
+    const iconOf = id => {
+      const p = { sticker: 'M4 7a3 3 0 013-3h6l7 7v6a3 3 0 01-3 3H7a3 3 0 01-3-3z', photo: '', draw: 'M4 20l3.5-1 10-10-2.5-2.5-10 10z' };
+      return p[id];
+    };
+
+    return {
+      isMirror: s.screen === 'mirror', isEditor: s.screen === 'editor', isPreview: s.screen === 'preview',
+      isOverview: s.screen === 'editor' && !s.side, isSide: s.screen === 'editor' && !!s.side,
+      controls: s.controls, switcherOpen: s.switcherOpen, decorOn: s.decorOn, frozen: s.frozen,
+      flashOn: s.flashOn, toast: s.toast, showEdits, decorVariant,
+      mirrorName: am.name, mirrorSwatch: SWATCH[am.variant] || SWATCH.pink,
+      glassT: `scale(${s.zoom})${s.frozen ? '' : ''}`,
+      brightUp: String(Math.max(0, (s.bright - 0.5) * 0.5)),
+      brightDown: String(Math.max(0, (0.5 - s.bright) * 0.8)),
+      brightPct: `${Math.round(s.bright * 100)}%`, brightLabel: `${Math.round(s.bright * 100)}`,
+      zoomPct: `${Math.round(((s.zoom - 1) / 1.5) * 100)}%`, zoomLabel: `${s.zoom.toFixed(1)}×`,
+      panelBright: s.panel === 'bright', panelZoom: s.panel === 'zoom',
+      strokeEls, objEls, zones, selBoxSt, hasSel: !!sel && s.screen === 'editor',
+      worldT: `translate(${v.panX}px,${v.panY}px) scale(${v.S})`,
+      canvasCursor: s.side && s.tool === 'draw' ? 'crosshair' : 'default',
+      sideName: (SIDES.find(x => x.id === s.side) || {}).label || '',
+      zoomText: `${v.S.toFixed(1)}× · 두 손가락으로 이동`,
+      miniBandSt, miniViewSt,
+      needSidePick: s.needSidePick, showGestureHint: !!s.gestureHint, gestureHint: s.gestureHint,
+      overviewHint: s.objs.length || s.strokes.length ? '영역을 탭하면 크게 편집할 수 있어요' : '위 · 오른쪽 · 아래 · 왼쪽을 탭해 보세요',
+      undoSt: `width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;filter:url(#pen2);display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff;color:${s.hist.length ? '#1A1A1A' : '#B7B2A8'}`,
+      redoSt: `width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;filter:url(#pen2);display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff;color:${s.future.length ? '#1A1A1A' : '#B7B2A8'}`,
+
+      btnFreeze: this.mBtn(s.frozen), btnBright: this.mBtn(s.panel === 'bright'), btnZoom: this.mBtn(s.panel === 'zoom'), btnDecor: this.mBtn(!s.decorOn ? false : true, !s.decorOn),
+      toggleFreeze: e => { this.stop(e); this.setState({ frozen: !s.frozen }); },
+      toggleBright: e => { this.stop(e); this.setState({ panel: s.panel === 'bright' ? null : 'bright' }); },
+      toggleZoomPanel: e => { this.stop(e); this.setState({ panel: s.panel === 'zoom' ? null : 'zoom' }); },
+      toggleDecor: e => { this.stop(e); this.setState({ decorOn: !s.decorOn }); },
+      capture: e => {
+        this.stop(e); this.setState({ flashOn: true });
+        setTimeout(() => this.setState({ flashOn: false }), 460);
+        this.toast('사진에 저장했어요');
+      },
+      openSwitcher: e => { this.stop(e); this.setState({ switcherOpen: !s.switcherOpen, panel: null }); },
+      enterEditor: e => { this.stop(e); this.enterEditor(); },
+      brightDown_: e => { e.stopPropagation(); this.cap(e); this.armHide(); this.setState({ bright: this.ratioFrom('bright', e.clientX) }); },
+      brightMove: e => { if (e.buttons || e.pointerType === 'touch') { e.stopPropagation(); this.setState({ bright: this.ratioFrom('bright', e.clientX) }); } },
+      zoomDown: e => { e.stopPropagation(); this.cap(e); this.armHide(); this.setState({ zoom: 1 + this.ratioFrom('zoom', e.clientX) * 1.5 }); },
+      zoomMove: e => { if (e.buttons || e.pointerType === 'touch') { e.stopPropagation(); this.setState({ zoom: 1 + this.ratioFrom('zoom', e.clientX) * 1.5 }); } },
+      tapMirror: this.tapMirror,
+
+      mirrorList: MIRRORS.map(m => {
+        const mine = m.id === 'mine';
+        const first = s.made[0];
+        const active = mine ? String(s.mirrorId).indexOf('m:') === 0 : m.id === s.mirrorId;
+        const sw = mine ? (first ? SWATCH[first.variant] : null) : m.swatch;
+        return {
+          name: m.name,
+          pick: e => { this.stop(e); if (mine) { if (!first) { this.enterEditor(); return; } this.applyMade(first); return; } this.setState({ mirrorId: m.id, switcherOpen: false }); this.toast(`${m.name} 적용`); },
+          thumbSt: `width:100%;aspect-ratio:1;border-radius:12px;background:#2A2730;padding:5px;box-sizing:border-box;${active ? 'box-shadow:0 0 0 2.5px #1A1A1A' : 'box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)'}`,
+          thumbInnerSt: sw ? `width:100%;height:100%;box-sizing:border-box;border:4px solid ${sw};border-radius:5px` : 'width:100%;height:100%;box-sizing:border-box;border:1.5px dashed rgba(255,255,255,.4);border-radius:5px',
+          labelSt: `font-size:9.5px;color:${active ? '#fff' : 'rgba(255,255,255,.6)'}`,
+        };
+      }),
+
+      sideTabs: SIDES.map(sd => ({
+        label: sd.label, pick: () => this.selectSide(sd.id),
+        st: `flex:1;text-align:center;padding:6px 0;font-size:14px;cursor:pointer;${s.side === sd.id ? 'font-weight:700;color:#fff;background:#1A1A1A;border-radius:10px 8px 11px 7px;filter:url(#pen3)' : 'color:#57544E'}`,
+      })),
+      cSticker: s.tool === 'sticker' ? '#1A1A1A' : '#fff',
+      cPhoto: s.tool === 'photo' ? '#1A1A1A' : '#fff',
+      cDraw: s.tool === 'draw' || s.needSidePick ? '#1A1A1A' : '#fff',
+      cText: s.tool === 'text' ? '#1A1A1A' : '#fff',
+      cFrame: s.tool === 'frame' ? '#1A1A1A' : '#fff',
+      cLayers: s.tool === 'layers' ? '#1A1A1A' : '#fff',
+      pickSticker: () => this.pickTool('sticker'),
+      pickPhotoTool: () => this.pickTool('photo'),
+      pickDraw: () => this.pickTool('draw'),
+      pickText: () => this.pickTool('text'),
+      pickFrame: () => this.pickTool('frame'),
+      pickLayers: () => this.pickTool('layers'),
+      leaveEditor: () => this.setState({ screen: 'mirror', controls: false, side: null, tool: null, sel: null }),
+      goPreview: () => this.setState({ screen: 'preview', sel: null }),
+      backToOverview: () => { this.setState({ side: null, sel: null, eraser: false }); this.deferFit(null); },
+      backToEditFromPreview: () => { this.setState({ screen: 'editor' }); this.deferFit(s.side); },
+      save: () => this.doSave(),
+
+      showDrawBar: !!s.side && s.tool === 'draw' && !sel,
+      showObjBar: !!sel,
+      showStickerBar: s.tool === 'sticker' && !sel,
+      showFrameBar: s.tool === 'frame' && !sel,
+      showTextBar: s.tool === 'text' && !sel,
+      showLayerBar: s.tool === 'layers' && !sel,
+      brushes: BRUSHES.map(b => ({
+        label: b.label, pick: () => this.setState({ brush: b.id, eraser: false }),
+        st: `flex:1;text-align:center;padding:6px 0;font-size:13.5px;cursor:pointer;${s.brush === b.id && !s.eraser ? 'font-weight:700;color:#fff;background:#1A1A1A;border-radius:10px 8px 11px 7px;filter:url(#pen3)' : 'color:#57544E'}`,
+      })),
+      widthPct: `${Math.round(((s.width - 2) / 26) * 100)}%`, widthLabel: String(Math.round(s.width)),
+      widthDown: e => { this.cap(e); this.setState({ width: 2 + this.ratioFrom('width', e.clientX) * 26 }); },
+      widthMove: e => { if (e.buttons || e.pointerType === 'touch') this.setState({ width: 2 + this.ratioFrom('width', e.clientX) * 26 }); },
+      colors: COLORS.map(c => ({
+        pick: () => this.setState({ color: c, eraser: false }),
+        st: `width:30px;height:30px;border-radius:50%;background:${c};cursor:pointer;${s.color === c && !s.eraser ? 'box-shadow:0 0 0 1.6px #1A1A1A,0 0 0 4px #F9F8F4,0 0 0 5.6px #1A1A1A' : 'box-shadow:inset 0 0 0 1.5px #1A1A1A'}`,
+      })),
+      eraserSt: `width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:13px 16px 12px 15px/16px 12px 15px 13px;filter:url(#pen2);display:flex;align-items:center;justify-content:center;cursor:pointer;background:${s.eraser ? '#1A1A1A' : '#F1EDE4'};color:${s.eraser ? '#fff' : '#1A1A1A'}`,
+      toggleEraser: () => this.setState({ eraser: !s.eraser }),
+      presets: ['ribbon', 'heart', 'star', 'pearl', 'cutout'].map(k => ({
+        add: () => this.addObj(k),
+        st: `width:${Math.min(34, SHAPES[k].w * 0.4)}px;height:${Math.min(34, SHAPES[k].h * 0.4)}px;${SHAPES[k].css};box-shadow:none`,
+      })),
+      frames: MIRRORS.slice(0, 4).map(m => ({
+        label: m.name, pick: () => this.setState({ baseVariant: m.variant }),
+        st: `width:100%;aspect-ratio:.72;border-radius:8px;background:#2A2730;box-sizing:border-box;border:5px solid ${m.swatch};${s.baseVariant === m.variant ? 'outline:2.5px solid #1A1A1A;outline-offset:2px' : ''}`,
+        labelSt: `font-size:10px;color:${s.baseVariant === m.variant ? '#1A1A1A' : '#6E6A62'}`,
+      })),
+      textValue: s.textValue,
+      onTextInput: e => this.setState({ textValue: e.target.value }),
+      phrases: ['오늘도 예뻐', 'SHINE', '♡', '2026'].map(p => ({ label: p, add: () => { this.setState({ textValue: p }); this.addObj('text', p); } })),
+      layers: s.objs.slice().reverse().map(o => ({
+        name: o.kind === 'text' ? `텍스트 · ${o.text}` : o.kind === 'cutout' ? '사진 스티커' : `스티커 · ${o.kind}`,
+        rowSt: `display:flex;align-items:center;gap:7px;padding:7px 6px;border-radius:12px 9px 13px 8px;${s.sel === o.id ? 'background:#F1EDE4;box-shadow:inset 0 0 0 1.4px #1A1A1A' : ''}`,
+        chipSt: `width:26px;height:26px;border-radius:7px;flex:none;${o.kind === 'text' ? 'background:#DAD5CA' : SHAPES[o.kind].css};background-size:cover;box-shadow:none`,
+        select: () => this.setState({ sel: o.id }),
+        up: () => this.reorder(o.id, 1), down: () => this.reorder(o.id, -1),
+        lock: () => this.mutate(o.id, x => ({ locked: !x.locked })),
+        lockIcon: o.locked ? '잠금' : '해제',
+        lockSt: `padding:0 8px;height:30px;border:1.4px solid #1A1A1A;border-radius:10px 8px 11px 7px;filter:url(#pen3);background:${o.locked ? '#1A1A1A' : '#F1EDE4'};color:${o.locked ? '#fff' : '#1A1A1A'};display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer`,
+        del: () => { this.snap(); this.setState({ objs: s.objs.filter(x => x.id !== o.id), sel: null }); },
+      })),
+      layersEmpty: s.objs.length === 0,
+
+      selOpPct: `${Math.round((sel ? sel.op : 1) * 100)}%`, selOpLabel: `${Math.round((sel ? sel.op : 1) * 100)}`,
+      opDown: e => { this.cap(e); this.mutate(s.sel, () => ({ op: Math.max(0.1, this.ratioFrom('op', e.clientX)) })); },
+      opMove: e => { if (e.buttons || e.pointerType === 'touch') this.mutate(s.sel, () => ({ op: Math.max(0.1, this.ratioFrom('op', e.clientX)) })); },
+      flipSel: () => { this.snap(); this.mutate(s.sel, o => ({ flip: !o.flip })); },
+      dupSel: () => this.dup(s.sel),
+      lockSel: () => this.mutate(s.sel, o => ({ locked: !o.locked })),
+      lockLabel: sel && sel.locked ? '잠금 해제' : '잠금',
+      resetSel: () => { this.snap(); this.mutate(s.sel, () => ({ rot: 0 })); },
+      delSel: () => { this.snap(); this.setState({ objs: s.objs.filter(o => o.id !== s.sel), sel: null }); },
+
+      undo: this.undo, redo: this.redo,
+      canvasDown: this.canvasDown, canvasMove: this.canvasMove, canvasUp: this.canvasUp,
+      canvasDouble: () => this.setState({ view: this.fitView(s.side) }),
+      canvasWheel: e => {
+        if (!s.side) return;
+        const f = e.deltaY > 0 ? 0.92 : 1.08;
+        const S = Math.max(0.6, Math.min(9, v.S * f));
+        const { left, top } = this.vp();
+        const mx = (e.clientX - left - v.panX) / v.S, my = (e.clientY - top - v.panY) / v.S;
+        this.setState({ view: this.clampView({ S, panX: e.clientX - left - mx * S, panY: e.clientY - top - my * S }) });
+      },
+      zoomIn: () => this.zoomBy(1.25), zoomOut: () => this.zoomBy(0.8),
+      handleDown: this.handleDown,
+
+      sheetPhoto: s.sheet === 'photo', sheetRemoving: s.sheet === 'removing', sheetExtract: s.sheet === 'extract',
+      photos: PHOTO_BGS.map((bg, i) => ({
+        pick: () => this.pickPhoto(i),
+        st: `aspect-ratio:1;border-radius:4px;background:${bg};cursor:pointer`,
+      })),
+      pickedPhotoBg: PHOTO_BGS[s.pickedPhoto],
+      cutoutPreviewSt: `width:126px;height:152px;${SHAPES.cutout.css}`,
+      closeSheet: () => this.setState({ sheet: null }),
+      openPhoto: () => this.setState({ sheet: 'photo' }),
+      addCutout: () => { this.setState({ sheet: null }); this.addObj('cutout'); },
+
+      isHome: s.screen === 'home', mirrorCount: this.libraryAll().length, isSettings: s.screen === 'settings', isProfile: s.screen === 'profile',
+      showTabs: s.screen === 'home' || s.screen === 'store' || s.screen === 'mine',
+      tabHomeSt: this.tabSt(s.screen === 'home'), tabStoreSt: this.tabSt(s.screen === 'store'), tabMineSt: this.tabSt(s.screen === 'mine'),
+      goHome: () => this.setState({ screen: 'home', previewTpl: null, rowSheet: null }),
+      goStore: () => this.openStoreTab(),
+      goMine: () => this.setState({ screen: 'mine', previewTpl: null, rowSheet: null }),
+      openSettings: () => this.setState({ screen: 'settings' }),
+      openProfile: () => this.setState({ screen: 'profile', profileDraft: { name: s.profileName, tags: s.profileTagsSel.slice() } }),
+      saveProfile: () => this.setState({ screen: 'settings', profileName: (s.profileDraft && s.profileDraft.name) || s.profileName, profileTagsSel: (s.profileDraft && s.profileDraft.tags) || s.profileTagsSel, profileDraft: null }),
+      profileName: s.profileDraft ? s.profileDraft.name : s.profileName,
+      onProfileName: e => this.setState({ profileDraft: { name: e.target.value, tags: (s.profileDraft || { tags: s.profileTagsSel }).tags } }),
+      profileTagLine: s.profileTagsSel.join(' · ') || '태그 없음',
+      profileTags: PROFILE_TAGS.map(t => {
+        const on = (s.profileDraft ? s.profileDraft.tags : s.profileTagsSel).indexOf(t) >= 0;
+        return { label: t, pick: () => this.toggleProfileTag(t), st: 'padding:6px 13px;border-radius:17px 14px 18px 13px/14px 18px 13px 17px;font-size:15px;cursor:pointer;border:1.6px solid #1A1A1A;filter:url(#pen2);' + (on ? 'background:#1A1A1A;color:#fff;font-weight:700' : 'background:#F9F8F4;color:#3A3733') };
+      }),
+      appleState: s.signedIn ? '연결됨' : '연결 안 됨',
+      notiSt: 'width:50px;height:30px;border-radius:15px;cursor:pointer;position:relative;transition:background .18s;background:' + (s.noti ? '#1A1A1A' : '#DAD5CA'),
+      notiKnobSt: 'position:absolute;top:2.5px;width:25px;height:25px;border-radius:13px;background:#fff;transition:left .18s;box-shadow:0 1px 3px rgba(0,0,0,.18);left:' + (s.noti ? '22px' : '2.5px'),
+      toggleNoti: () => this.setState({ noti: !s.noti }),
+      restore: () => this.toast('구매 내역을 확인했어요'),
+
+      openCamera: () => this.setState({ screen: 'mirror', controls: false, previewTpl: null }),
+      leaveCamera: e => { if (e) e.stopPropagation(); this.setState({ screen: 'home', controls: false }); },
+      decorateEntry: () => this.setState({ screen: 'mine', mineFilter: '전체', rowSheet: null }),
+      decorateCurrent: () => this.decorateActive(),
+      bgRingSt: this.ringStyle(editing ? s.bgColor : am.bg),
+
+
+      homeStore: STORE.slice(0, 4).map(t => ({
+        name: t.name, creator: t.creator, variant: t.variant, price: t.price === 0 ? '무료' : String(t.price),
+        priceSt: 'font-size:13.5px;font-weight:600;color:' + (t.price === 0 ? '#2E9E63' : '#1A1A1A'),
+        open: () => this.setState({ screen: 'detail', tplId: t.id, detailFrom: 'home' }),
+      })),
+      mineFilters: ['전체', '내가 만든', '구매한', '판매 중'].map(c => ({
+        label: c, pick: () => this.setState({ mineFilter: c }),
+        st: 'padding:6px 14px;border-radius:15px 18px 14px 17px/18px 14px 17px 15px;font-size:15px;cursor:pointer;white-space:nowrap;border:1.6px solid #1A1A1A;filter:url(#pen2);' + (s.mineFilter === c ? 'background:#1A1A1A;color:#fff;font-weight:700' : 'background:#F9F8F4;color:#3A3733'),
+      })),
+      mineItems: this.mineFiltered().map(m => this.galleryItem(m)),
+      mineEmpty: this.mineFiltered().length === 0,
+      detailBack: () => this.setState({ screen: s.detailFrom === 'home' ? 'home' : 'store' }),
+      publishVariant: this.publishTarget() ? this.publishTarget().variant : 'plain',
+      publishRingSt: this.ringStyle(this.publishTarget() ? this.publishTarget().bg : null),
+      shortNeed: s.shortNeed || 20,
+      showBgBar: s.tool === 'bg' && !sel,
+      cBg: s.tool === 'bg' ? '#1A1A1A' : '#1A1A1A',
+      pickBgTool: () => this.pickTool('bg'),
+      bgColor: s.bgColor,
+      onBgInput: e => this.setState({ bgColor: e.target.value, baseVariant: 'plain' }),
+      bgSwatches: BASIC.map(p => ({
+        pick: () => this.setState({ bgColor: p.bg, baseVariant: 'plain' }),
+        st: 'width:100%;aspect-ratio:1;border-radius:50% 47% 52% 49%;filter:url(#pen3);cursor:pointer;background:' + p.bg + ';' + (s.bgColor === p.bg ? 'box-shadow:0 0 0 1.6px #1A1A1A,0 0 0 4px #F9F8F4,0 0 0 5.6px #1A1A1A' : 'box-shadow:inset 0 0 0 1.5px #1A1A1A'),
+      })),
+
+      shards: s.shards,
+      isMine: s.screen === 'mine', isStore: s.screen === 'store', isDetail: s.screen === 'detail',
+      isWallet: s.screen === 'wallet', isPublish: s.screen === 'publish',
+      openMine: e => { this.stop(e); this.setState({ screen: 'mine', controls: false, switcherOpen: false, panel: null, previewTpl: null }); },
+      closeToMirror: () => this.setState({ screen: 'mirror' }),
+      openStore: () => { this.closeSheets(); if (this.state.signedIn) this.setState({ screen: 'store' }); else this.setState({ signinOpen: true }); },
+      backToMine: () => { this.closeSheets(); this.setState({ screen: 'mine' }); },
+      openWallet: () => this.setState({ screen: 'wallet', walletFrom: s.screen === 'wallet' ? s.walletFrom : s.screen, newMirrorOk: false, newMirrorShort: false, rowSheet: null }),
+      walletBack: () => this.setState({ screen: s.walletFrom || 'mine' }),
+      closeSheets: () => this.closeSheets(),
+
+      rowsActive: [{ name: am.name, meta: am.kind === 'made' ? '내가 만든 거울' : am.kind === 'bought' ? '구매한 거울' : '저장한 거울', thumbSt: this.thumb(am.variant, 40, 70), tap: () => this.openRowSheet(am.kind, am.ref && am.ref.id, am.name) }],
+      rowsMade: s.made.map(m => ({ name: m.name, meta: m.listed ? `판매 중 · ${m.price === 0 ? '무료' : m.price + ' 조각'}` : '나만 보기', thumbSt: this.thumb(m.variant, 40, 70), badge: '', badgeSt: 'display:none', tap: () => this.openRowSheet('made', m.id, m.name) })),
+      madeEmpty: s.made.length === 0,
+      rowsBought: s.bought.map(b => ({ name: b.name, meta: b.creator + ' · ' + (b.price === 0 ? '무료로 받음' : b.price + ' 조각') , thumbSt: this.thumb(b.variant, 40, 70), tap: () => this.openRowSheet('bought', b.id, b.name) })),
+      boughtEmpty: s.bought.length === 0,
+      rowsSelling: s.made.filter(m => m.listed).map(m => ({ name: m.name, meta: m.price === 0 ? '무료 · 0 조각' : m.price + ' 조각', thumbSt: this.thumb(m.variant, 40, 70), tap: () => this.openRowSheet('made', m.id, m.name) })),
+      sellingEmpty: s.made.filter(m => m.listed).length === 0,
+      rowsSaved: MIRRORS.slice(0, 4).map(m => ({ name: m.name, meta: '기본 제공', thumbSt: this.thumb(m.variant, 40, 70), tap: () => this.openRowSheet('preset', m.id, m.name) })),
+
+      rowSheet: !!s.rowSheet, rowSheetName: s.rowSheet ? s.rowSheet.name : '',
+      rowActions: this.rowActions(),
+
+      storeCats: STORE_CATS.map(c => ({ label: c, pick: () => this.setState({ storeCat: c }), st: `flex:none;padding:6px 15px;border-radius:18px 15px 19px 14px/15px 19px 14px 18px;font-size:15px;cursor:pointer;white-space:nowrap;border:1.6px solid #1A1A1A;filter:url(#pen2);${s.storeCat === c ? 'background:#1A1A1A;color:#fff;font-weight:700' : 'background:#F9F8F4;color:#3A3733'}` })),
+      storeTags: STORE_TAGS.map(t => ({ label: t, pick: () => this.setState({ storeTag: s.storeTag === t ? null : t }), st: `flex:none;padding:6px 12px;border-radius:14px;font-size:13.5px;cursor:pointer;white-space:nowrap;border:1.6px solid #1A1A1A;filter:url(#pen2);${s.storeTag === t ? 'background:#1A1A1A;color:#fff;font-weight:700' : 'background:#F9F8F4;color:#3A3733'}` })),
+      storeItems: this.catalogFiltered().map(t => ({
+        name: t.name, creator: t.creator, variant: t.variant, open: () => this.setState({ screen: 'detail', tplId: t.id }),
+        price: t.price === 0 ? '무료' : String(t.price),
+        priceSt: `font-size:13.5px;font-weight:600;color:${t.price === 0 ? '#2E9E63' : '#1A1A1A'}`,
+      })),
+      storeEmpty: this.catalogFiltered().length === 0,
+
+      tplName: tpl ? tpl.name : '', tplCreator: tpl ? tpl.creator : '', tplVariant: tpl ? tpl.variant : 'pink',
+      tplLikes: tpl ? tpl.likes.toLocaleString() : '0', tplUses: tpl ? tpl.uses.toLocaleString() : '0',
+      tplTags: tpl ? tpl.tags.map(x => ({ label: x })) : [],
+      tplOwned: owned, tplBuyable: !!tpl && !owned,
+      tplBuyLabel: tpl ? (tpl.price === 0 ? '무료로 받기' : tpl.price + ' 조각으로 구매') : '',
+      startPreview: () => this.setState({ screen: 'mirror', previewTpl: tpl, controls: false, tplId: tpl ? tpl.id : s.tplId }),
+      buyTpl: () => this.buy(tpl),
+      applyTpl: () => this.applyTemplate(tpl),
+      openMine: () => this.setState({ screen: 'mine' }),
+      previewBar: !!s.previewTpl && s.screen === 'mirror',
+      previewName: s.previewTpl ? s.previewTpl.name : '',
+      previewCta: s.previewTpl ? (this.ownsTpl(s.previewTpl) ? '내 거울에 적용' : s.previewTpl.price === 0 ? '무료로 받기' : s.previewTpl.price + ' 조각으로 구매') : '',
+      endPreview: () => this.setState({ previewTpl: null, screen: 'detail', tplId: s.previewTpl ? s.previewTpl.id : s.tplId }),
+      buyFromPreview: () => { const t = s.previewTpl; if (this.ownsTpl(t)) this.applyTemplate(t); else this.buy(t); },
+
+      signinOpen: s.signinOpen,
+      signIn: () => this.setState({ signedIn: true, signinOpen: false, screen: 'store' }),
+      cancelSignin: () => this.setState({ signinOpen: false }),
+
+      tapNewMirror: () => this.createMirror(),
+      newMirrorOk: s.newMirrorOk, newMirrorShort: s.newMirrorShort,
+      shortMsg: `${Math.max(0, 20 - s.shards)} 조각이 부족해요.`,
+      confirmNewMirror: () => this.createMirror(),
+      dailyLabel: s.dailyTaken ? '받음' : '받기',
+      dailySt: `padding:6px 15px;border:1.6px solid #1A1A1A;border-radius:14px 11px 15px 10px/11px 15px 10px 14px;filter:url(#pen2);font-size:15.5px;font-weight:700;cursor:pointer;${s.dailyTaken ? 'background:#F1EDE4;color:#8A857C' : 'background:#1A1A1A;color:#fff'}`,
+      adLabel: s.adsToday >= 5 ? '완료' : '보기',
+      adSt: `padding:6px 15px;border:1.6px solid #1A1A1A;border-radius:14px 11px 15px 10px/11px 15px 10px 14px;filter:url(#pen2);font-size:15.5px;font-weight:700;cursor:pointer;${s.adsToday >= 5 ? 'background:#F1EDE4;color:#8A857C' : 'background:#F1EDE4;color:#1A1A1A'}`,
+      shortDailyLabel: s.dailyTaken ? '오늘 출석은 받았어요' : '오늘의 출석 받기 · +1',
+      shortDailySt: `padding:14px 0;border:1.8px solid #1A1A1A;border-radius:18px 21px 17px 22px/21px 17px 22px 18px;filter:url(#pen);text-align:center;font-size:16.5px;font-weight:700;cursor:pointer;${s.dailyTaken ? 'background:#F4F1EA;color:#A39E94' : 'background:#1A1A1A;color:#fff'}`,
+      shortAdLabel: s.adsToday >= 5 ? '오늘 광고 보상은 끝났어요' : `광고 보고 조각 받기 · 오늘 ${s.adsToday} / 5`,
+      shortAdSt: `padding:14px 0;border:1.8px solid #1A1A1A;border-radius:21px 18px 22px 17px/18px 22px 17px 21px;filter:url(#pen);text-align:center;font-size:16.5px;font-weight:400;cursor:pointer;${s.adsToday >= 5 ? 'background:#F4F1EA;color:#A39E94' : 'background:#F1EDE4;color:#1A1A1A'}`,
+      claimDaily: () => this.claimDaily(),
+      watchAd: () => this.watchAd(),
+      adPlaying: s.adPlaying, adPct: s.adPct + '%',
+      adsToday: s.adsToday,
+      bundles: [10, 50, 100].map(n => ({ amount: n, note: '가격 준비 중', buy: () => this.buyBundle(n) })),
+      ledger: s.ledger.map(l => ({ label: l.label, amount: l.amount, amtSt: `font-size:15px;font-weight:600;color:${l.amount.indexOf('+') === 0 ? '#2E9E63' : '#1A1A1A'}` })),
+      ledgerEmpty: s.ledger.length === 0,
+      purchaseDone: !!s.purchaseDone,
+      doneTitle: s.purchaseDone ? s.purchaseDone.title : '',
+      doneSpent: s.purchaseDone ? s.purchaseDone.spent : '',
+      applyBought: () => { const p = s.purchaseDone; this.setState({ purchaseDone: null }); if (p) this.applyTemplate(p.tpl); },
+      goMineAfterBuy: () => this.setState({ purchaseDone: null, screen: 'mine', previewTpl: null }),
+
+      publishName: s.publishName,
+      publishThumbSt: this.thumb(this.publishTarget() ? this.publishTarget().variant : 'pink', 46, 80),
+      onPublishName: e => this.setState({ publishName: e.target.value }),
+      publishTags: STORE_TAGS.map(t => ({ label: t, pick: () => this.togglePublishTag(t), st: `padding:7px 12px;border-radius:14px;font-size:13.5px;cursor:pointer;border:1.6px solid #1A1A1A;filter:url(#pen2);${s.publishTags.indexOf(t) >= 0 ? 'background:#1A1A1A;color:#fff;font-weight:700' : 'background:#F9F8F4;color:#3A3733'}` })),
+      publishPriceLabel: s.publishPrice === 0 ? '무료' : s.publishPrice + ' 조각',
+      priceUp: () => this.setState({ publishPrice: Math.min(50, s.publishPrice + 5) }),
+      priceDown: () => this.setState({ publishPrice: Math.max(0, s.publishPrice - 5) }),
+      publish: () => this.publish(),
+    };
+  }
+
+  mBtn(active, off) {
+    return `width:44px;height:44px;border:1.6px solid #1A1A1A;border-radius:13px 16px 12px 15px/16px 12px 15px 13px;filter:url(#pen2);display:flex;align-items:center;justify-content:center;cursor:pointer;background:${active && !off ? 'rgba(120,120,128,.42)' : 'transparent'};color:${off ? 'rgba(255,255,255,.45)' : active ? '#1A1A1A' : '#fff'}`;
+  }
+
+  glyph(id, on) {
+    const c = on ? '#1A1A1A' : '#fff';
+    const S = p => React.createElement('svg', { width: 25, height: 25, viewBox: '0 0 24 24', fill: 'none', stroke: c, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }, p);
+    const path = d => React.createElement('path', { d, key: d });
+    if (id === 'sticker') return S([path('M4 7a3 3 0 013-3h6l7 7v6a3 3 0 01-3 3H7a3 3 0 01-3-3z'), path('M13 4v4a3 3 0 003 3h4')]);
+    if (id === 'photo') return S([React.createElement('rect', { key: 'r', x: 3, y: 5, width: 18, height: 14, rx: 3 }), React.createElement('circle', { key: 'c', cx: 9, cy: 10, r: 2 }), path('M4 17l5-4 4 3 3-2 4 3')]);
+    if (id === 'draw') return S([path('M4 20l3.5-1 10-10-2.5-2.5-10 10z'), path('M15 6.5L17.5 4 20 6.5 17.5 9')]);
+    if (id === 'text') return React.createElement('span', { style: { fontSize: 21, fontWeight: 600, color: c, lineHeight: '25px' } }, 'T');
+    if (id === 'frame') return S([React.createElement('rect', { key: 'a', x: 3, y: 3, width: 18, height: 18, rx: 2 }), React.createElement('rect', { key: 'b', x: 7.5, y: 7.5, width: 9, height: 9, rx: 1 })]);
+    return S([path('M12 3l8 4.5-8 4.5-8-4.5z'), path('M4 12.5L12 17l8-4.5')]);
+  }
+
+  enterEditor() {
+    const baseVariant = this.state.baseVariant || this.activeMirror().variant || 'plain';
+    this.setState({ screen: 'editor', side: null, tool: null, controls: false, switcherOpen: false, sel: null, baseVariant });
+    this.deferFit(null);
+  }
+  selectSide(side) {
+    const tool = this.state.needSidePick ? this.state.pendingTool : this.state.tool;
+    this.setState({ side, needSidePick: false, tool: tool || null, sel: null });
+    this.deferFit(side);
+    if (tool === 'draw') this.hint('한 손가락 그리기 · 두 손가락 이동');
+  }
+  pickTool(id) {
+    const s = this.state;
+    if (id === 'photo') { this.setState({ tool: 'photo', sheet: 'photo', sel: null }); return; }
+    if (id === 'draw' && !s.side) { this.setState({ tool: null, pendingTool: 'draw', needSidePick: true, sel: null }); return; }
+    this.setState({ tool: s.tool === id ? null : id, sel: null, needSidePick: false, eraser: false });
+  }
+  pickPhoto(i) {
+    this.setState({ pickedPhoto: i, sheet: 'removing' });
+    clearTimeout(this.procT);
+    this.procT = setTimeout(() => this.setState({ sheet: 'extract' }), 1500);
+  }
+  zoomBy(f) {
+    const v = this.state.view, { w, h } = this.vp();
+    const S = Math.max(0.6, Math.min(9, v.S * f));
+    const cx = w / 2, cy = h / 2;
+    const mx = (cx - v.panX) / v.S, my = (cy - v.panY) / v.S;
+    this.setState({ view: this.clampView({ S, panX: cx - mx * S, panY: cy - my * S }) });
+  }
+
+  bandCenter(side) {
+    const sd = side || 'right';
+    if (sd === 'top') return { x: W / 2, y: BAND.top / 2 };
+    if (sd === 'bottom') return { x: W / 2, y: H - BAND.bottom / 2 };
+    if (sd === 'left') return { x: BAND.left / 2, y: H / 2 };
+    return { x: W - BAND.right / 2, y: H / 2 };
+  }
+
+  addObj(kind, text) {
+    this.snap();
+    const s = this.state;
+    let c = this.bandCenter(s.side);
+    if (s.side) {
+      const v = s.view, { w, h } = this.vp();
+      const mx = (w / 2 - v.panX) / v.S, my = (h / 2 - v.panY) / v.S;
+      c = s.side === 'top' || s.side === 'bottom' ? { x: Math.max(30, Math.min(W - 30, mx)), y: c.y } : { x: c.x, y: Math.max(30, Math.min(H - 30, my)) };
+    }
+    const narrow = s.side === 'left' || s.side === 'right' || !s.side;
+    const base = kind === 'cutout' ? (narrow ? 0.42 : 0.62) : kind === 'text' ? (narrow ? 0.5 : 0.8) : (narrow ? 0.6 : 0.85);
+    const id = s.seq;
+    const obj = { id, kind, x: c.x, y: c.y, sc: base, rot: 0, op: 1, flip: false, locked: false, text: text || s.textValue, color: s.color === '#1C1C1E' ? '#FFFFFF' : s.color };
+    this.setState({ objs: s.objs.concat([obj]), seq: id + 1, sel: id, tool: kind === 'text' ? 'text' : s.tool });
+    this.toast(kind === 'cutout' ? '스티커를 추가했어요' : '추가했어요');
+    if (!s.side) this.hint('끌어서 이동 · 손잡이로 크기와 회전');
+  }
+  dup(id) {
+    const s = this.state, o = s.objs.find(x => x.id === id); if (!o) return;
+    this.snap();
+    const n = { ...o, id: s.seq, x: o.x + 14, y: o.y + 14 };
+    this.setState({ objs: s.objs.concat([n]), seq: s.seq + 1, sel: n.id });
+  }
+  mutate(id, fn) {
+    this.setState({ objs: this.state.objs.map(o => (o.id === id ? { ...o, ...fn(o) } : o)) });
+  }
+  reorder(id, dir) {
+    const objs = this.state.objs.slice();
+    const i = objs.findIndex(o => o.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= objs.length) return;
+    const t = objs[i]; objs[i] = objs[j]; objs[j] = t;
+    this.setState({ objs });
+  }
+
+  objDown = (e, id) => {
+    const o = this.state.objs.find(x => x.id === id);
+    if (!o || o.locked) { this.setState({ sel: id }); return; }
+    e.stopPropagation();
+    this.cap(e, this.vpEl());
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = this.toMirror(e.clientX, e.clientY);
+    this.snap();
+    this.drag = { id, ox: o.x - p.x, oy: o.y - p.y };
+    this.setState({ sel: id });
+  };
+
+  handleDown = e => {
+    e.stopPropagation();
+    const o = this.state.objs.find(x => x.id === this.state.sel); if (!o) return;
+    this.cap(e, this.vpEl());
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const v = this.state.view, { left, top } = this.vp();
+    const cx = left + v.panX + o.x * v.S, cy = top + v.panY + o.y * v.S;
+    this.snap();
+    this.handle = {
+      id: o.id, cx, cy,
+      d0: Math.hypot(e.clientX - cx, e.clientY - cy) || 1,
+      a0: Math.atan2(e.clientY - cy, e.clientX - cx),
+      sc0: o.sc, rot0: o.rot,
+    };
+  };
+
+  canvasDown = e => {
+    const s = this.state;
+    this.cap(e, this.vpEl());
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.ptrs.size === 2) {
+      this.cur = null;
+      const [a, b] = [...this.ptrs.values()];
+      this.gest = {
+        d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        a0: Math.atan2(b.y - a.y, b.x - a.x),
+        c0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        v0: { ...s.view },
+        obj: this.drag ? s.objs.find(o => o.id === this.drag.id) : null,
+      };
+      this.hint(this.gest.obj ? '오브젝트 확대 · 회전' : '캔버스 이동 · 확대');
+      return;
+    }
+    if (this.ptrs.size > 2 || this.drag || this.handle) return;
+    if (s.side && s.tool === 'draw') {
+      const p = this.toMirror(e.clientX, e.clientY);
+      if (s.eraser) { this.snap(); this.erasing = true; this.eraseAt(p); return; }
+      this.snap();
+      this.cur = { brush: s.brush, color: s.color, width: s.width / 1, pts: [p], side: s.side };
+      this.setState({ strokes: s.strokes.concat([this.cur]) });
+      return;
+    }
+    this.setState({ sel: null });
+  };
+
+  canvasMove = e => {
+    if (!this.ptrs.has(e.pointerId)) return;
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const s = this.state;
+    if (this.ptrs.size >= 2 && this.gest) {
+      const [a, b] = [...this.ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      if (this.gest.obj) {
+        const o = this.gest.obj;
+        const scale = Math.max(0.12, Math.min(4, o.sc * (d / this.gest.d0)));
+        const rot = o.rot + ((ang - this.gest.a0) * 180) / Math.PI;
+        this.mutate(o.id, () => ({ sc: scale, rot }));
+      } else {
+        const v0 = this.gest.v0;
+        const S = Math.max(0.5, Math.min(9, v0.S * (d / this.gest.d0)));
+        const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const { left, top } = this.vp();
+        const mx = (this.gest.c0.x - left - v0.panX) / v0.S, my = (this.gest.c0.y - top - v0.panY) / v0.S;
+        this.setState({ view: this.clampView({ S, panX: c.x - left - mx * S, panY: c.y - top - my * S }) });
+      }
+      return;
+    }
+    if (this.handle) {
+      const d = Math.hypot(e.clientX - this.handle.cx, e.clientY - this.handle.cy);
+      const a = Math.atan2(e.clientY - this.handle.cy, e.clientX - this.handle.cx);
+      this.mutate(this.handle.id, () => ({
+        sc: Math.max(0.12, Math.min(4, this.handle.sc0 * (d / this.handle.d0))),
+        rot: this.handle.rot0 + ((a - this.handle.a0) * 180) / Math.PI,
+      }));
+      return;
+    }
+    const p = this.toMirror(e.clientX, e.clientY);
+    if (this.drag) {
+      this.mutate(this.drag.id, () => ({
+        x: Math.max(4, Math.min(W - 4, p.x + this.drag.ox)),
+        y: Math.max(4, Math.min(H - 4, p.y + this.drag.oy)),
+      }));
+      return;
+    }
+    if (this.erasing) { this.eraseAt(p); return; }
+    if (this.cur) {
+      const last = this.cur.pts[this.cur.pts.length - 1];
+      if (Math.hypot(p.x - last.x, p.y - last.y) * s.view.S < 2.2) return;
+      this.cur.pts.push(p);
+      this.forceUpdate();
+    }
+  };
+
+  canvasUp = e => {
+    this.ptrs.delete(e.pointerId);
+    if (this.ptrs.size < 2) this.gest = null;
+    if (this.ptrs.size === 0) {
+      if (this.cur && this.cur.pts.length < 2) {
+        this.setState({ strokes: this.state.strokes.filter(x => x !== this.cur) });
+      }
+      this.cur = null; this.drag = null; this.handle = null; this.erasing = false;
+    }
+  };
+
+  eraseAt(p) {
+    const r = 14 / this.state.view.S;
+    const keep = this.state.strokes.filter(st => !st.pts.some(q => Math.hypot(q.x - p.x, q.y - p.y) < r));
+    if (keep.length !== this.state.strokes.length) this.setState({ strokes: keep });
+  }
+
+  doSave() {
+    const s = this.state;
+    let made = s.made.slice();
+    let id = s.editingMadeId;
+    if (id && made.some(m => m.id === id)) {
+      made = made.map(m => (m.id === id ? { ...m, variant: s.baseVariant, bg: s.bgColor, strokes: s.strokes, objs: s.objs } : m));
+    } else {
+      id = 'u' + (made.length + 1);
+      made.push({ id, name: made.length === 0 ? '내 거울' : '내 거울 ' + (made.length + 1), variant: s.baseVariant, bg: s.bgColor, strokes: s.strokes, objs: s.objs, listed: false, price: 0, tags: [] });
+    }
+    this.setState({ made, editingMadeId: id, mirrorId: 'm:' + id, screen: 'home', savedMine: true, controls: false, side: null, tool: null, sel: null });
+    this.toast('내 거울을 저장하고 적용했어요');
+  }
+
+  activeMirror() {
+    const s = this.state, id = String(s.mirrorId || 'p:pink');
+    if (id.indexOf('m:') === 0) { const m = s.made.find(x => 'm:' + x.id === id); if (m) return { name: m.name, variant: m.variant, bg: m.bg, kind: 'made', ref: m }; }
+    if (id.indexOf('b:') === 0) { const b = s.bought.find(x => 'b:' + x.id === id); if (b) return { name: b.name, variant: b.variant, bg: null, kind: 'bought', ref: b }; }
+    const p = BASIC.find(x => 'p:' + x.id === id) || BASIC[3];
+    return { name: p.name, variant: 'plain', bg: p.bg, kind: 'basic', ref: p };
+  }
+
+  ringStyle(bg) {
+    if (!bg) return 'display:none';
+    return 'position:absolute;top:0;left:0;right:0;bottom:0;box-sizing:border-box;filter:url(#paper);border-radius:48px;border-top:92px solid ' + bg + ';border-bottom:104px solid ' + bg + ';border-left:52px solid ' + bg + ';border-right:52px solid ' + bg;
+  }
+  libraryAll() {
+    const s = this.state;
+    return [].concat(
+      s.made.map(m => ({ key: 'm:' + m.id, id: m.id, kind: 'made', name: m.name, variant: m.variant, bg: m.bg, listed: m.listed, price: m.price })),
+      s.bought.map(b => ({ key: 'b:' + b.id, id: b.id, kind: 'bought', name: b.name, variant: b.variant, bg: null })),
+      BASIC.map(p => ({ key: 'p:' + p.id, id: p.id, kind: 'basic', name: p.name, variant: 'plain', bg: p.bg }))
+    );
+  }
+
+  tabSt(on) {
+    return 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:52px;border-radius:19px 22px 18px 23px/22px 18px 23px 19px;cursor:pointer;color:' + (on ? '#fff' : '#1A1A1A') + ';background:' + (on ? '#1A1A1A' : 'transparent') + ';opacity:' + (on ? '1' : '.62');
+  }
+  openStoreTab() {
+    if (this.state.signedIn) this.setState({ screen: 'store', previewTpl: null, rowSheet: null });
+    else this.setState({ signinOpen: true });
+  }
+  mineFiltered() {
+    const s = this.state, all = this.libraryAll();
+    if (s.mineFilter === '내가 만든') return all.filter(m => m.kind === 'made');
+    if (s.mineFilter === '구매한') return all.filter(m => m.kind === 'bought');
+    if (s.mineFilter === '판매 중') return all.filter(m => m.kind === 'made' && m.listed);
+    return all;
+  }
+  galleryItem(m) {
+    const active = this.state.mirrorId === m.key;
+    return {
+      name: m.name, variant: m.variant, ringSt: this.ringStyle(m.bg),
+      badgeSt: active ? 'padding:2px 7px;border-radius:8px;background:#1A1A1A;font-size:10.5px;font-weight:600;color:#fff' : 'display:none',
+      tap: () => this.openRowSheet(m.kind, m.id, m.name),
+    };
+  }
+  decorateActive() {
+    const am = this.activeMirror();
+    if (am.kind === 'made') { this.editMade(am.ref.id); return; }
+    this.setState({ strokes: [], objs: [], sel: null, editingMadeId: null, baseVariant: am.variant, bgColor: am.bg || '#FFFFFF', hist: [], future: [] });
+    this.enterEditor();
+  }
+  toggleProfileTag(t) {
+    const d = this.state.profileDraft || { name: this.state.profileName, tags: this.state.profileTagsSel.slice() };
+    const tags = d.tags.slice();
+    const i = tags.indexOf(t);
+    if (i >= 0) tags.splice(i, 1); else tags.push(t);
+    this.setState({ profileDraft: { name: d.name, tags } });
+  }
+
+  thumb(variant, w, h) {
+    const c = SWATCH[variant] || SWATCH.pink;
+    return `width:${w}px;height:${h}px;flex:none;border-radius:${Math.round(w * 0.2)}px;box-sizing:border-box;border:${Math.max(4, Math.round(w * 0.16))}px solid ${c};background:#221F27;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)`;
+  }
+
+  catalog() {
+    const mine = this.state.made.filter(m => m.listed).map(m => ({
+      id: 'u_' + m.id, name: m.name, creator: '나', variant: m.variant, price: m.price,
+      likes: 0, uses: 0, tags: m.tags.length ? m.tags : ['Hand Drawn'],
+      cat: m.price === 0 ? ['신규', '무료'] : ['신규'], own: true, madeId: m.id,
+    }));
+    return mine.concat(STORE);
+  }
+  catalogFiltered() {
+    const s = this.state;
+    return this.catalog().filter(t => (s.storeCat === '전체' || t.cat.indexOf(s.storeCat) >= 0) && (!s.storeTag || t.tags.indexOf(s.storeTag) >= 0));
+  }
+  ownsTpl(t) { return !!t && (!!t.own || this.state.bought.some(b => b.tplId === t.id)); }
+
+  closeSheets() {
+    this.setState({ rowSheet: null, newMirrorOk: false, newMirrorShort: false, signinOpen: false, purchaseDone: null });
+  }
+  openRowSheet(kind, id, name) { this.setState({ rowSheet: { kind, id, name } }); }
+  editBasic(id) {
+    const p = BASIC.find(x => x.id === id); if (!p) return;
+    this.setState({ rowSheet: null, strokes: [], objs: [], sel: null, editingMadeId: null, baseVariant: 'plain', bgColor: p.bg, hist: [], future: [] });
+    this.enterEditor();
+  }
+
+  rowActions() {
+    const r = this.state.rowSheet;
+    if (!r) return [];
+    const base = 'padding:16px 0;text-align:center;font-size:18.5px;color:#1A1A1A;cursor:pointer;border-top:1.4px solid #1A1A1A';
+    const acts = [];
+    acts.push({ label: '적용', st: base, run: () => this.applyRow(r) });
+    if (r.kind === 'made') {
+      acts.push({ label: '수정', st: base, run: () => this.editMade(r.id) });
+      acts.push({ label: '복제', st: base, run: () => this.dupMade(r.id) });
+      const m = this.state.made.find(x => x.id === r.id);
+      if (m && !m.listed) acts.push({ label: '상점에 올리기', st: base, run: () => this.startPublish(r.id) });
+      acts.push({ label: '삭제', st: base.replace('#1A1A1A', '#FF453A'), run: () => this.delMade(r.id) });
+    }
+    if (r.kind === 'basic') acts.push({ label: '꾸미기', st: base, run: () => this.editBasic(r.id) });
+    if (r.kind === 'bought') acts.push({ label: '삭제', st: base.replace('#1A1A1A', '#FF453A'), run: () => this.delBought(r.id) });
+    return acts;
+  }
+
+  applyRow(r) {
+    if (r.kind === 'made') { const m = this.state.made.find(x => x.id === r.id); if (m) this.applyMade(m); }
+    else if (r.kind === 'bought') { const b = this.state.bought.find(x => x.id === r.id); if (b) this.setState({ mirrorId: 'b:' + b.id, screen: 'home', rowSheet: null }); this.toast(r.name + ' 적용'); }
+    else { this.setState({ mirrorId: 'p:' + r.id, screen: 'home', rowSheet: null }); this.toast(r.name + ' 적용'); }
+  }
+  applyMade(m) {
+    this.setState({ mirrorId: 'm:' + m.id, strokes: m.strokes || [], objs: m.objs || [], baseVariant: m.variant, bgColor: m.bg || '#FFFFFF', editingMadeId: m.id, screen: 'home', rowSheet: null, sel: null, previewTpl: null });
+    this.toast(m.name + ' 적용');
+  }
+  editMade(id) {
+    const m = this.state.made.find(x => x.id === id); if (!m) return;
+    this.setState({ rowSheet: null, strokes: m.strokes || [], objs: m.objs || [], baseVariant: m.variant, bgColor: m.bg || '#FFFFFF', editingMadeId: id, sel: null });
+    this.enterEditor();
+  }
+  dupMade(id) {
+    const s = this.state, m = s.made.find(x => x.id === id); if (!m) return;
+    const nid = 'u' + (s.made.length + 1) + 'c';
+    this.setState({ made: s.made.concat([{ ...m, id: nid, name: m.name + ' 복사본', listed: false, price: 0 }]), rowSheet: null });
+    this.toast('복제했어요');
+  }
+  delMade(id) {
+    const s = this.state;
+    const made = s.made.filter(x => x.id !== id);
+    const wasActive = s.mirrorId === 'm:' + id;
+    this.setState({ made, rowSheet: null, mirrorId: wasActive ? 'pink' : s.mirrorId, editingMadeId: s.editingMadeId === id ? null : s.editingMadeId });
+    this.toast('삭제했어요');
+  }
+  delBought(id) {
+    const s = this.state;
+    this.setState({ bought: s.bought.filter(x => x.id !== id), rowSheet: null, mirrorId: s.mirrorId === 'b:' + id ? 'pink' : s.mirrorId });
+    this.toast('삭제했어요');
+  }
+
+  addLedger(label, amount) {
+    this.setState({ ledger: [{ label, amount }].concat(this.state.ledger).slice(0, 8) });
+  }
+  claimDaily() {
+    if (this.state.dailyTaken) return;
+    this.setState({ shards: this.state.shards + 1, dailyTaken: true });
+    this.addLedger('출석 보상', '+1');
+    this.toast('조각 1개를 받았어요');
+  }
+  watchAd() {
+    if (this.state.adsToday >= 5 || this.state.adPlaying) return;
+    this.setState({ adPlaying: true, adPct: 0 });
+    clearInterval(this.adT);
+    let p = 0;
+    this.adT = setInterval(() => {
+      p += 12;
+      if (p >= 100) {
+        clearInterval(this.adT);
+        this.setState({ adPlaying: false, adPct: 0, shards: this.state.shards + 1, adsToday: this.state.adsToday + 1 });
+        this.addLedger('광고 보상', '+1');
+        this.toast('조각 1개를 받았어요');
+      } else this.setState({ adPct: p });
+    }, 220);
+  }
+  buyBundle(n) {
+    this.setState({ shards: this.state.shards + n });
+    this.addLedger(n + ' 조각 구매', '+' + n);
+    this.toast(n + ' 조각을 추가했어요');
+  }
+
+  createMirror() {
+    this.setState({ newMirrorOk: false, rowSheet: null, strokes: [], objs: [], sel: null, editingMadeId: null, baseVariant: 'plain', bgColor: '#FFFFFF', hist: [], future: [] });
+    this.enterEditor();
+  }
+
+  buy(t) {
+    if (!t) return;
+    const s = this.state;
+    if (t.price > s.shards) { this.setState({ screen: 'wallet', walletFrom: s.screen === 'mirror' ? 'detail' : s.screen, previewTpl: null }); this.toast('조각이 부족해요'); return; }
+    const bought = s.bought.concat([{ id: t.id, tplId: t.id, name: t.name, creator: t.creator, variant: t.variant, price: t.price }]);
+    this.setState({ shards: s.shards - t.price, bought, previewTpl: null, purchaseDone: { title: t.price === 0 ? '받기 완료' : '구매 완료', spent: t.price === 0 ? '0' : '-' + t.price, tpl: t } });
+    this.addLedger(t.name + (t.price === 0 ? ' 받기' : ' 구매'), t.price === 0 ? '0' : '-' + t.price);
+  }
+  applyTemplate(t) {
+    if (!t) return;
+    this.setState({ mirrorId: 'b:' + t.id, screen: 'home', previewTpl: null, purchaseDone: null, controls: false });
+    this.toast(t.name + ' 적용');
+  }
+
+  publishTarget() { return this.state.made.find(m => m.id === this.state.publishId) || null; }
+  startPublish(id) {
+    const m = this.state.made.find(x => x.id === id); if (!m) return;
+    this.setState({ rowSheet: null, screen: 'publish', publishId: id, publishName: m.name, publishPrice: m.price || 15, publishTags: m.tags.length ? m.tags.slice() : ['Cute'] });
+  }
+  togglePublishTag(t) {
+    const cur = this.state.publishTags.slice();
+    const i = cur.indexOf(t);
+    if (i >= 0) cur.splice(i, 1); else cur.push(t);
+    this.setState({ publishTags: cur });
+  }
+  publish() {
+    const s = this.state;
+    if (s.shards < 20) { this.setState({ newMirrorShort: true, shortNeed: 20 }); return; }
+    const made = s.made.map(m => (m.id === s.publishId ? { ...m, name: s.publishName || m.name, price: s.publishPrice, tags: s.publishTags, listed: true } : m));
+    this.setState({ made, screen: 'mine', shards: s.shards - 20, mineFilter: '판매 중' });
+    this.addLedger('상점 등록', '-20');
+    this.toast(s.publishPrice === 0 ? '무료로 상점에 올렸어요' : '상점에 올렸어요');
+  }
+}
+</script>
+</body>
+</html>

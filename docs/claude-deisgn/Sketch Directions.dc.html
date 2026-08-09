@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@300;400;700&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #EFEDE8; }
+  a { color: #1A1A1A; } a:hover { color: #6E6A62; }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:22px;padding:40px;font-family:'Apple SD Gothic Neo',-apple-system,system-ui,sans-serif">
+  <div style="font-size:15px;color:#57544E">손그림 시각 방향 2안 · 구조·기능·플로우는 v2 그대로, 표현만 다름</div>
+  <div style="display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap">
+
+    <div id="1a" style="display:flex;flex-direction:column;gap:12px">
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+        <filter id="pen" x="-6%" y="-6%" width="112%" height="112%" filterUnits="objectBoundingBox">
+          <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed="7" result="n"></feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.7" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+        </filter>
+        <filter id="pen2" x="-6%" y="-6%" width="112%" height="112%" filterUnits="objectBoundingBox">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="23" result="n"></feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+        </filter>
+        <filter id="pen3" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox">
+          <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="41" result="n"></feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.1" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+        </filter>
+      </defs></svg>
+
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-size:12px;font-weight:700;letter-spacing:.08em;padding:4px 9px;border:1.6px solid #1A1A1A;border-radius:12px 10px 13px 9px">1A</span>
+        <span style="font-size:18px;font-weight:700;color:#141414">Clean Pen Sketch · 손맛 보강</span>
+        <span style="font-size:13px;color:#6E6A62">선에 유기적 떨림 · 구조 동일</span>
+      </div>
+
+      <div style="width:402px;height:690px;position:relative;overflow:hidden;border-radius:44px;background:#FCFBF6;box-shadow:0 0 0 1px #DCD9D2;font-family:'Gaegu',sans-serif">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;opacity:.5;background:radial-gradient(circle at 20% 18%,rgba(0,0,0,.028) 0 .9px,transparent 1px),radial-gradient(circle at 68% 52%,rgba(0,0,0,.022) 0 .8px,transparent 1px);background-size:19px 23px,29px 25px"></div>
+        <div style="position:relative;padding:52px 22px 92px">
+
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:40px">
+            <div style="display:flex;align-items:center;gap:7px;padding:6px 14px;border:1.7px solid #1A1A1A;border-radius:17px 14px 18px 13px/14px 18px 13px 17px;transform:rotate(-.35deg);filter:url(#pen2)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9.5 1.3c1.6 1.4 3.6 3.4 5 4.9.2.2.2.5 0 .7-1.8 2.1-4.9 5.7-7 7.8-.2.2-.5.2-.7 0C5.3 13.3 2.9 11 1.4 9.6c-.2-.2-.2-.5.1-.6C3.5 8.3 7 6.7 9.1 1.5c.1-.3.3-.3.4-.2Z" stroke="#1A1A1A" stroke-width="1.3" stroke-linejoin="round"></path><path d="M9.2 1.9c-.3 2.5-.6 4.5-.8 5.6-.1.4-.3.7-.7.8-1.2.3-3.3.8-5.9 1.3" stroke="#1A1A1A" stroke-width="1.05" stroke-linejoin="round"></path></svg>
+              <span style="font-size:19px;font-weight:700;color:#141414;letter-spacing:.01em">거울 8개</span>
+            </div>
+            <div style="transform:rotate(.5deg);filter:url(#pen3)"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.2 8.9c1.7-.1 3.1 1.3 3.1 3 0 1.8-1.5 3.2-3.3 3.1-1.6-.1-2.9-1.5-2.8-3.2.1-1.6 1.4-2.8 3-2.9Z"></path><path d="M10.9 3.3c.8-.2 1.7-.2 2.5 0 .3.6.4 1.3.5 2 .7.2 1.3.5 1.8.9.6-.3 1.2-.6 1.9-.8.6.5 1.2 1.2 1.6 1.9-.3.6-.7 1.2-1 1.7.3.6.5 1.2.6 1.9.6.3 1.3.5 1.9.9.1.8 0 1.7-.2 2.5-.6.3-1.3.4-2 .5-.2.6-.5 1.2-.9 1.8.3.6.6 1.2.8 1.9-.5.7-1.2 1.2-1.9 1.6-.6-.3-1.1-.7-1.7-1-.6.3-1.2.5-1.9.6-.3.7-.5 1.3-.9 1.9-.8.1-1.7.1-2.5-.1-.3-.6-.4-1.3-.6-2-.6-.2-1.2-.5-1.7-.9-.6.3-1.3.6-1.9.8-.7-.5-1.2-1.1-1.7-1.9.3-.6.7-1.1 1-1.7-.3-.6-.5-1.2-.6-1.9-.6-.3-1.3-.5-1.9-.9-.1-.8 0-1.7.2-2.5.6-.3 1.3-.4 2-.5.2-.6.5-1.3.9-1.8-.3-.6-.6-1.2-.8-1.9.5-.7 1.1-1.2 1.9-1.7.6.3 1.1.7 1.7 1 .6-.3 1.2-.5 1.9-.6.3-.6.5-1.3.9-1.9Z"></path></svg></div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:14px;padding:19px 17px;border:1.9px solid #1A1A1A;border-bottom-width:2.1px;border-radius:20px 24px 19px 25px/24px 19px 25px 20px;background:#fff;transform:rotate(-.22deg);filter:url(#pen)">
+              <div style="width:46px;height:46px;flex:none;border:1.6px solid #1A1A1A;border-radius:15px 12px 16px 13px/12px 16px 13px 15px;display:flex;align-items:center;justify-content:center;transform:rotate(.7deg)">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 2.9c2.4-.5 5.1-.4 7.4.1.9.2 1.4 1 1.4 1.9.3 4.6.4 9.9 0 14.3-.1.9-.6 1.7-1.5 1.9-2.3.4-4.9.4-7.2 0-.9-.2-1.5-.9-1.5-1.8-.4-4.6-.3-9.9-.1-14.5 0-.9.6-1.7 1.5-1.9Z"></path><path d="M9.9 7.5c-.8.8-1.2 1.7-1.2 2.7"></path></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:23px;font-weight:700;color:#141414;line-height:1.2">거울 보기</div>
+                <div style="font-size:16px;color:#6E6A62;line-height:1.35">카메라를 거울처럼 사용</div>
+              </div>
+              <svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.3c2 1.9 3.9 4 5.9 6.1-1.9 2.1-4 4.1-5.8 6.2"></path></svg>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:19px 17px;border:1.8px solid #1A1A1A;border-right-width:2.1px;border-radius:24px 20px 25px 19px/20px 25px 19px 24px;background:#fff;transform:rotate(.28deg);filter:url(#pen)">
+              <div style="width:46px;height:46px;flex:none;border:1.6px solid #1A1A1A;border-radius:12px 16px 13px 15px/16px 12px 15px 13px;display:flex;align-items:center;justify-content:center;transform:rotate(-.8deg)">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.9 20.4c1-.4 2.3-.7 3.4-1.2 3.3-3.2 6.8-6.7 10-10.1-.8-.9-1.6-1.7-2.6-2.4-3.1 3.2-6.6 6.7-9.9 10-.4 1.1-.7 2.5-.9 3.7Z"></path><path d="M15 6.5c.8-.9 1.6-1.8 2.5-2.6.9.8 1.9 1.7 2.6 2.7-.8.8-1.7 1.5-2.5 2.3"></path></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:23px;font-weight:700;color:#141414;line-height:1.2">거울 꾸미기</div>
+                <div style="font-size:16px;color:#6E6A62;line-height:1.35">지금 쓰는 거울을 바로 편집</div>
+              </div>
+              <svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.3c2 1.9 3.9 4 5.9 6.1-1.9 2.1-4 4.1-5.8 6.2"></path></svg>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:9px;margin-top:26px">
+            <div style="flex:none;padding:6px 16px;border:1.8px solid #1A1A1A;border-radius:18px 15px 19px 14px/15px 19px 14px 18px;background:#1A1A1A;color:#fff;font-size:17px;font-weight:700;transform:rotate(-.4deg);filter:url(#pen2)">전체</div>
+            <div style="flex:none;padding:6px 16px;border:1.6px solid #1A1A1A;border-radius:15px 19px 14px 18px/19px 14px 18px 15px;font-size:17px;color:#3A3733;transform:rotate(.35deg);filter:url(#pen2)">추천</div>
+            <div style="flex:none;padding:6px 16px;border:1.7px solid #1A1A1A;border-radius:19px 14px 18px 15px/14px 18px 15px 19px;font-size:17px;color:#3A3733;transform:rotate(-.28deg);filter:url(#pen2)">인기</div>
+            <div style="flex:none;padding:6px 16px;border:1.6px solid #1A1A1A;border-radius:14px 18px 15px 19px/18px 15px 19px 14px;font-size:17px;color:#3A3733;transform:rotate(.42deg);filter:url(#pen2)">무료</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+            <div>
+              <div style="height:106px;border:1.8px solid #1A1A1A;border-radius:18px 21px 17px 22px/21px 17px 22px 18px;background:#fff;display:flex;align-items:center;justify-content:center;transform:rotate(-.3deg);filter:url(#pen)">
+                <div style="width:52px;height:84px;border:1.5px solid #1A1A1A;border-radius:13px 10px 14px 11px;background:#F7D9E2"></div>
+              </div>
+              <div style="font-size:18px;font-weight:700;color:#141414;margin-top:6px">리본 하트</div>
+            </div>
+            <div>
+              <div style="height:106px;border:1.7px solid #1A1A1A;border-radius:21px 17px 22px 18px/17px 22px 18px 21px;background:#fff;display:flex;align-items:center;justify-content:center;transform:rotate(.34deg);filter:url(#pen)">
+                <div style="width:52px;height:84px;border:1.5px solid #1A1A1A;border-radius:10px 14px 11px 13px;background:#E9E7E3"></div>
+              </div>
+              <div style="font-size:18px;font-weight:700;color:#141414;margin-top:6px">크롬 버터플라이</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute;left:14px;right:14px;bottom:16px;display:grid;grid-template-columns:repeat(3,1fr);border:1.9px solid #1A1A1A;border-radius:25px 27px 24px 28px/27px 24px 28px 25px;background:#fff;overflow:hidden;filter:url(#pen)">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;background:#1A1A1A;color:#fff">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 10.7C6.5 8.2 9.2 6 12 3.9c2.9 2.2 5.6 4.4 8.4 6.8"></path><path d="M6 10.1c-.3 3.1-.2 6.1 0 9.1 4 .3 8 .3 12 0 .2-3 .3-6 0-9.1"></path></svg>
+            <span style="font-size:14px;font-weight:700">홈</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;border-left:1.6px solid #1A1A1A;color:#1A1A1A">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 8.2c5.3-.4 10.5-.3 15.8 0-.5 3.8-1 7.6-1.5 11.3-4.2.3-8.5.3-12.8 0-.4-3.8-1-7.5-1.5-11.3Z"></path><path d="M9.1 8.1c-.2-1.5-.2-3.1 1-4.1 1.1-.9 2.7-.8 3.8.1 1 1 1 2.5.8 4"></path></svg>
+            <span style="font-size:14px;font-weight:400">상점</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;border-left:1.6px solid #1A1A1A;color:#1A1A1A">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.9 5.5c0-.9.6-1.5 1.5-1.6 1.4-.2 2.8-.2 4.2 0 .8.1 1.3.7 1.4 1.5.2 4.4.2 8.9-.1 13.3 0 .8-.5 1.4-1.3 1.4-1.4.2-2.9.2-4.3 0-.8-.1-1.3-.7-1.4-1.5-.2-4.4-.2-8.8 0-13.1Z"></path><path d="M13.1 5.4c0-.8.5-1.4 1.4-1.5 1.4-.2 2.9-.2 4.3 0 .8.1 1.3.7 1.3 1.6.3 4.3.3 8.8 0 13.1 0 .8-.5 1.5-1.4 1.6-1.4.2-2.8.2-4.2 0-.9-.1-1.4-.7-1.4-1.6-.2-4.3-.2-8.8 0-13.2Z"></path></svg>
+            <span style="font-size:14px;font-weight:400">내 거울</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:402px;font-size:13px;color:#57544E;line-height:1.6;font-family:'Apple SD Gothic Neo',sans-serif">같은 구조·같은 위치. 선에 미세한 떨림(펜 필터), 변마다 다른 굵기, 0.2~0.5° 기울기, 한 획으로 그린 듯한 아이콘. 배경은 아주 옅은 종이 결.</div>
+    </div>
+
+    <div id="1b" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-size:12px;font-weight:700;letter-spacing:.08em;padding:4px 9px;border:1.6px solid #1A1A1A;border-radius:12px 10px 13px 9px">1B</span>
+        <span style="font-size:18px;font-weight:700;color:#141414">Cute Diary Sketch</span>
+        <span style="font-size:13px;color:#6E6A62">종이 질감 · 파스텔 채움 · 두들 액센트</span>
+      </div>
+
+      <div style="width:402px;height:690px;position:relative;overflow:hidden;border-radius:44px;background:#FBF6EC;box-shadow:0 0 0 1px #DCD9D2;font-family:'Gaegu',sans-serif">
+        <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 18% 12%,rgba(0,0,0,.035) 0 1px,transparent 1px),radial-gradient(circle at 62% 44%,rgba(0,0,0,.03) 0 1px,transparent 1px);background-size:22px 22px,31px 27px"></div>
+        <div style="position:relative;padding:52px 22px 92px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:38px">
+            <div style="display:flex;align-items:center;gap:7px;padding:6px 14px;border:2px solid #1A1A1A;border-radius:16px 13px 17px 12px/13px 17px 12px 16px;background:#FBE3EA;box-shadow:2px 2px 0 #1A1A1A">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9.6 1.4C11 2.7 13.4 5 14.5 6.3c.2.2.2.4 0 .6-1.6 1.9-5 5.9-7.1 8-.2.2-.4.2-.6 0C5.4 13.4 2.8 11 1.5 9.7c-.2-.2-.2-.4.1-.5C3.4 8.5 7 6.9 9.2 1.6c.1-.3.3-.3.4-.2Z" fill="#F4CCD8" stroke="#1A1A1A" stroke-width="1.4" stroke-linejoin="round"></path><path d="M9.3 1.8C8.9 4.4 8.6 6.5 8.4 7.6c-.1.4-.3.6-.7.7-1.2.3-3.4.8-6 1.3" stroke="#1A1A1A" stroke-width="1.2" stroke-linejoin="round"></path></svg>
+              <span style="font-size:20px;font-weight:700;color:#141414">거울 8개</span>
+            </div>
+            <div style="width:40px;height:40px;border:2px solid #1A1A1A;border-radius:14px 12px 15px 13px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 #1A1A1A">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3.2c.5 0 .9.4 1 .9l.2 1.6c.6.2 1.2.4 1.7.8l1.4-.8c.4-.2 1 0 1.2.4l1 1.7c.2.4.1 1-.3 1.2l-1.3 1c.1.6.1 1.2 0 1.8l1.3 1c.4.2.5.8.3 1.2l-1 1.7c-.2.4-.8.6-1.2.4l-1.4-.8c-.5.4-1.1.6-1.7.8l-.2 1.6c-.1.5-.5.9-1 .9h-2c-.5 0-.9-.4-1-.9l-.2-1.6c-.6-.2-1.2-.4-1.7-.8l-1.4.8c-.4.2-1 0-1.2-.4l-1-1.7c-.2-.4-.1-1 .3-1.2l1.3-1a6.4 6.4 0 010-1.8l-1.3-1c-.4-.2-.5-.8-.3-1.2l1-1.7c.2-.4.8-.6 1.2-.4l1.4.8c.5-.4 1.1-.6 1.7-.8l.2-1.6c.1-.5.5-.9 1-.9z"></path></svg>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:15px">
+            <div style="position:relative;display:flex;align-items:center;gap:14px;padding:19px 17px;border:2px solid #1A1A1A;border-radius:20px 24px 19px 25px/24px 19px 25px 20px;background:#fff;box-shadow:3px 3px 0 #1A1A1A">
+              <div style="position:absolute;top:-9px;left:26px;width:42px;height:16px;transform:rotate(-4deg);background:#F4CCD8;border:1.4px solid #1A1A1A;border-radius:3px"></div>
+              <div style="width:46px;height:46px;flex:none;border:1.8px solid #1A1A1A;border-radius:15px 12px 16px 13px;background:#E7EFF7;display:flex;align-items:center;justify-content:center">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.6" stroke-linejoin="round"><path d="M8.4 2.9c2.3-.4 5-.4 7.2 0 .9.2 1.5 1 1.5 1.9.3 4.7.3 10 0 14.4-.1.9-.7 1.7-1.6 1.8-2.2.4-4.8.4-7 0-.9-.1-1.5-.9-1.6-1.8-.3-4.5-.3-9.8 0-14.5 0-.9.6-1.7 1.5-1.8Z"></path><path d="M9.8 7.6c-.7.7-1.1 1.6-1.1 2.6"></path></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:24px;font-weight:700;color:#141414;line-height:1.2">거울 보기</div>
+                <div style="font-size:16px;color:#6E6A62;line-height:1.3">카메라를 거울처럼 사용</div>
+              </div>
+              <svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1.6 1.4c1.9 2 3.9 4 5.8 6.1-1.9 2-3.9 4-5.8 6"></path></svg>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:19px 17px;border:2px solid #1A1A1A;border-radius:24px 20px 25px 19px/20px 25px 19px 24px;background:#fff;box-shadow:3px 3px 0 #1A1A1A">
+              <div style="width:46px;height:46px;flex:none;border:1.8px solid #1A1A1A;border-radius:12px 15px 13px 16px;background:#FBE3EA;display:flex;align-items:center;justify-content:center">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 20.3c.9-.3 2.3-.7 3.4-1.1 3.4-3.3 6.9-6.8 10-10-.7-.9-1.6-1.8-2.5-2.5-3.2 3.1-6.7 6.6-10 10-.4 1.1-.7 2.5-.9 3.6Z"></path><path d="M15.1 6.4c.8-.8 1.6-1.7 2.4-2.5.9.8 1.8 1.7 2.6 2.6-.8.8-1.7 1.6-2.5 2.4"></path></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:24px;font-weight:700;color:#141414;line-height:1.2">거울 꾸미기</div>
+                <div style="font-size:16px;color:#6E6A62;line-height:1.3">지금 쓰는 거울을 바로 편집</div>
+              </div>
+              <svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="#1A1A1A" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1.6 1.4c1.9 2 3.9 4 5.8 6.1-1.9 2-3.9 4-5.8 6"></path></svg>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:9px;margin-top:26px">
+            <div style="flex:none;padding:6px 16px;border:2px solid #1A1A1A;border-radius:17px 15px 18px 14px;background:#1A1A1A;color:#fff;font-size:17px;font-weight:700">전체</div>
+            <div style="flex:none;padding:6px 16px;border:2px solid #1A1A1A;border-radius:15px 18px 14px 17px;background:#FBE3EA;font-size:17px;color:#1A1A1A">추천</div>
+            <div style="flex:none;padding:6px 16px;border:2px solid #1A1A1A;border-radius:18px 14px 17px 15px;background:#E7EFF7;font-size:17px;color:#1A1A1A">인기</div>
+            <div style="flex:none;padding:6px 16px;border:2px solid #1A1A1A;border-radius:14px 17px 15px 18px;background:#EDE8F7;font-size:17px;color:#1A1A1A">무료</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:14px">
+            <div>
+              <div style="height:106px;border:2px solid #1A1A1A;border-radius:18px 20px 17px 21px;background:#fff;box-shadow:3px 3px 0 #1A1A1A;display:flex;align-items:center;justify-content:center">
+                <div style="width:52px;height:84px;border:1.7px solid #1A1A1A;border-radius:12px 10px 13px 11px;background:#F7D9E2"></div>
+              </div>
+              <div style="font-size:18px;font-weight:700;color:#141414;margin-top:7px">리본 하트</div>
+            </div>
+            <div>
+              <div style="height:106px;border:2px solid #1A1A1A;border-radius:20px 17px 21px 18px;background:#fff;box-shadow:3px 3px 0 #1A1A1A;display:flex;align-items:center;justify-content:center">
+                <div style="width:52px;height:84px;border:1.7px solid #1A1A1A;border-radius:10px 13px 11px 12px;background:#E3E6EA"></div>
+              </div>
+              <div style="font-size:18px;font-weight:700;color:#141414;margin-top:7px">크롬 버터플라이</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute;left:14px;right:14px;bottom:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;border:2px solid #1A1A1A;border-radius:20px 22px 19px 23px;background:#1A1A1A;color:#fff;box-shadow:2px 2px 0 #1A1A1A">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.7 10.6C6.4 8.3 9.2 6.1 12 4c2.8 2.1 5.6 4.3 8.3 6.6"></path><path d="M6 10.2c-.2 3-.2 6 0 9 4 .2 8 .2 12 0 .2-3 .2-6 0-9"></path></svg>
+            <span style="font-size:14px;font-weight:700">홈</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;border:2px solid #1A1A1A;border-radius:22px 19px 23px 20px;background:#fff;color:#1A1A1A;box-shadow:2px 2px 0 #1A1A1A">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 8.1c5.2-.3 10.4-.3 15.6 0-.5 3.8-1 7.5-1.4 11.2-4.3.3-8.5.3-12.8 0-.4-3.7-.9-7.4-1.4-11.2Z"></path><path d="M9.2 8c-.1-1.5-.2-3 1-4 1.1-.9 2.6-.9 3.7 0 1.1 1 1 2.5.9 4"></path></svg>
+            <span style="font-size:14px;font-weight:400">상점</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0;border:2px solid #1A1A1A;border-radius:19px 23px 20px 22px;background:#fff;color:#1A1A1A;box-shadow:2px 2px 0 #1A1A1A">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3.9 5.4c0-.8.6-1.4 1.4-1.5 1.4-.2 2.9-.2 4.3 0 .8.1 1.3.7 1.3 1.5.2 4.4.2 8.8 0 13.2 0 .8-.5 1.4-1.3 1.5-1.4.2-2.9.2-4.3 0-.8-.1-1.4-.7-1.4-1.5-.2-4.4-.2-8.8 0-13.2Z"></path><path d="M13.1 5.4c0-.8.5-1.4 1.3-1.5 1.4-.2 2.9-.2 4.3 0 .8.1 1.4.7 1.4 1.5.2 4.4.2 8.8 0 13.2 0 .8-.6 1.4-1.4 1.5-1.4.2-2.9.2-4.3 0-.8-.1-1.3-.7-1.3-1.5-.2-4.4-.2-8.8 0-13.2Z"></path></svg>
+            <span style="font-size:14px;font-weight:400">내 거울</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:402px;font-size:13px;color:#57544E;line-height:1.6;font-family:'Apple SD Gothic Neo',sans-serif">2px 선 + 오프셋 그림자, 파스텔 채움, 테이프·점 두들. 다꾸 감성은 더 강하지만 요소마다 색·그림자가 붙어 거울 자체보다 앱이 먼저 보임.</div>
+    </div>
+
+  </div>
+</section>
+
+</x-dc>
+</body>
+</html>
