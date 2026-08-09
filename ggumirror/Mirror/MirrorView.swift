@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct MirrorView: View {
+    var onGoHome: () -> Void
+
     /// 마지막 interaction 이후 컨트롤이 사라지기까지의 시간. Prototype 기준값.
     private static let autoHideDelay = Duration.milliseconds(4200)
 
@@ -50,17 +52,23 @@ struct MirrorView: View {
             // 순서 = 레이어 순서. 카메라 → 장식 → 컨트롤 → flash.
             if isMirrorLive {
                 DecorationOverlay()
-
-                if areControlsVisible {
-                    MirrorControls(onInteraction: registerInteraction, onCapture: capture)
-                        .transition(.opacity)
-                }
-
-                Color.white
-                    .opacity(flashOpacity)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
             }
+
+            // 카메라를 못 쓰는 상태에서도 Home으로는 나갈 수 있어야 한다.
+            if areControlsVisible {
+                MirrorControls(
+                    onInteraction: registerInteraction,
+                    onGoHome: onGoHome,
+                    onCapture: capture,
+                    showsCapture: isMirrorLive
+                )
+                .transition(.opacity)
+            }
+
+            Color.white
+                .opacity(flashOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
         }
         .ignoresSafeArea()
         .statusBarHidden()
@@ -136,7 +144,6 @@ struct MirrorView: View {
     }
 
     private func toggleControls() {
-        guard isMirrorLive else { return }
         withAnimation(.easeOut(duration: 0.18)) { areControlsVisible.toggle() }
         registerInteraction()
     }
@@ -178,5 +185,5 @@ struct MirrorView: View {
 }
 
 #Preview {
-    MirrorView()
+    MirrorView(onGoHome: {})
 }

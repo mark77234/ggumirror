@@ -5,11 +5,30 @@
 ## Core
 - 앱 실행 직후 첫 화면은 Mirror Camera.
 - Mirror는 전면 카메라 + 좌우 반전 + edge-to-edge.
-- Mirror 화면은 Zoom, 밝기, Freeze, Capture, Decoration On/Off, Back만 담당.
-- Back → Home.
+- 앱 전체 Portrait only. Landscape 대응 없음.
 - Home에는 보유 거울 개수, 설정, 거울 보기, 거울 꾸미기만 표시.
 - 거울 꾸미기 → 현재 사용 중인 거울 Editor로 즉시 진입.
 - Main Tab: 홈 / 상점 / 내 거울.
+- Mirror는 immersive full-screen. Tab Bar를 표시하지 않는다.
+
+## Mirror (확정)
+Mirror 화면의 액션은 **홈으로 / 촬영** 둘뿐이다.
+
+- 기본 상태: Camera + Decoration만. 다른 UI 없음.
+- 화면 탭 → 홈으로 + 촬영 표시.
+- 마지막 interaction 후 4.2초 → 다시 숨김.
+- 다시 탭하면 재표시.
+- 홈으로 → Home.
+- Decoration은 항상 표시. On/Off 없음.
+- Freeze 없음. Zoom 없음. 화면 밝기 조절 없음.
+
+## Capture (확정)
+- 촬영 결과 = 지금 보고 있는 세로 Mirror 화면 그대로.
+- 화면과 동일한 crop / 좌우 반전 / Decoration 위치 / 화면 비율.
+- 결과는 항상 Portrait. orientation metadata가 아니라 실제 pixel 기준.
+- 화면 screenshot이 아니라 원본 camera frame + Decoration을 합성한다.
+- transient controls(홈으로, 촬영 버튼 등)는 결과 이미지에 포함하지 않는다.
+- 저장은 Photos. 사진 추가 권한(add-only)만 사용한다.
 
 ## Editor
 - 하나의 연속된 Mirror Canvas.

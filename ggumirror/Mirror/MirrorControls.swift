@@ -10,7 +10,10 @@ import SwiftUI
 struct MirrorControls: View {
     /// 컨트롤을 건드릴 때마다 호출 — auto-hide 타이머를 다시 시작한다.
     var onInteraction: () -> Void
+    var onGoHome: () -> Void
     var onCapture: () -> Void
+    /// 카메라가 살아 있을 때만 촬영 버튼을 보여준다. 홈으로는 항상 필요하다.
+    var showsCapture: Bool = true
 
     /// Claude Design(Mirror App v2, 402 x 874 기준)의 배치를 0...1 normalized로 옮긴 값.
     /// 기기 크기가 달라져도 같은 비율로 놓인다.
@@ -41,9 +44,11 @@ struct MirrorControls: View {
                     .padding(.top, height * Layout.homeTop)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-                captureButton
-                    .padding(.bottom, height * Layout.shutterBottom)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                if showsCapture {
+                    captureButton
+                        .padding(.bottom, height * Layout.shutterBottom)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
             }
         }
         .ignoresSafeArea()
@@ -51,7 +56,8 @@ struct MirrorControls: View {
 
     private var homeButton: some View {
         Button {
-            onInteraction()   // Home 화면은 아직 범위 밖 — 이동하지 않는다.
+            onInteraction()
+            onGoHome()
         } label: {
             HStack(spacing: 6) {
                 // iOS 기본 back처럼 보이지 않게 chevron 대신 집 아이콘을 쓴다.
@@ -94,7 +100,7 @@ struct MirrorControls: View {
 #Preview {
     ZStack {
         Color.gray
-        MirrorControls(onInteraction: {}, onCapture: {})
+        MirrorControls(onInteraction: {}, onGoHome: {}, onCapture: {})
     }
     .ignoresSafeArea()
 }

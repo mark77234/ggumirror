@@ -38,51 +38,58 @@ AVFoundation:
 - UI 버튼만 safe area 고려
 
 ### 4. Decoration Overlay
-Phase 1에서는 로컬 샘플 1개만.
+항상 표시한다. On/Off 토글은 제품에서 제외.
+
 - transparent overlay
-- touch 차단
+- 터치를 가로채지 않음
 - 화면 프레임에 정렬
-- Decoration On/Off
-- 비균등 Stretch 금지
+- 비균등 Stretch 금지 (Uniform Scale + Crop)
+- 프레임/배경은 물리적 화면 끝까지 채우고 중앙 Mirror Area만 투명
 
 Editor는 아직 만들지 않음.
 
 ### 5. Controls
+Mirror의 액션은 **홈으로 / 촬영** 둘뿐이다.
+
+- 기본 상태에는 아무 컨트롤도 보이지 않음
 - 탭하면 표시
-- inactivity 후 숨김
-- slider 조작 시 timer reset
-- Prototype 기준 약 4.2초
+- 마지막 interaction 후 약 4.2초에 숨김
+- 다시 탭하면 재표시
 
-### 6. Zoom
-AVCaptureDevice.videoZoomFactor 사용.
-기기 지원 범위 내 clamp.
+### 6. Portrait only
+- 앱 supported orientation은 iPhone Portrait 하나
+- camera preview와 frame pipeline 모두 Portrait 고정
+- Landscape 대응 없음
 
-### 7. Brightness
-Mirror 밝기는 카메라 exposure가 아니라 화면 밝기로 취급.
-- Mirror 진입 전 brightness 기억
-- Mirror에서 조절
-- 적절한 시점에 원래 밝기 복원
+### 7. Capture
+사용자가 보고 있는 완성된 거울 화면을 이미지로 만든다.
 
-### 8. Freeze
-권장:
-- VideoDataOutput에서 latest frame 확보
-- Freeze 시 최신 프레임을 live preview 위에 overlay
-- Unfreeze 시 제거
-- camera session은 계속 유지해서 재시작 지연 방지
+- 원본 camera frame + Decoration 합성 (화면 screenshot 아님)
+- 화면과 동일한 crop / 좌우 반전 / Decoration 정렬 / 화면 비율
+- 결과는 실제 pixel 기준 Portrait
+- transient controls는 결과에 포함하지 않음
+- Photos 저장은 add-only 권한만 사용, 거부 시 crash 없이 안내
 
-### 9. Capture
-현재 거울 화면 캡처.
-최종적으로 decoration 포함 결과를 저장할 수 있어야 함.
-
-### 10. Back → Home
+### 8. Home Routing
 첫 시작은 Mirror.
-Back → Home.
 
-Phase 1의 Home은 routing 검증만 가능하면 됨:
-- 거울 개수
-- 설정 placeholder
+- Mirror 탭 → 홈으로 → Home
+- Home → 거울 보기 → Mirror
+- Mirror에는 Tab Bar를 표시하지 않음
+
+Phase 1의 Home은 4개만 표시:
+- 보유 거울 개수
+- 설정 (placeholder)
 - 거울 보기
-- 거울 꾸미기 placeholder
+- 거울 꾸미기 (UI만)
+
+## 제품에서 제외한 것
+실기기 검증 후 Mirror에서 제외하기로 확정.
+
+- Freeze / 화면 고정
+- Zoom
+- 화면 밝기 조절
+- Decoration On/Off
 
 ## Phase 1 Definition of Done
 실제 iPhone에서 전부 확인:
@@ -91,16 +98,16 @@ Phase 1의 Home은 routing 검증만 가능하면 됨:
 - 권한 허용 → front camera
 - mirrored preview
 - edge-to-edge, 빈 테두리 없음
-- decoration overlay 정렬
-- tap controls
-- auto-hide
-- zoom
-- brightness
-- freeze/unfreeze 반복
-- capture
-- decoration toggle
-- Back → Home
-- Home → Mirror 재진입
+- decoration overlay 정렬, 중앙만 투명
+- tap → 홈으로 / 촬영 표시
+- 4.2초 auto-hide, 재탭 시 재표시
+- Portrait 고정 (기기를 눕혀도 회전하지 않음)
+- capture 결과가 화면과 동일 (crop / 좌우 반전 / decoration / 비율)
+- capture 결과가 Photos에서 Portrait
+- 사진 권한 거부 시 crash 없이 안내
+- 홈으로 → Home
+- Home → 거울 보기 → Mirror 재진입
+- Mirror에 Tab Bar가 보이지 않음
 - background/foreground 후 session 정상
 - main thread camera configuration warning 없음
 
@@ -119,8 +126,9 @@ Phase 1의 Home은 routing 검증만 가능하면 됨:
 1. `chore(ios): establish handoff docs and project structure`
 2. `feat(camera): add mirrored front camera preview`
 3. `feat(mirror): add controls and decoration overlay`
-4. `feat(mirror): add freeze brightness zoom and capture`
-5. `test(mirror): validate phase one device flows`
+4. `feat(mirror): add portrait capture and photo save`
+5. `feat(home): add home routing`
+6. `test(mirror): validate phase one device flows`
 
 ## Later
 Phase 2: Home + Design System
