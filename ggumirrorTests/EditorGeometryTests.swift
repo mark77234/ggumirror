@@ -710,6 +710,158 @@ struct EditorGeometryTests {
         #expect(result.dark > 0 || brush.opacity < 0.5, "\(brush.title) 획이 렌더되지 않음")
     }
 
+    // MARK: - 실제 Mirror 적용
+
+    /// 실제 카메라 위 장식과 같은 방식으로 렌더한 뒤, 지정한 정규화 지점의 픽셀을 읽는다.
+    private func runtimePixel(
+        design: MirrorDesign,
+        at point: NormalizedPoint,
+        size: CGSize = CGSize(width: 300, height: 650)
+    ) -> (red: Int, green: Int, blue: Int, alpha: Int)? {
+        let view = MirrorDecorationView(design: design).frame(width: size.width, height: size.height)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        renderer.isOpaque = false
+        guard let image = renderer.cgImage else { return nil }
+
+        let width = image.width, height = image.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let transform = MirrorViewTransform.aspectFilled(in: CGSize(width: width, height: height))
+        let screen = transform.point(point)
+        let x = min(max(Int(screen.x), 0), width - 1)
+        let y = min(max(Int(screen.y), 0), height - 1)
+        let i = (y * width + x) * 4
+        return (Int(data[i]), Int(data[i + 1]), Int(data[i + 2]), Int(data[i + 3]))
+    }
+
+    private func mirrorDesign(_ basic: BasicMirror) -> MirrorDesign {
+        MirrorDesign(mirror: MyMirror(id: basic.id, name: basic.name, origin: .basic, style: basic.style))
+    }
+
+    @Test("실제 Mirror에서 중앙은 완전히 투명하다")
+    func runtimeCenterIsTransparent() {
+        let pixel = runtimePixel(design: mirrorDesign(.cream), at: NormalizedPoint(x: 0.5, y: 0.5))
+        #expect(pixel?.alpha == 0)
+    }
+
+    @Test("프레임 배경색이 실제 Mirror에 적용된다")
+    func runtimeFrameUsesBackgroundColor() {
+        let white = runtimePixel(design: mirrorDesign(.white), at: NormalizedPoint(x: 0.05, y: 0.5))
+        let black = runtimePixel(design: mirrorDesign(.black), at: NormalizedPoint(x: 0.05, y: 0.5))
+
+        #expect(white?.alpha ?? 0 > 200)
+        #expect(black?.alpha ?? 0 > 200)
+        #expect((white?.red ?? 0) > (black?.red ?? 255) + 100)
+    }
+
+    /// 네 면과 모서리에 그린 획이 실제 Mirror의 같은 자리에 나타난다.
+    @Test(
+        "그린 획이 실제 Mirror의 같은 위치에 보인다",
+        arguments: [
+            NormalizedPoint(x: 0.05, y: 0.30),   // Left
+            NormalizedPoint(x: 0.95, y: 0.70),   // Right
+            NormalizedPoint(x: 0.50, y: 0.03),   // Top
+            NormalizedPoint(x: 0.50, y: 0.97),   // Bottom
+            NormalizedPoint(x: 0.95, y: 0.03)    // Corner
+        ]
+    )
+    func runtimeShowsDrawingAtSamePlace(point: NormalizedPoint) {
+        var design = mirrorDesign(.white)
+        design.strokes = [
+            DrawingStroke(
+                points: [point, NormalizedPoint(x: point.x, y: point.y + 0.005)],
+                color: .black,
+                width: 40 / MirrorCanvas.size.width
+            )
+        ]
+        let inked = runtimePixel(design: design, at: point)
+        let empty = runtimePixel(design: mirrorDesign(.white), at: point)
+
+        #expect((inked?.red ?? 255) < 120, "획이 보이지 않음")
+        #expect((empty?.red ?? 0) > 200, "획이 없는 상태와 구분되지 않음")
+    }
+
+    @Test("중앙 Mirror Area에는 획이 남지 않는다")
+    func runtimeNeverDrawsOverCamera() {
+        var design = mirrorDesign(.white)
+        // 중앙을 가로지르는 획을 억지로 넣어도 마스크가 막는다.
+        design.strokes = [
+            DrawingStroke(
+                points: [NormalizedPoint(x: 0.2, y: 0.5), NormalizedPoint(x: 0.8, y: 0.5)],
+                color: .black,
+                width: 40 / MirrorCanvas.size.width
+            )
+        ]
+        #expect(runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha == 0)
+    }
+
+    @Test("Editor viewport 상태는 실제 Mirror 결과에 영향을 주지 않는다")
+    func runtimeIgnoresEditorViewport() {
+        var design = mirrorDesign(.softPink)
+        design.strokes = [
+            DrawingStroke(
+                points: [NormalizedPoint(x: 0.95, y: 0.9), NormalizedPoint(x: 0.95, y: 0.92)],
+                color: .black,
+                width: 40 / MirrorCanvas.size.width
+            )
+        ]
+        // Editor에서 확대·이동한 뒤 저장해도 Master 좌표만 남는다.
+        _ = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
+                                state: .init(zoom: 3, pan: CGSize(width: 0, height: -900)))
+        let pixel = runtimePixel(design: design, at: NormalizedPoint(x: 0.95, y: 0.91))
+        #expect((pixel?.red ?? 255) < 120)
+    }
+
+    @Test("모든 거울이 같은 프레임 규격을 쓴다")
+    func everyMirrorSharesFrameGeometry() {
+        let library = MirrorLibrary()
+        for mirror in library.mirrors {
+            #expect(mirror.style.insets == .standard)
+        }
+        for template in StoreCatalog.samples {
+            #expect(template.style.insets == .standard)
+        }
+        #expect(MirrorFrameInsets.standard.left == 108.0 / 1080.0)
+        #expect(abs(MirrorFrameInsets.standard.top - 180.0 / 2340.0) < 0.0001)
+    }
+
+    @Test("적용을 바꾸면 현재 거울이 바뀐다")
+    func applyingChangesCurrentMirror() {
+        let library = MirrorLibrary()
+        let target = library.mirrors[1]
+        library.apply(target)
+        #expect(library.currentMirror.id == target.id)
+        #expect(MirrorDesign(mirror: library.currentMirror).style.frame == target.style.frame)
+    }
+
+    @Test("Editor 저장이 현재 거울 디자인에 바로 반영된다")
+    func savingUpdatesCurrentDesign() {
+        let library = MirrorLibrary()
+        var design = MirrorDesign(mirror: library.currentMirror)
+        design.backgroundColor = BasicMirror.mint.style.frame
+        design.strokes = [DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.4)], width: 0.01)]
+        library.save(design)
+
+        let updated = MirrorDesign(mirror: library.currentMirror)
+        #expect(updated.backgroundColor == BasicMirror.mint.style.frame)
+        #expect(updated.strokes.count == 1)
+    }
+
+    @Test("라이브러리가 비어도 안전한 기본 거울로 대체된다")
+    func fallbackDesignIsWhite() {
+        let fallback = MirrorDesign.fallback
+        #expect(fallback.style.frame == BasicMirror.white.style.frame)
+        #expect(fallback.insets == .standard)
+        #expect(fallback.strokes.isEmpty)
+    }
+
     // MARK: - 지우개
 
     @Test("지우개는 반경 안의 획만 지운다")

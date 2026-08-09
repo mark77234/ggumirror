@@ -22,7 +22,7 @@ struct RootView: View {
     var body: some View {
         switch screen {
         case .mirror:
-            MirrorView(onGoHome: { screen = .home })
+            MirrorView(library: library, onGoHome: { screen = .home })
         case .home:
             HomeView(
                 library: library,

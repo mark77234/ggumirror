@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct MirrorView: View {
+    /// 현재 적용 중인 거울의 단일 source of truth.
+    var library: MirrorLibrary
     var onGoHome: () -> Void
 
     /// 마지막 interaction 이후 컨트롤이 사라지기까지의 시간. Prototype 기준값.
@@ -51,7 +53,7 @@ struct MirrorView: View {
 
             // 순서 = 레이어 순서. 카메라 → 장식 → 컨트롤 → flash.
             if isMirrorLive {
-                DecorationOverlay()
+                MirrorDecorationView(design: currentDesign)
             }
 
             // 카메라를 못 쓰는 상태에서도 Home으로는 나갈 수 있어야 한다.
@@ -100,11 +102,16 @@ struct MirrorView: View {
         }
     }
 
+    /// 매번 라이브러리에서 읽으므로 Editor 저장 / 적용이 즉시 반영된다.
+    private var currentDesign: MirrorDesign {
+        library.mirrors.isEmpty ? .fallback : MirrorDesign(mirror: library.currentMirror)
+    }
+
     private func capture() {
-        // 화면 캡처가 아니라 원본 프레임 + 장식을 직접 합성한다.
+        // 화면 캡처가 아니라 원본 프레임 + 현재 거울 디자인을 직접 합성한다.
         guard let image = MirrorCapture.compose(
             frame: camera.currentFrame(),
-            decoration: UIImage(named: DecorationOverlay.sampleAssetName),
+            design: currentDesign,
             size: screenPixelSize
         ) else {
             saveAlert = SaveAlert(message: "지금은 저장할 화면을 만들 수 없어요.", showsSettings: false)
@@ -185,5 +192,5 @@ struct MirrorView: View {
 }
 
 #Preview {
-    MirrorView(onGoHome: {})
+    MirrorView(library: MirrorLibrary(), onGoHome: {})
 }

@@ -24,6 +24,20 @@ struct MirrorViewTransform: Equatable {
         MirrorViewTransform(canvasSize: size, offset: .zero)
     }
 
+    /// 화면을 꽉 채우고 넘치는 부분만 잘라내는 변환 (Uniform Scale + Crop).
+    /// 카메라 preview의 resizeAspectFill과 같은 규칙이라 실제 Mirror / Capture가 같은 자리에 그린다.
+    static func aspectFilled(in size: CGSize) -> MirrorViewTransform {
+        let scale = max(size.width / MirrorCanvas.size.width, size.height / MirrorCanvas.size.height)
+        let canvas = CGSize(
+            width: MirrorCanvas.size.width * scale,
+            height: MirrorCanvas.size.height * scale
+        )
+        return MirrorViewTransform(
+            canvasSize: canvas,
+            offset: CGPoint(x: (size.width - canvas.width) / 2, y: (size.height - canvas.height) / 2)
+        )
+    }
+
     func rect(_ normalized: NormalizedRect) -> CGRect {
         normalized.rect(in: canvasSize).offsetBy(dx: offset.x, dy: offset.y)
     }
@@ -44,33 +58,41 @@ enum MirrorRenderer {
     /// 거울 면. 그라디언트 없이 평평한 톤으로만 표현한다.
     static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 
+    /// - Parameter mirrorAreaFill: 중앙 Mirror Area를 채울 색.
+    ///   실제 카메라 위에 얹을 때는 nil을 줘서 완전히 투명하게 남긴다.
     static func draw(
         style: MirrorStyle,
         strokes: [DrawingStroke],
         activeStroke: DrawingStroke? = nil,
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
+        mirrorAreaFill: Color? = glass,
         in context: GraphicsContext,
         viewport: CGSize
     ) {
-        let canvas = transform.canvasRect
         let visible = CGRect(origin: .zero, size: viewport)
+        let frame = framePath(insets: style.insets, transform: transform)
 
-        // 1. 프레임 배경 + 종이 결
-        context.fill(Path(canvas), with: .color(style.frame))
-        drawGrain(in: context, transform: transform, visible: visible)
+        // 1. 프레임 배경 + 종이 결 — 프레임 영역 안에서만 그린다.
+        //    중앙은 손대지 않으므로 카메라 영상이 그대로 비친다.
+        var paper = context
+        paper.clip(to: frame, style: FrameMaskShape.fillStyle)
+        paper.fill(frame, with: .color(style.frame), style: FrameMaskShape.fillStyle)
+        drawGrain(in: paper, transform: transform, visible: visible)
 
-        // 2. 중앙 Mirror Area
-        let mirror = transform.rect(style.insets.mirrorArea)
-        context.fill(
-            Path(roundedRect: mirror, cornerRadius: min(10, mirror.width / 8)),
-            with: .color(glass)
-        )
+        // 2. 중앙 Mirror Area (Editor / Gallery 미리보기에서만 칠한다)
+        if let mirrorAreaFill {
+            let mirror = transform.rect(style.insets.mirrorArea)
+            context.fill(
+                Path(roundedRect: mirror, cornerRadius: min(10, mirror.width / 8)),
+                with: .color(mirrorAreaFill)
+            )
+        }
 
         // 3. 사용자 획 — FrameMask 안에서만 보인다.
         //    데이터를 자르지 않고 clip으로만 가린다.
         var inked = context
-        inked.clip(to: framePath(insets: style.insets, transform: transform), style: FrameMaskShape.fillStyle)
+        inked.clip(to: frame, style: FrameMaskShape.fillStyle)
         for stroke in strokes.filter({ !hiddenStrokeIDs.contains($0.id) }).sorted(by: { $0.zIndex < $1.zIndex }) {
             drawStroke(stroke, in: inked, transform: transform, visible: visible)
         }
