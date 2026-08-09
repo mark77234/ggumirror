@@ -171,3 +171,209 @@ struct InkChip: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .paperBackground()
 }
+
+// MARK: - 조각 (currency)
+
+/// 깨진 5각형 거울 파편 + 반사선 2개 + 잉크 아웃라인 (DESIGN.md).
+struct ShardShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        // 16 x 16 기준 좌표를 rect 크기로 맞춘다.
+        let unit = min(rect.width, rect.height) / 16
+        func point(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: rect.minX + x * unit, y: rect.minY + y * unit)
+        }
+
+        var path = Path()
+        path.move(to: point(10.2, 1.2))
+        path.addLine(to: point(14.6, 6.4))
+        path.addLine(to: point(8.9, 14.7))
+        path.addLine(to: point(1.6, 9.9))
+        path.addLine(to: point(4.7, 5.1))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// 조각 아이콘. 파편 외곽선 + 반사선 2개.
+struct ShardIcon: View {
+    var size: CGFloat = 15
+
+    var body: some View {
+        ZStack {
+            ShardShape()
+                .fill(PaperTheme.subtleSurface)
+            ShardShape()
+                .stroke(PaperTheme.ink, style: StrokeStyle(lineWidth: 1.35, lineJoin: .round))
+            reflections
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private var reflections: some View {
+        GeometryReader { geometry in
+            let unit = min(geometry.size.width, geometry.size.height) / 16
+            Path { path in
+                path.move(to: CGPoint(x: 6.5 * unit, y: 5.6 * unit))
+                path.addLine(to: CGPoint(x: 9.7 * unit, y: 9.9 * unit))
+                path.move(to: CGPoint(x: 4.9 * unit, y: 8.1 * unit))
+                path.addLine(to: CGPoint(x: 6.7 * unit, y: 10.5 * unit))
+            }
+            .stroke(PaperTheme.ink, style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+        }
+    }
+}
+
+/// "12 조각"처럼 가격 / 잔액을 보여준다. 재화 이름은 항상 "조각".
+struct ShardAmount: View {
+    let amount: Int
+    var font: Font = InkFont.caption
+    var iconSize: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ShardIcon(size: iconSize)
+            Text(amount == 0 ? "무료" : "\(amount)")
+                .font(font)
+                .foregroundStyle(PaperTheme.ink)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(amount == 0 ? "무료" : "\(amount) 조각")
+    }
+}
+
+// MARK: - Filter
+
+/// 가로 스크롤 필터 칩. 상점 / 내 거울에서 함께 쓴다.
+struct InkFilterBar<Item: Identifiable & Equatable>: View {
+    let items: [Item]
+    @Binding var selection: Item
+    let label: (Item) -> String
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 7) {
+                ForEach(items) { item in
+                    let isSelected = item == selection
+                    Button {
+                        selection = item
+                    } label: {
+                        Text(label(item))
+                            .font(InkFont.secondary)
+                            .foregroundStyle(isSelected ? PaperTheme.subtleSurface : PaperTheme.ink)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .background {
+                                let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                shape
+                                    .fill(isSelected ? PaperTheme.ink : .clear)
+                                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.5))
+                            }
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .accessibilityLabel(label(item))
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+    }
+}
+
+/// 여러 개를 고를 수 있는 태그 칩. 프로필 태그에 쓴다.
+struct InkToggleChip: View {
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(InkFont.secondary)
+                .foregroundStyle(isOn ? PaperTheme.subtleSurface : PaperTheme.ink)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .frame(minHeight: 44)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                    shape
+                        .fill(isOn ? PaperTheme.ink : .clear)
+                        .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.5))
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+// MARK: - List row
+
+/// 설정처럼 잉크 구분선으로 나뉜 줄. 오른쪽에 값 / chevron / 스위치를 놓을 수 있다.
+struct InkListRow<Trailing: View>: View {
+    let title: String
+    var showsChevron = false
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailing()
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(.footnote, weight: .bold))
+                    .foregroundStyle(PaperTheme.ink)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, 15)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+    }
+}
+
+extension InkListRow where Trailing == EmptyView {
+    init(title: String, showsChevron: Bool = false) {
+        self.init(title: title, showsChevron: showsChevron) { EmptyView() }
+    }
+}
+
+/// 잉크 구분선.
+struct InkSeparator: View {
+    var body: some View {
+        Rectangle()
+            .fill(PaperTheme.separator)
+            .frame(height: 1.2)
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Avatar
+
+/// 손그림 느낌의 프로필 자리. 아직 실제 이미지는 없다.
+struct InkAvatar: View {
+    var size: CGFloat = 56
+
+    var body: some View {
+        Image(systemName: "person")
+            .font(.system(size: size * 0.42, weight: .regular))
+            .foregroundStyle(PaperTheme.ink)
+            .frame(width: size, height: size)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(size * 0.5, size * 0.46, size * 0.52, size * 0.47)
+                shape
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.7))
+            }
+            .accessibilityHidden(true)
+    }
+}

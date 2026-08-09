@@ -19,8 +19,8 @@ enum PaperTheme {
     static let secondaryInk = Color(red: 0.341, green: 0.329, blue: 0.306)  // #57544E
     /// 카드 / 탭바처럼 배경 위로 살짝 올라온 면.
     static let subtleSurface = Color(red: 0.988, green: 0.984, blue: 0.973) // #FCFBF8
-    /// 구분선. 잉크보다 확실히 약하게.
-    static let separator = Color(red: 0.102, green: 0.102, blue: 0.102).opacity(0.22)
+    /// 구분선. 잉크 라인 감성을 유지하되 본문보다 약하게.
+    static let separator = Color(red: 0.102, green: 0.102, blue: 0.102).opacity(0.55)
     /// 아직 쓸 수 없는 요소.
     static let disabled = Color(red: 0.659, green: 0.643, blue: 0.608)      // #A8A49B
     /// 눌린 상태의 종이 면.

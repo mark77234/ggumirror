@@ -2,7 +2,8 @@
 //  HomeView.swift
 //  ggumirror
 //
-//  Home. 보유 거울 개수 / 설정 / 거울 보기 / 거울 꾸미기 4개만 둔다.
+//  Main Tab 컨테이너 + 홈 탭.
+//  홈에는 보유 거울 개수 / 설정 / 거울 보기 / 거울 꾸미기 4개만 둔다.
 //
 
 import SwiftUI
@@ -10,10 +11,8 @@ import SwiftUI
 struct HomeView: View {
     var onOpenMirror: () -> Void
 
-    /// 아직 persistence가 없어 기본 거울 개수를 임시로 쓴다.
-    /// White / Black / Cream / Soft Pink / Lavender / Sky / Mint / Gray
-    private static let temporaryMirrorCount = 8
-
+    /// 아직 persistence가 없어 로컬 샘플 데이터를 쓴다.
+    @State private var library = MirrorLibrary()
     @State private var tab: MainTab = .home
 
     var body: some View {
@@ -22,9 +21,9 @@ struct HomeView: View {
             case .home:
                 homeTab
             case .store:
-                ComingSoonView(title: "상점", detail: "곧 다른 사람이 만든 거울을 둘러볼 수 있어요.")
+                StoreView()
             case .mine:
-                ComingSoonView(title: "내 거울", detail: "내가 만들고 꾸민 거울이 여기에 모여요.")
+                MyMirrorsView(library: library)
             }
 
             InkTabBar(selection: $tab)
@@ -47,7 +46,14 @@ struct HomeView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            .navigationDestination(for: SettingsRoute.self) { _ in SettingsView() }
+            .navigationDestination(for: SettingsRoute.self) { route in
+                switch route {
+                case .settings: SettingsView()
+                case .profile: ProfileView()
+                case .privacy: ComingSoonView(title: "개인정보 처리방침", detail: "곧 내용을 채울게요.")
+                case .terms: ComingSoonView(title: "이용약관", detail: "곧 내용을 채울게요.")
+                }
+            }
             .toolbar(.hidden, for: .navigationBar)
         }
         .tint(PaperTheme.ink)
@@ -55,9 +61,9 @@ struct HomeView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
-            InkChip(icon: "oval.portrait", text: "거울 \(Self.temporaryMirrorCount)개", tilt: -0.35)
+            InkChip(icon: "oval.portrait", text: "거울 \(library.mirrors.count)개", tilt: -0.35)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("보유 거울 \(Self.temporaryMirrorCount)개")
+                .accessibilityLabel("보유 거울 \(library.mirrors.count)개")
 
             Spacer(minLength: 12)
 
@@ -91,10 +97,6 @@ struct HomeView: View {
             )
         }
     }
-}
-
-private enum SettingsRoute: Hashable {
-    case settings
 }
 
 #Preview {
