@@ -12,6 +12,7 @@ struct MirrorView: View {
     private static let autoHideDelay = Duration.milliseconds(4200)
 
     @State private var camera = MirrorCamera()
+    @State private var screenBrightness = ScreenBrightness()
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var isDecorationOn = true
@@ -47,8 +48,13 @@ struct MirrorView: View {
                 if areControlsVisible {
                     MirrorControls(
                         isDecorationOn: isDecorationOn,
+                        zoom: camera.zoomFactor,
+                        maxZoom: camera.maxZoomFactor,
+                        brightness: screenBrightness.level,
                         onInteraction: registerInteraction,
-                        onToggleDecoration: { isDecorationOn.toggle() }
+                        onToggleDecoration: { isDecorationOn.toggle() },
+                        onZoomChange: camera.setZoom,
+                        onBrightnessChange: screenBrightness.set
                     )
                     .transition(.opacity)
                 }
@@ -60,11 +66,18 @@ struct MirrorView: View {
         .onTapGesture { toggleControls() }
         .task { await camera.start() }
         .task(id: lastInteraction) { await autoHideControls() }
+        .onAppear { screenBrightness.takeOver() }
+        .onDisappear { screenBrightness.release() }   // Mirror를 완전히 벗어나면 원래 밝기로
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: Task { await camera.start() }
-            case .background: camera.stop()
-            default: break
+            case .active:
+                Task { await camera.start() }
+                screenBrightness.takeOver()
+            case .background:
+                camera.stop()
+                screenBrightness.restoreUserLevel()   // 앱 밖에 밝기가 남지 않게
+            default:
+                break
             }
         }
     }

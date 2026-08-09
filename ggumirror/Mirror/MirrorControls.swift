@@ -10,20 +10,33 @@ import SwiftUI
 
 struct MirrorControls: View {
     var isDecorationOn: Bool
+    var zoom: CGFloat
+    var maxZoom: CGFloat
+    var brightness: CGFloat
     /// 컨트롤을 건드릴 때마다 호출 — auto-hide 타이머를 다시 시작한다.
     var onInteraction: () -> Void
     var onToggleDecoration: () -> Void
+    var onZoomChange: (CGFloat) -> Void
+    var onBrightnessChange: (CGFloat) -> Void
+
+    /// 열려 있는 슬라이더 패널. 컨트롤이 숨겨지면 이 뷰가 사라지면서 함께 닫힌다.
+    @State private var panel: Panel?
+
+    private enum Panel { case brightness, zoom }
 
     /// Claude Design(Mirror App v2, 402 x 874 기준)의 배치를 0...1 normalized로 옮긴 값.
     /// 기기 크기가 달라져도 같은 비율로 놓인다.
     private enum Layout {
         static let sideInset = 52.0 / 402.0
         static let barBottom = 118.0 / 874.0
+        static let panelBottom = 194.0 / 874.0
         static let backLeading = 60.0 / 402.0
         static let backTop = 96.0 / 874.0
         static let barHeight = 64.0
         static let scrimHeight = 58.0
     }
+
+    private var canZoom: Bool { maxZoom > 1 }
 
     var body: some View {
         GeometryReader { geometry in
@@ -45,6 +58,14 @@ struct MirrorControls: View {
                     .padding(.top, height * Layout.backTop)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
+                if let panel {
+                    sliderPanel(for: panel)
+                        .padding(.horizontal, width * Layout.sideInset)
+                        .padding(.bottom, height * Layout.panelBottom)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .transition(.opacity)
+                }
+
                 bottomBar
                     .padding(.horizontal, width * Layout.sideInset)
                     .padding(.bottom, height * Layout.barBottom)
@@ -52,6 +73,64 @@ struct MirrorControls: View {
             }
         }
         .ignoresSafeArea()
+    }
+
+    @ViewBuilder
+    private func sliderPanel(for panel: Panel) -> some View {
+        switch panel {
+        case .brightness:
+            panelBody(icon: "sun.max", label: "\(Int((brightness * 100).rounded()))") {
+                // 슬라이더를 끄는 동안 매 변화마다 auto-hide 타이머가 다시 시작된다.
+                Slider(value: binding(brightness, onBrightnessChange), in: 0...1)
+                    .accessibilityLabel("화면 밝기")
+            }
+        case .zoom:
+            panelBody(icon: nil, label: String(format: "%.1f×", zoom)) {
+                Slider(value: binding(zoom, onZoomChange), in: 1...max(maxZoom, 1.01))
+                    .accessibilityLabel("확대")
+            }
+        }
+    }
+
+    private func binding(_ value: CGFloat, _ change: @escaping (CGFloat) -> Void) -> Binding<CGFloat> {
+        Binding(get: { value }, set: { newValue in
+            onInteraction()
+            change(newValue)
+        })
+    }
+
+    private func panelBody<Content: View>(
+        icon: String?,
+        label: String,
+        @ViewBuilder slider: () -> Content
+    ) -> some View {
+        HStack(spacing: 12) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.6))
+            } else {
+                Text("1×")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            slider()
+                .tint(.white)
+            Text(label)
+                .font(.system(size: 13.5))
+                .foregroundStyle(.white)
+                .frame(width: 40, alignment: .trailing)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(white: 0.11).opacity(0.7), in: .rect(cornerRadius: 18))
+    }
+
+    private func toggle(_ target: Panel) {
+        withAnimation(.easeOut(duration: 0.16)) {
+            panel = panel == target ? nil : target
+        }
     }
 
     private var backButton: some View {
@@ -78,9 +157,20 @@ struct MirrorControls: View {
     private var bottomBar: some View {
         HStack(spacing: 0) {
             controlButton("snowflake", label: "화면 고정")
-            controlButton("sun.max", label: "밝기")
+            controlButton(
+                "sun.max",
+                label: "밝기",
+                isActive: panel == .brightness,
+                action: { toggle(.brightness) }
+            )
             captureButton
-            controlButton("plus.magnifyingglass", label: "확대")
+            controlButton(
+                "plus.magnifyingglass",
+                label: "확대",
+                isActive: panel == .zoom,
+                isOff: !canZoom,
+                action: { if canZoom { toggle(.zoom) } }
+            )
             controlButton(
                 "sparkles",
                 label: isDecorationOn ? "장식 끄기" : "장식 켜기",
@@ -147,7 +237,16 @@ struct MirrorControls: View {
 #Preview {
     ZStack {
         Color.gray
-        MirrorControls(isDecorationOn: true, onInteraction: {}, onToggleDecoration: {})
+        MirrorControls(
+        isDecorationOn: true,
+        zoom: 1,
+        maxZoom: 2.5,
+        brightness: 0.5,
+        onInteraction: {},
+        onToggleDecoration: {},
+        onZoomChange: { _ in },
+        onBrightnessChange: { _ in }
+    )
     }
     .ignoresSafeArea()
 }
