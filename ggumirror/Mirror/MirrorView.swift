@@ -8,8 +8,20 @@
 import SwiftUI
 
 struct MirrorView: View {
+    /// 마지막 interaction 이후 컨트롤이 사라지기까지의 시간. Prototype 기준값.
+    private static let autoHideDelay = Duration.milliseconds(4200)
+
     @State private var camera = MirrorCamera()
     @Environment(\.scenePhase) private var scenePhase
+
+    @State private var isDecorationOn = true
+    @State private var areControlsVisible = false
+    /// 값이 바뀔 때마다 auto-hide 타이머를 처음부터 다시 돌린다.
+    @State private var lastInteraction = 0
+
+    private var isMirrorLive: Bool {
+        if case .ready = camera.status { true } else { false }
+    }
 
     var body: some View {
         ZStack {
@@ -26,10 +38,28 @@ struct MirrorView: View {
             case .idle:
                 EmptyView()
             }
+
+            // 순서 = 레이어 순서. 카메라 → 장식 → 컨트롤.
+            if isMirrorLive {
+                if isDecorationOn {
+                    DecorationOverlay()
+                }
+                if areControlsVisible {
+                    MirrorControls(
+                        isDecorationOn: isDecorationOn,
+                        onInteraction: registerInteraction,
+                        onToggleDecoration: { isDecorationOn.toggle() }
+                    )
+                    .transition(.opacity)
+                }
+            }
         }
         .ignoresSafeArea()
         .statusBarHidden()
+        .contentShape(.rect)
+        .onTapGesture { toggleControls() }
         .task { await camera.start() }
+        .task(id: lastInteraction) { await autoHideControls() }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: Task { await camera.start() }
@@ -37,6 +67,26 @@ struct MirrorView: View {
             default: break
             }
         }
+    }
+
+    private func toggleControls() {
+        guard isMirrorLive else { return }
+        withAnimation(.easeOut(duration: 0.18)) { areControlsVisible.toggle() }
+        registerInteraction()
+    }
+
+    /// 컨트롤을 건드린 시점부터 다시 4.2초를 센다.
+    private func registerInteraction() {
+        lastInteraction &+= 1
+    }
+
+    /// lastInteraction이 바뀌면 이 task가 취소되고 새로 시작하므로,
+    /// 컨트롤을 조작하는 동안에는 숨김이 발동하지 않는다.
+    private func autoHideControls() async {
+        guard areControlsVisible else { return }
+        try? await Task.sleep(for: Self.autoHideDelay)
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.22)) { areControlsVisible = false }
     }
 
     private func message(_ title: String, detail: String, showsSettings: Bool) -> some View {
