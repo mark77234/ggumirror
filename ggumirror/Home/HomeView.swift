@@ -9,10 +9,10 @@
 import SwiftUI
 
 struct HomeView: View {
+    var library: MirrorLibrary
     var onOpenMirror: () -> Void
+    var onEditMirror: (MyMirror) -> Void
 
-    /// 아직 persistence가 없어 로컬 샘플 데이터를 쓴다.
-    @State private var library = MirrorLibrary()
     @State private var tab: MainTab = .home
 
     var body: some View {
@@ -23,7 +23,7 @@ struct HomeView: View {
             case .store:
                 StoreView()
             case .mine:
-                MyMirrorsView(library: library)
+                MyMirrorsView(library: library, onEditMirror: onEditMirror)
             }
 
             InkTabBar(selection: $tab)
@@ -93,12 +93,13 @@ struct HomeView: View {
                 title: "거울 꾸미기",
                 subtitle: "지금 쓰는 거울을 바로 편집",
                 tilt: 0.26,
-                action: {}   // Editor는 Phase 3 — 여기서는 UI만 둔다.
+                // 거울 선택 화면 없이 지금 쓰는 거울 Editor로 바로 들어간다.
+                action: { onEditMirror(library.currentMirror) }
             )
         }
     }
 }
 
 #Preview {
-    HomeView(onOpenMirror: {})
+    HomeView(library: MirrorLibrary(), onOpenMirror: {}, onEditMirror: { _ in })
 }

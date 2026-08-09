@@ -100,8 +100,7 @@ enum StoreCatalog {
             categories: ["추천", "인기"],
             style: MirrorStyle(
                 frame: Color(red: 0.976, green: 0.910, blue: 0.906),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "heart", x: 0.085, y: 0.055, size: 0.10, rotation: -12),
                     .init(symbol: "sparkle", x: 0.50, y: 0.052, size: 0.08, rotation: 8),
@@ -123,8 +122,7 @@ enum StoreCatalog {
             categories: ["인기", "신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.898, green: 0.914, blue: 0.965),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "star", x: 0.085, y: 0.055, size: 0.10, rotation: 12),
                     .init(symbol: "circle.dashed", x: 0.50, y: 0.05, size: 0.085),
@@ -146,8 +144,7 @@ enum StoreCatalog {
             categories: ["추천", "신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.976, green: 0.965, blue: 0.937),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "hare", x: 0.10, y: 0.055, size: 0.11, rotation: -8),
                     .init(symbol: "heart", x: 0.52, y: 0.05, size: 0.075),
@@ -168,8 +165,7 @@ enum StoreCatalog {
             categories: ["추천"],
             style: MirrorStyle(
                 frame: Color(red: 0.949, green: 0.937, blue: 0.898),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "camera.macro", x: 0.09, y: 0.055, size: 0.10, rotation: -10),
                     .init(symbol: "leaf", x: 0.50, y: 0.05, size: 0.08, rotation: 20),
@@ -191,8 +187,7 @@ enum StoreCatalog {
             categories: ["신규"],
             style: MirrorStyle(
                 frame: Color(red: 0.969, green: 0.969, blue: 0.961),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "star", x: 0.09, y: 0.055, size: 0.09, rotation: -14),
                     .init(symbol: "sparkle", x: 0.915, y: 0.055, size: 0.075, rotation: 10),
@@ -211,8 +206,7 @@ enum StoreCatalog {
             categories: ["인기"],
             style: MirrorStyle(
                 frame: Color(red: 0.941, green: 0.925, blue: 0.906),
-                sideBand: 0.17,
-                endBand: 0.115,
+                insets: .wide,
                 doodles: [
                     .init(symbol: "paperclip", x: 0.10, y: 0.055, size: 0.095, rotation: -18),
                     .init(symbol: "heart", x: 0.52, y: 0.05, size: 0.075, rotation: 12),
@@ -295,6 +289,17 @@ final class MirrorLibrary {
         ])
         mirrors = items
         currentID = BasicMirror.softPink.id
+    }
+
+    var currentMirror: MyMirror {
+        mirrors.first { $0.id == currentID } ?? mirrors[0]
+    }
+
+    /// Editor에서 저장한 결과를 반영한다. 아직 메모리에만 남는다.
+    func save(_ design: MirrorDesign) {
+        guard let index = mirrors.firstIndex(where: { $0.id == design.id }) else { return }
+        mirrors[index].style = design.style
+        mirrors[index].name = design.name
     }
 
     func apply(_ mirror: MyMirror) {

@@ -11,10 +11,8 @@ import SwiftUI
 /// 거울 한 장의 생김새. 단색 프레임 + (선택적) 손그림 장식.
 struct MirrorStyle: Hashable {
     var frame: Color
-    /// 프레임 밴드 두께. 앱 기본값은 좌우 10% / 상하 7.7%.
-    /// 상점 템플릿은 장식을 담기 위해 더 넓은 밴드를 쓸 수 있다.
-    var sideBand: Double = 0.10
-    var endBand: Double = 0.077
+    /// 프레임 밴드 두께. 거울마다 다를 수 있어 고정값을 쓰지 않는다.
+    var insets: MirrorFrameInsets = .standard
     /// 프레임 위에 얹히는 잉크 낙서. 기본 거울은 항상 비어 있다.
     var doodles: [Doodle] = []
 
@@ -48,11 +46,13 @@ struct MirrorPreview: View {
                 // 프레임: 단색 + 은은한 종이 질감
                 PaperBackground(color: style.frame)
 
-                // 중앙 거울 영역. 실제 앱과 같은 밴드 비율(좌우 10%, 상하 7.7%).
+                // 중앙 Mirror Area. 실제 카메라에서는 투명하게 유지되는 영역이다.
                 UnevenRoundedRectangle.ink(10, 10, 10, 10)
                     .fill(Self.glass)
-                    .padding(.horizontal, size.width * style.sideBand)
-                    .padding(.vertical, size.height * style.endBand)
+                    .padding(.top, size.height * style.insets.top)
+                    .padding(.bottom, size.height * style.insets.bottom)
+                    .padding(.leading, size.width * style.insets.left)
+                    .padding(.trailing, size.width * style.insets.right)
 
                 ForEach(Array(style.doodles.enumerated()), id: \.offset) { _, doodle in
                     Image(systemName: doodle.symbol)
@@ -70,7 +70,7 @@ struct MirrorPreview: View {
     }
 
     /// 거울 면. 그라디언트 없이 평평한 톤으로만 표현한다.
-    private static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
+    static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 }
 
 #Preview {

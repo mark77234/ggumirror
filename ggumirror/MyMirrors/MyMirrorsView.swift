@@ -10,6 +10,7 @@ import SwiftUI
 
 struct MyMirrorsView: View {
     @Bindable var library: MirrorLibrary
+    var onEditMirror: (MyMirror) -> Void
 
     @State private var filter: MyMirrorFilter = .all
     @State private var actionTarget: MyMirror?
@@ -43,7 +44,7 @@ struct MyMirrorsView: View {
             presenting: actionTarget
         ) { mirror in
             Button("적용") { library.apply(mirror) }
-            Button("꾸미기") { notice = "거울 꾸미기는 다음 업데이트에서 열려요." }
+            Button("꾸미기") { onEditMirror(mirror) }
             Button("복제") { library.duplicate(mirror) }
             Button("상점에 올리기") { notice = "상점 등록은 다음 업데이트에서 열려요." }
             if mirror.origin != .basic {
@@ -123,6 +124,6 @@ private struct MyMirrorItem: View {
 }
 
 #Preview {
-    MyMirrorsView(library: MirrorLibrary())
+    MyMirrorsView(library: MirrorLibrary(), onEditMirror: { _ in })
         .paperBackground()
 }

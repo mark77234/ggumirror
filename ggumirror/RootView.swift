@@ -10,6 +10,9 @@ import SwiftUI
 
 struct RootView: View {
     @State private var screen: Screen = .mirror
+    /// 아직 persistence가 없어 앱이 살아 있는 동안만 유지되는 로컬 데이터.
+    @State private var library = MirrorLibrary()
+    @State private var editing: MyMirror?
 
     private enum Screen {
         case mirror
@@ -21,7 +24,16 @@ struct RootView: View {
         case .mirror:
             MirrorView(onGoHome: { screen = .home })
         case .home:
-            HomeView(onOpenMirror: { screen = .mirror })
+            HomeView(
+                library: library,
+                onOpenMirror: { screen = .mirror },
+                onEditMirror: { editing = $0 }
+            )
+            .fullScreenCover(item: $editing) { mirror in
+                EditorView(design: MirrorDesign(mirror: mirror)) { design in
+                    library.save(design)
+                }
+            }
         }
     }
 }

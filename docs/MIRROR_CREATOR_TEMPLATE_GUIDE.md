@@ -25,28 +25,53 @@ MIRROR 앱에 안정적으로 가져오기 위한 기본 제작 규격을 정의
 중앙 거울 영역은 투명하게 유지하고,
 장식은 외곽 프레임 영역을 중심으로 배치한다.
 
-## 3. 기준 프레임 영역
+## 3. 프레임 영역
 
-기본 기준값:
+### Engine Requirement (반드시 지켜야 하는 것)
 
-- Canvas Width: 1080 px
-- Canvas Height: 2340 px
-- Frame Thickness: 216 px
-- Frame Thickness Ratio: Canvas Width의 20%
+- Canvas: 1080 × 2340
+- 중앙 Mirror Area는 투명
+- 프레임 두께는 normalized 값(0...1)으로 표현된다
+- 상·하·좌·우 네 방향 두께를 각각 다르게 가질 수 있다
 
-기준 영역:
+앱의 Editor engine은 고정 두께를 가정하지 않는다.
+거울마다 `MirrorFrameInsets(top / right / bottom / left)`를 따른다.
+특정 px 값을 canonical thickness로 사용하지 않는다.
 
-- TOP: 1080 × 216
-- BOTTOM: 1080 × 216
-- LEFT: 216 × 1908
-- RIGHT: 216 × 1908
+### Recommended Starting Point (권장 시작점)
 
-중앙 Mirror Area 기준:
+1080 × 2340 master 기준:
 
-- 648 × 1908
+| 면 | px | normalized |
+|---|---|---|
+| Left | 108 | 0.10 |
+| Right | 108 | 0.10 |
+| Top | 180 | 약 0.0769 |
+| Bottom | 180 | 약 0.0769 |
 
-이 값은 초기 제작 가이드 기준이며,
-실제 앱 렌더링에서는 normalized coordinate와 기기 비율 대응 로직을 사용한다.
+중앙 Mirror Area: 864 × 1980
+
+의도:
+
+- 좌우는 얇게 — 얼굴 시야를 최대한 확보한다
+- 상·하는 조금 더 넓게 — 그림 / 텍스트 / 스티커를 넣을 공간을 둔다
+
+이 값은 현재 기본 거울이 쓰는 값이자 새 템플릿의 출발점이다.
+
+### Decorative Template (예시)
+
+Store처럼 장식이 많은 템플릿은 개별 frameInsets를 더 넓게 가질 수 있다.
+
+예:
+
+- Left / Right: 약 0.17
+- Top / Bottom: 약 0.115
+
+이건 decorative template 예시일 뿐 기본 규격이 아니다.
+어느 값이든 앱은 normalized coordinate로 렌더링한다.
+
+참고: 과거 가이드의 216 px (Canvas Width의 20%)는 초기 reference였고
+현재 기본값이 아니다.
 
 ## 4. 제작 구조
 
@@ -176,6 +201,7 @@ Optional Compact Master:
 - 전체 프레임 PNG 1장 업로드만 지원
 - 1080 × 2340 / 9:19.5를 기준 Master로 사용
 - 중앙 거울 영역은 투명
+- 프레임 두께는 고정값이 아니라 normalized frameInsets로 다룬다
 - 앱 내부에서 상·하·좌·우 영역 계산
 - 모서리 연속성 유지
 - 비균등 Stretch 금지
