@@ -2,28 +2,17 @@
 //  SettingsView.swift
 //  ggumirror
 //
-//  Phase 1-5에서는 navigation placeholder까지만.
+//  navigation placeholder. 실제 설정 항목은 다음 Phase에서.
 //
 
 import SwiftUI
 
 struct SettingsView: View {
     var body: some View {
-        ZStack {
-            PaperBackground()
-                .ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                Text("설정")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(PaperTheme.ink)
-                Text("준비 중이에요")
-                    .font(.system(size: 15))
-                    .foregroundStyle(PaperTheme.muted)
-            }
-        }
-        .navigationTitle("설정")
-        .navigationBarTitleDisplayMode(.inline)
+        ComingSoonView(title: "설정", detail: "알림, 계정 같은 설정이 여기에 들어와요.")
+            .paperBackground()
+            .navigationTitle("설정")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 

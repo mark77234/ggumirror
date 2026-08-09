@@ -2,20 +2,44 @@
 //  PaperTheme.swift
 //  ggumirror
 //
-//  Clean Pen Sketch — 따뜻한 종이 배경 + 검은 잉크 라인.
-//  카메라 영상 위에는 쓰지 않는다(DESIGN.md).
+//  Clean Pen Sketch의 바탕 — 따뜻한 종이 + 검은 잉크.
+//  카메라 화면에는 적용하지 않는다(DESIGN.md).
 //
 
 import SwiftUI
 
+// MARK: - Color
+
 enum PaperTheme {
-    static let ink = Color(red: 0.10, green: 0.10, blue: 0.10)
-    static let paper = Color(red: 0.976, green: 0.973, blue: 0.957)     // #F9F8F4
-    static let raisedPaper = Color(red: 0.988, green: 0.984, blue: 0.973) // #FCFBF8
-    static let subtitle = Color(red: 0.341, green: 0.329, blue: 0.306)  // #57544E
-    static let muted = Color(red: 0.431, green: 0.416, blue: 0.384)     // #6E6A62
-    static let pressed = Color(red: 0.969, green: 0.957, blue: 0.929)   // #F7F4ED
+    /// 일반 앱 화면의 기본 배경.
+    static let paper = Color(red: 0.976, green: 0.973, blue: 0.957)         // #F9F8F4
+    /// 본문 텍스트와 모든 잉크 라인.
+    static let ink = Color(red: 0.102, green: 0.102, blue: 0.102)           // #1A1A1A
+    /// 보조 설명 텍스트.
+    static let secondaryInk = Color(red: 0.341, green: 0.329, blue: 0.306)  // #57544E
+    /// 카드 / 탭바처럼 배경 위로 살짝 올라온 면.
+    static let subtleSurface = Color(red: 0.988, green: 0.984, blue: 0.973) // #FCFBF8
+    /// 구분선. 잉크보다 확실히 약하게.
+    static let separator = Color(red: 0.102, green: 0.102, blue: 0.102).opacity(0.22)
+    /// 아직 쓸 수 없는 요소.
+    static let disabled = Color(red: 0.659, green: 0.643, blue: 0.608)      // #A8A49B
+    /// 눌린 상태의 종이 면.
+    static let pressed = Color(red: 0.969, green: 0.957, blue: 0.929)       // #F7F4ED
 }
+
+// MARK: - Typography
+
+/// 한국어 가독성 우선. 손글씨 폰트를 본문에 강제하지 않고 시스템 한글 폰트를 쓴다.
+/// 전부 text style 기반이라 Dynamic Type을 그대로 따라간다.
+enum InkFont {
+    static let pageTitle = Font.system(.largeTitle, weight: .bold)
+    static let cardTitle = Font.system(.title3, weight: .semibold)
+    static let body = Font.system(.body)
+    static let secondary = Font.system(.subheadline)
+    static let caption = Font.system(.caption)
+}
+
+// MARK: - Shape
 
 /// 손으로 그린 듯 네 모서리 반지름이 조금씩 다른 사각형.
 extension UnevenRoundedRectangle {
@@ -34,7 +58,10 @@ extension UnevenRoundedRectangle {
     }
 }
 
+// MARK: - Background
+
 /// 은은한 종이 질감. 결정적 speckle이라 매번 같은 결이 나온다.
+/// SVG filter / WebView 없이 Canvas로만 그린다.
 struct PaperBackground: View {
     var color: Color = PaperTheme.paper
 
@@ -57,12 +84,23 @@ struct PaperBackground: View {
                     width: radius * 2,
                     height: radius * 2
                 )
+                // 글자 가독성을 해치지 않을 만큼만.
                 context.fill(
                     Path(ellipseIn: dot),
-                    with: .color(PaperTheme.ink.opacity(0.03 + random() * 0.05))
+                    with: .color(PaperTheme.ink.opacity(0.03 + random() * 0.04))
                 )
             }
         }
         .drawingGroup()
+        .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// 일반 앱 화면의 기본 배경. 화면마다 다시 구현하지 않는다.
+    func paperBackground(_ color: Color = PaperTheme.paper) -> some View {
+        background {
+            PaperBackground(color: color).ignoresSafeArea()
+        }
     }
 }
