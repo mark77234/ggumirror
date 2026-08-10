@@ -325,6 +325,8 @@ struct MyMirror: Identifiable, Hashable {
     var stickers: [StickerObject] = []
     /// Editor에서 얹은 텍스트.
     var texts: [TextObject] = []
+    /// Editor에서 얹은 도형 / 꾸미기 요소.
+    var shapes: [ShapeObject] = []
 }
 
 /// 사용자 제작 거울 보관 정책. 기본 제공 / 구매 거울은 슬롯을 쓰지 않는다.
@@ -334,6 +336,16 @@ enum MirrorStoragePolicy {
     static let slotPackSize = 5
     /// 이름 입력 제한.
     static let maxNameLength = 24
+
+    /// 홈에서 저장할 때 쓰는 자동 이름. 사용자에게 이름을 묻지 않는다.
+    /// "나의 거울" → 이미 있으면 "나의 거울 2", "나의 거울 3" ...
+    static func automaticName(existing names: [String]) -> String {
+        let base = "나의 거울"
+        guard names.contains(base) else { return base }
+        var index = 2
+        while names.contains("\(base) \(index)") { index += 1 }
+        return "\(base) \(index)"
+    }
 
     static func normalizedName(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -429,12 +441,21 @@ final class MirrorLibrary {
             mirrors[index].strokes = design.strokes
             mirrors[index].stickers = design.stickers
             mirrors[index].texts = design.texts
+            mirrors[index].shapes = design.shapes
             // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
             currentID = mirrors[index].id
             return .updated(id: mirrors[index].id, name: mirrors[index].name)
         }
 
-        guard let name = MirrorStoragePolicy.normalizedName(rawName) else { return .needsMoreSlots }
+        // 홈에서 들어왔다면 이름을 묻지 않는다 — 자동으로 지어준다.
+        let name: String
+        if context == .editCurrent {
+            name = MirrorStoragePolicy.automaticName(existing: mirrors.map(\.name))
+        } else if let entered = MirrorStoragePolicy.normalizedName(rawName) {
+            name = entered
+        } else {
+            return .needsMoreSlots
+        }
         guard hasFreeCreatedSlot else { return .needsMoreSlots }
 
         let copy = MyMirror(
@@ -445,17 +466,25 @@ final class MirrorLibrary {
             strokes: design.strokes,
             // 사진 스티커는 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers,
-            texts: design.texts
+            texts: design.texts,
+            shapes: design.shapes
         )
         mirrors.append(copy)
         currentID = copy.id
         return .created(id: copy.id, name: copy.name)
     }
 
-    /// 이 저장이 새 거울을 만들지. Editor는 이때만 이름을 묻는다.
+    /// 이 저장이 새 거울을 만들지.
     func willCreateNewMirror(for design: MirrorDesign, context: MirrorEditorContext) -> Bool {
         guard context == .editCurrent else { return true }
         return !mirrors.contains { $0.id == design.id }
+    }
+
+    /// Editor가 이름을 물어야 하는지.
+    /// 홈(= 지금 쓰는 거울 수정)에서는 **절대 묻지 않는다.**
+    /// 내 거울에서 새 결과물을 만들 때만 이름을 받는다.
+    func needsName(for context: MirrorEditorContext) -> Bool {
+        context != .editCurrent
     }
 
     /// 상점에서 템플릿을 받아 내 거울에 넣는다.
@@ -488,7 +517,8 @@ final class MirrorLibrary {
             style: mirror.style,
             strokes: mirror.strokes,
             stickers: mirror.stickers,
-            texts: mirror.texts
+            texts: mirror.texts,
+            shapes: mirror.shapes
         )
         mirrors.insert(copy, at: index + 1)
     }

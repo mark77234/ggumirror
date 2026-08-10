@@ -99,11 +99,16 @@ struct MirrorDesign: Identifiable, Hashable {
     var stickers: [StickerObject] = []
     /// 사용자가 얹은 텍스트. 같은 Master normalized 좌표를 쓴다.
     var texts: [TextObject] = []
+    /// 사용자가 얹은 도형 / 꾸미기 요소.
+    var shapes: [ShapeObject] = []
 
-    /// 스티커와 텍스트를 함께 본 가장 위 zIndex.
-    /// 새 장식은 항상 이 위에 올라간다.
+    /// 스티커 / 텍스트 / 도형을 **하나의 순서**로 본 가장 위 zIndex.
+    /// 새 장식은 항상 이 위에 올라간다. Layers Phase도 이 순서를 그대로 쓴다.
     var topDecorationZIndex: Int {
-        max(stickers.map(\.zIndex).max() ?? 0, texts.map(\.zIndex).max() ?? 0)
+        max(
+            stickers.map(\.zIndex).max() ?? 0,
+            max(texts.map(\.zIndex).max() ?? 0, shapes.map(\.zIndex).max() ?? 0)
+        )
     }
 
     var insets: MirrorFrameInsets {
@@ -123,6 +128,7 @@ struct MirrorDesign: Identifiable, Hashable {
         strokes = mirror.strokes
         stickers = mirror.stickers
         texts = mirror.texts
+        shapes = mirror.shapes
     }
 }
 

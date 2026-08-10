@@ -311,6 +311,50 @@ Free Canvas 위에 텍스트를 얹는다. Sticker interaction 구조를 그대�
 - 테두리 / 그림자 / glow / 그라디언트 / 텍스트 배경 박스 / 말풍선
 - Shapes, Layers UI, Sticker Creator / Marketplace, Persistence, Store Publish
 
+## Phase 3-4B — Shapes / Decorations (확정)
+
+Free Canvas 위의 도형 / 꾸미기 요소. Sticker · Text interaction 구조를 그대로 재사용했다.
+
+- `ShapeObject`: id / kind / frame(normalized) / rotation / fillColor / strokeColor /
+  strokeWidth(normalized) / fillMode / opacity / zIndex / isLocked. 화면 pt를 저장하지 않는다.
+- 모양은 `ShapeKind.path(in:)` 한 곳에서만 만든다 — 렌더러 / picker 썸네일이 같은 정의를 쓴다.
+  난수를 쓰지 않으므로 저장 후 모습이 변하지 않는다(테이프 포함).
+- 10종: 원 / 사각형 / 둥근 사각형 / 선 / 하트 / 별 / 물결선 / 리본 라인 / 테이프 / 말풍선.
+- 선 · 물결선 · 리본 라인은 `isStrokeOnly` — `resolvedFillMode`가 언제나 `.stroke`다.
+- 크기는 비율을 유지하며 uniform scale. 한 방향만 늘리는 두 번째 handle은 만들지 않았다.
+- `MirrorDesign.shapes`, `EditorSnapshot.shapes`, `EditorEdit.addShape / replaceShape / deleteShape`.
+- `topDecorationZIndex`가 스티커 / 텍스트 / 도형을 함께 본다.
+- 렌더러는 세 종류를 하나의 zIndex 목록으로 정렬해 그리고,
+  hit test가 같은 규칙(zIndex → 스티커 0 < 도형 1 < 텍스트 2 → 배열 순서)을 뒤집어 쓴다.
+- 얇은 선도 최소 tap target(44pt) 덕분에 넉넉한 touch tolerance를 갖는다.
+
+Home Save 정책 변경 (최신)
+
+- 홈에서 저장할 때는 **이름을 묻지 않는다.** `MirrorLibrary.needsName(for:)`가 `.editCurrent`에서 false.
+- 목록에 없는 기본 거울을 홈에서 처음 저장하면
+  `MirrorStoragePolicy.automaticName(existing:)`이 "나의 거울" / "나의 거울 2" …를 지어준다.
+- 내 거울에서 복제 / 새로 만들기는 그대로 이름을 받는다.
+- 이 정책이 이전 "Default 첫 저장 시 이름 시트" 정책보다 최신이다.
+
+이 Phase에서 하지 않은 것
+
+- Layers UI (다음 Phase 3-4C), 도형 텍스처 polish, 말풍선 + 텍스트 결합
+- 사용자 조절 corner radius, 한 방향 resize handle
+
+## Text Polish TODO (후속)
+
+A. Resize 감도
+
+- 실기기에서 텍스트 크기 변화 폭이 너무 크다.
+- drag 대비 fontSize 변화량을 완화하고 더 세밀한 조절을 지원한다.
+- 현재 `TextPolicy.fontSizeRange` 상·하한도 함께 재검토한다.
+
+B. Decoration Font 확장
+
+- 현재 4종(기본 / 굵게 / 명조 / 둥근)은 system font 기반 MVP다.
+- 한글을 지원하는 손글씨 / 귀여운 글씨 / 굵은 포스터 / 얇은 감성 / 레트로 계열로 넓힌다.
+- 실제 폰트 licensing과 bundle 전략을 함께 정한 뒤 Visual·Text Polish에서 진행한다.
+
 ## Sticker Creator (후속 Phase)
 
 별도의 "스티커 만들기" 페이지. Mirror Editor 기술을 최대한 재사용한다.

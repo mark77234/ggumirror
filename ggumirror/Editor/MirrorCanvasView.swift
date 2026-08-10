@@ -32,6 +32,7 @@ struct MirrorCanvasView: View {
                 strokes: design.strokes,
                 stickers: design.stickers,
                 texts: design.texts,
+                shapes: design.shapes,
                 activeStroke: activeStroke,
                 hiddenStrokeIDs: hiddenStrokeIDs,
                 transform: placement,

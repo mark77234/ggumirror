@@ -38,6 +38,7 @@ struct MirrorPreview: View {
     var strokes: [DrawingStroke] = []
     var stickers: [StickerObject] = []
     var texts: [TextObject] = []
+    var shapes: [ShapeObject] = []
     /// 두꺼운 테두리를 쓸지. Detail의 큰 미리보기에서 사용한다.
     var lineWidth: CGFloat = 1.8
 
@@ -49,6 +50,7 @@ struct MirrorPreview: View {
                 strokes: strokes,
                 stickers: stickers,
                 texts: texts,
+                shapes: shapes,
                 transform: .fitted(in: size),
                 in: context,
                 viewport: size
@@ -70,6 +72,7 @@ extension MirrorPreview {
             strokes: mirror.strokes,
             stickers: mirror.stickers,
             texts: mirror.texts,
+            shapes: mirror.shapes,
             lineWidth: lineWidth
         )
     }
