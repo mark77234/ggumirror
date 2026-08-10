@@ -11,8 +11,8 @@ import SwiftUI
 struct MyMirrorsView: View {
     @Bindable var library: MirrorLibrary
     var onEditMirror: (MyMirror) -> Void
-    /// 빈 거울에서 새로 시작한다.
-    var onCreateMirror: () -> Void = {}
+    /// 새 거울을 시작한다. 빈 거울이거나, 외부에서 가져온 디자인이 깔린 거울이다.
+    var onCreateMirror: (MirrorDesign) -> Void = { _ in }
     /// 아직 아무 거울도 없을 때 상점으로 보낸다.
     var onBrowseStore: () -> Void = {}
 
@@ -20,6 +20,8 @@ struct MyMirrorsView: View {
     @State private var actionTarget: MyMirror?
     @State private var notice: String?
     @State private var showsSlotFull = false
+    @State private var isChoosingCreateStyle = false
+    @State private var isImportingArtwork = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var mirrors: [MyMirror] {
@@ -74,6 +76,22 @@ struct MyMirrorsView: View {
         } message: {
             Text(notice ?? "")
         }
+        .confirmationDialog("새 거울 만들기", isPresented: $isChoosingCreateStyle, titleVisibility: .visible) {
+            Button("꾸미러에서 만들기") { onCreateMirror(.blank) }
+            Button("외부에서 만들기") { isImportingArtwork = true }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("빈 거울에서 시작하거나, 그림 앱에서 만든 디자인을 가져올 수 있어요.")
+        }
+        .sheet(isPresented: $isImportingArtwork) {
+            ExternalArtworkView { artwork in
+                var design = MirrorDesign.blank
+                design.importedArtworks = [artwork]
+                onCreateMirror(design)
+            }
+            .presentationDetents([.large])
+            .presentationBackground { PaperBackground() }
+        }
         .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
             Button("보관 공간 늘리기") { showsSlotFull = false }
             Button("취소", role: .cancel) {}
@@ -107,7 +125,7 @@ struct MyMirrorsView: View {
             showsSlotFull = true
             return
         }
-        onCreateMirror()
+        isChoosingCreateStyle = true
     }
 
     private var gallery: some View {

@@ -325,6 +325,8 @@ struct MyMirror: Identifiable, Hashable {
     var stickers: [StickerObject] = []
     /// Editor에서 얹은 텍스트.
     var texts: [TextObject] = []
+    /// 외부 그림 앱에서 가져온 전체 캔버스 디자인.
+    var importedArtworks: [ImportedArtworkObject] = []
 }
 
 /// 사용자 제작 거울 보관 정책. 기본 제공 / 구매 거울은 슬롯을 쓰지 않는다.
@@ -397,6 +399,7 @@ final class MirrorLibrary {
     /// 디스크 저장소. nil이면 메모리에만 산다(미리보기 / 단위 테스트).
     private let store: MirrorStore?
     private let assets: PhotoStickerAssetStore
+    private let artworks: ImportedArtworkAssetStore
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
     private let isReadOnly: Bool
 
@@ -413,10 +416,16 @@ final class MirrorLibrary {
     /// 안 쓰는 사진 정리도 실행당 한 번만 돈다.
     static let live = MirrorLibrary(store: .live)
 
-    init(store: MirrorStore? = nil, assets: PhotoStickerAssetStore? = nil) {
+    init(
+        store: MirrorStore? = nil,
+        assets: PhotoStickerAssetStore? = nil,
+        artworks: ImportedArtworkAssetStore? = nil
+    ) {
         let assets = assets ?? .shared
+        let artworks = artworks ?? .shared
         self.store = store
         self.assets = assets
+        self.artworks = artworks
         // 최초 실행 시 내 거울은 비어 있다. 상점에서 받거나 직접 만들면 그때 채워진다.
         mirrors = []
         currentID = Self.defaultMirror.id
@@ -426,6 +435,7 @@ final class MirrorLibrary {
             return
         }
         assets.attach(store)
+        artworks.attach(store)
 
         switch store.load() {
         case .empty, .damaged:
@@ -446,16 +456,25 @@ final class MirrorLibrary {
                 ? saved.currentMirrorID
                 : Self.defaultMirror.id
             // 렌더러가 그리다가 파일을 읽지 않도록 미리 올린다.
-            assets.preload(saved.referencedAssetIDs)
+            assets.preload(saved.referencedAssetIDs(.photoSticker))
+            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
         }
 
         guard !isReadOnly else { return }
-        store.collectAssetGarbage(keeping: referencedAssetIDs)
+        collectAssetGarbage()
     }
 
-    /// 지금 어떤 거울이든 참조하는 사진 asset.
-    var referencedAssetIDs: Set<UUID> {
-        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.photoAssetIDs) }
+    /// 지금 어떤 거울이든 참조하는 asset. 종류별로 따로 센다.
+    func referencedAssetIDs(_ kind: MirrorAssetKind) -> Set<UUID> {
+        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.assetIDs(kind)) }
+    }
+
+    /// 아무 거울도 참조하지 않는 이미지 파일을 지운다. 종류마다 자기 폴더에서만.
+    private func collectAssetGarbage() {
+        guard let store else { return }
+        for kind in MirrorAssetKind.allCases {
+            store.collectAssetGarbage(keeping: referencedAssetIDs(kind), kind: kind)
+        }
     }
 
     /// 의미 있는 변경 1회 = 파일 쓰기 1회. Editor의 드래그 중간 상태는 여기 오지 않는다.
@@ -503,6 +522,7 @@ final class MirrorLibrary {
             mirrors[index].strokes = design.strokes
             mirrors[index].stickers = design.stickers
             mirrors[index].texts = design.texts
+            mirrors[index].importedArtworks = design.importedArtworks
             // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
             currentID = mirrors[index].id
             persist()
@@ -526,9 +546,10 @@ final class MirrorLibrary {
             origin: .made,
             style: design.style,
             strokes: design.strokes,
-            // 사진 스티커는 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
+            // 사진 / 외부 디자인은 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers,
-            texts: design.texts
+            texts: design.texts,
+            importedArtworks: design.importedArtworks
         )
         mirrors.append(copy)
         currentID = copy.id
@@ -581,7 +602,9 @@ final class MirrorLibrary {
             style: mirror.style,
             strokes: mirror.strokes,
             stickers: mirror.stickers,
-            texts: mirror.texts
+            texts: mirror.texts,
+            // 같은 asset을 참조한다. 사진도 외부 디자인도 파일이 늘지 않는다.
+            importedArtworks: mirror.importedArtworks
         )
         mirrors.insert(copy, at: index + 1)
         persist()
@@ -593,7 +616,7 @@ final class MirrorLibrary {
         mirrors.removeAll { $0.id == mirror.id }
         if currentID == mirror.id { currentID = Self.defaultMirror.id }
         persist()
-        // 다른 거울이 같은 사진을 쓰고 있으면 남는다. 아무도 안 쓰는 파일만 지운다.
-        store?.collectAssetGarbage(keeping: referencedAssetIDs)
+        // 다른 거울이 같은 사진 / 디자인을 쓰고 있으면 남는다. 아무도 안 쓰는 파일만 지운다.
+        collectAssetGarbage()
     }
 }

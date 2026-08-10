@@ -25,6 +25,8 @@ struct MirrorEditorCanvas: View {
     @Binding var selectedStickerID: UUID?
     /// 현재 선택된 텍스트.
     @Binding var selectedTextID: UUID?
+    /// 현재 선택된 외부 디자인. 캔버스에서는 고를 수 없고, 캔버스를 누르면 풀린다.
+    @Binding var selectedArtworkID: UUID?
     let onEdit: (EditorEdit) -> Void
 
     /// 손가락을 떼기 전의 진행 중인 획. 여기만 자주 갱신된다.
@@ -264,46 +266,26 @@ struct MirrorEditorCanvas: View {
         return design.stickers.first { $0.id == selectedStickerID }
     }
 
-    /// 눌린 지점의 스티커. 화면에서 위에 보이는 것이 먼저다.
-    /// 렌더 순서(zIndex → 배열 순서)와 똑같은 기준을 뒤집어 쓰므로 배열 순서가 우연히 결과를 바꾸지 않는다.
-    private func sticker(at location: CGPoint, transform: EditorCanvasTransform) -> StickerObject? {
-        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        return design.stickers.enumerated()
-            .filter { $0.element.contains(location, in: placement) }
-            .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
-            .element
-    }
-
-    /// 눌린 지점의 텍스트. 스티커와 같은 규칙이다.
-    private func text(at location: CGPoint, transform: EditorCanvasTransform) -> TextObject? {
-        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        return design.texts.enumerated()
-            .filter { $0.element.contains(location, in: placement) }
-            .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
-            .element
-    }
-
     /// 눌린 지점에서 화면상 가장 위에 있는 장식.
-    /// 렌더 순서와 같은 기준(zIndex → 스티커 < 텍스트 → 배열 순서)을 뒤집어 쓴다.
+    /// 판정 규칙은 `MirrorDesign.topSelectableDecoration` 하나뿐이다 —
+    /// 렌더 순서와 Layers 목록과 정확히 같은 기준을 쓴다.
+    /// 외부 디자인은 캔버스 전체를 덮으므로 여기서 잡히지 않는다.
     private func topObject(
         at location: CGPoint,
         transform: EditorCanvasTransform
     ) -> (sticker: StickerObject?, text: TextObject?) {
-        var best: (order: (Int, Int), sticker: StickerObject?, text: TextObject?)?
-
-        func consider(_ order: (Int, Int), _ candidate: (StickerObject?, TextObject?)) {
-            guard best == nil || order > best!.order else { return }
-            best = (order, candidate.0, candidate.1)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        switch design.topSelectableDecoration(at: location, in: placement) {
+        case .sticker(let object): return (object, nil)
+        case .text(let object): return (nil, object)
+        case .importedArtwork, .none: return (nil, nil)
         }
-        if let hit = sticker(at: location, transform: transform) { consider((hit.zIndex, 0), (hit, nil)) }
-        if let hit = text(at: location, transform: transform) { consider((hit.zIndex, 1), (nil, hit)) }
-
-        return (best?.sticker, best?.text)
     }
 
     /// 제자리 tap — 선택만 바꾼다. 화면을 움직이거나 오브젝트를 잡지 않는다.
     private func selectObject(at location: CGPoint, transform: EditorCanvasTransform, viewportSize: CGSize) {
         let hit = topObject(at: location, transform: transform)
+        selectedArtworkID = nil
 
         // 한 번에 하나만 선택된다.
         let changed = selectedStickerID != hit.sticker?.id || selectedTextID != hit.text?.id
@@ -326,6 +308,7 @@ struct MirrorEditorCanvas: View {
         let hit = topObject(at: location, transform: transform)
         selectedStickerID = hit.sticker?.id
         selectedTextID = hit.text?.id
+        selectedArtworkID = nil
 
         if let sticker = hit.sticker {
             oneFingerPanAnchor = nil

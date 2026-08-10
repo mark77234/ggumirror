@@ -99,10 +99,21 @@ struct MirrorDesign: Identifiable, Hashable {
     var stickers: [StickerObject] = []
     /// 사용자가 얹은 텍스트. 같은 Master normalized 좌표를 쓴다.
     var texts: [TextObject] = []
-    /// 스티커(사진 포함)와 텍스트를 **하나의 순서**로 본 가장 위 zIndex.
-    /// 새 장식은 항상 이 위에 올라간다.
+    /// 외부 그림 앱에서 가져온 전체 캔버스 디자인. 위치/크기를 갖지 않는 고정 레이어다.
+    var importedArtworks: [ImportedArtworkObject] = []
+
+    /// 스티커(사진 포함) / 텍스트 / 외부 디자인을 **하나의 순서**로 본 zIndex 범위.
+    /// 새 장식은 맨 위에, 새 외부 디자인은 맨 아래에 들어간다.
     var topDecorationZIndex: Int {
-        max(stickers.map(\.zIndex).max() ?? 0, texts.map(\.zIndex).max() ?? 0)
+        decorationZIndexes.max() ?? 0
+    }
+
+    var bottomDecorationZIndex: Int {
+        decorationZIndexes.min() ?? 0
+    }
+
+    private var decorationZIndexes: [Int] {
+        stickers.map(\.zIndex) + texts.map(\.zIndex) + importedArtworks.map(\.zIndex)
     }
 
     var insets: MirrorFrameInsets {
@@ -122,6 +133,7 @@ struct MirrorDesign: Identifiable, Hashable {
         strokes = mirror.strokes
         stickers = mirror.stickers
         texts = mirror.texts
+        importedArtworks = mirror.importedArtworks
     }
 }
 

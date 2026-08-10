@@ -38,6 +38,9 @@ struct EditorView: View {
     /// 시트가 새 텍스트를 만드는 중인지, 기존 내용을 고치는 중인지.
     @State private var isAddingText = false
     @State private var isShowingLayers = false
+    /// 외부 디자인 선택. 캔버스를 눌러서는 고를 수 없고 Layers 목록으로만 고른다.
+    @State private var selectedArtworkID: UUID?
+    @State private var isReplacingArtwork = false
     @State private var isNamingMirror = false
     @State private var draftName = ""
     @State private var showsSlotFull = false
@@ -128,6 +131,11 @@ struct EditorView: View {
             photoTask?.cancel()
             photoTask = nil
         }
+        .sheet(isPresented: $isReplacingArtwork) {
+            ExternalArtworkView(showsGuide: false, onUse: { replaceArtwork($0) })
+                .presentationDetents([.large])
+                .presentationBackground { PaperBackground() }
+        }
         .sheet(isPresented: $isShowingLayers) {
             LayersSheet(
                 design: design,
@@ -210,12 +218,15 @@ struct EditorView: View {
             visibleRect: $visibleRect,
             selectedStickerID: $selectedStickerID,
             selectedTextID: $selectedTextID,
+            selectedArtworkID: $selectedArtworkID,
             onEdit: { history.apply($0, to: &design.snapshot) }
         )
         .overlay(alignment: .topTrailing) { historyControls }
         .overlay(alignment: .bottomTrailing) { fitControl }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if tool == .sticker, let sticker = selectedSticker {
+            if let artwork = selectedArtwork {
+                artworkContextBar(artwork)
+            } else if tool == .sticker, let sticker = selectedSticker {
                 stickerContextBar(sticker)
             } else if tool == .text, let text = selectedText {
                 textContextBar(text)
@@ -226,6 +237,7 @@ struct EditorView: View {
         .onChange(of: tool) { _, newValue in
             if newValue != .sticker { selectedStickerID = nil }
             if newValue != .text { selectedTextID = nil }
+            selectedArtworkID = nil
         }
     }
 
@@ -492,15 +504,93 @@ struct EditorView: View {
     /// 겹쳐 있어 손으로 집기 어려운 오브젝트를 정확히 고르는 수단이다.
     private func select(_ layer: DecorationLayer) {
         switch layer {
+        case .importedArtwork(let object):
+            // 도구는 바꾸지 않는다 — 외부 디자인은 캔버스에서 잡는 오브젝트가 아니다.
+            selectedArtworkID = object.id
+            selectedStickerID = nil
+            selectedTextID = nil
         case .sticker(let object):
             tool = .sticker
             selectedStickerID = object.id
             selectedTextID = nil
+            selectedArtworkID = nil
         case .text(let object):
             tool = .text
             selectedTextID = object.id
             selectedStickerID = nil
+            selectedArtworkID = nil
         }
+    }
+
+    // MARK: - 외부 디자인
+
+    private var selectedArtwork: ImportedArtworkObject? {
+        guard let selectedArtworkID else { return nil }
+        return design.importedArtworks.first { $0.id == selectedArtworkID }
+    }
+
+    /// 전체 캔버스 고정이라 이동 / 크기 / 회전 컨트롤이 없다.
+    private func artworkContextBar(_ artwork: ImportedArtworkObject) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Text("투명도")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Slider(
+                    value: Binding(
+                        get: { artwork.opacity },
+                        set: { value in apply(artwork) { $0.opacity = value } }
+                    ),
+                    in: ImportedArtworkObject.opacityRange
+                )
+                .tint(PaperTheme.ink)
+                .accessibilityLabel("외부 디자인 투명도")
+            }
+
+            HStack(spacing: 8) {
+                Text("외부 디자인")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+
+                iconButton("교체", icon: "arrow.triangle.2.circlepath") { isReplacingArtwork = true }
+                iconButton("삭제", icon: "trash") {
+                    history.apply(.deleteImportedArtwork(artwork.id), to: &design.snapshot)
+                    selectedArtworkID = nil
+                }
+
+                Spacer(minLength: 0)
+
+                Button("완료") {
+                    EditorHaptics.placementConfirmed()
+                    selectedArtworkID = nil
+                }
+                .font(InkFont.body.weight(.semibold))
+                .foregroundStyle(PaperTheme.subtleSurface)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background {
+                    UnevenRoundedRectangle.ink(15, 12, 16, 13).fill(PaperTheme.ink)
+                }
+                .buttonStyle(InkPressStyle())
+                .accessibilityLabel("외부 디자인 편집 완료")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(PaperTheme.subtleSurface)
+        .overlay(alignment: .top) { InkSeparator() }
+    }
+
+    private func apply(_ artwork: ImportedArtworkObject, _ change: (inout ImportedArtworkObject) -> Void) {
+        var updated = artwork
+        change(&updated)
+        history.apply(.replaceImportedArtwork(updated), to: &design.snapshot)
+    }
+
+    /// 그림만 갈아 끼운다 — 같은 레이어이므로 id와 순서(zIndex)는 그대로 둔다.
+    private func replaceArtwork(_ new: ImportedArtworkObject) {
+        guard let current = selectedArtwork else { return }
+        apply(current) { $0.assetID = new.assetID }
     }
 
     // MARK: - Text

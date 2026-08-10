@@ -5,8 +5,9 @@
 //  내 거울을 기기에 적어두는 곳. 서버도 클라우드 동기화도 없다.
 //
 //  Application Support/ggumirror/
-//    mirror-library.json          — 거울 목록 + 현재 거울 (JSON 한 장)
-//    PhotoStickerAssets/<id>.png  — 배경 지운 사진 (투명도 유지)
+//    mirror-library.json             — 거울 목록 + 현재 거울 (JSON 한 장)
+//    PhotoStickerAssets/<id>.png     — 배경 지운 사진 (투명도 유지)
+//    ImportedArtworkAssets/<id>.png  — 외부 그림 앱에서 가져온 전체 캔버스 디자인
 //
 //  사진 binary는 JSON에 넣지 않는다. 거울은 assetID만 참조하므로
 //  거울을 복제해도 같은 파일 하나를 같이 본다.
@@ -24,7 +25,14 @@ import UniformTypeIdentifiers
 
 enum MirrorSchema {
     /// 저장 파일 버전. 형식을 바꾸면 올리고 migrate에 case를 추가한다.
-    static let current = 1
+    /// 1 → 2: 거울에 `importedArtworks`가 생겼다.
+    static let current = 2
+}
+
+/// 이미지 파일이 사는 폴더. 종류마다 따로 두고 정리도 각자 한다.
+enum MirrorAssetKind: String, CaseIterable {
+    case photoSticker = "PhotoStickerAssets"
+    case importedArtwork = "ImportedArtworkAssets"
 }
 
 struct PersistedLibrary: Codable {
@@ -34,9 +42,9 @@ struct PersistedLibrary: Codable {
     /// 조각으로 산 추가 보관 슬롯. 거울 목록에서 다시 계산할 수 없는 유일한 값이라 같이 적는다.
     var purchasedCreatedSlots: Int = 0
 
-    /// 지금 어떤 거울이든 참조하고 있는 사진 asset 전부.
-    var referencedAssetIDs: Set<UUID> {
-        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.photoAssetIDs) }
+    /// 지금 어떤 거울이든 참조하고 있는 asset 전부. 종류별로 따로 센다.
+    func referencedAssetIDs(_ kind: MirrorAssetKind) -> Set<UUID> {
+        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.assetIDs(kind)) }
     }
 }
 
@@ -81,7 +89,10 @@ final class MirrorStore: Sendable {
 
     var libraryURL: URL { root.appending(path: "mirror-library.json") }
     var damagedLibraryURL: URL { root.appending(path: "mirror-library-damaged.json") }
-    var assetsURL: URL { root.appending(path: "PhotoStickerAssets", directoryHint: .isDirectory) }
+
+    func assetsDirectory(_ kind: MirrorAssetKind) -> URL {
+        root.appending(path: kind.rawValue, directoryHint: .isDirectory)
+    }
 
     /// 테스트에서 쓰기가 끝날 때까지 기다린다.
     func flush() { queue.sync {} }
@@ -105,10 +116,12 @@ final class MirrorStore: Sendable {
         }
     }
 
-    /// 지금은 v1 하나뿐이다. v2가 생기면 여기 case를 늘린다.
+    /// v1은 `importedArtworks` 키가 없을 뿐이라 같은 decoder가 빈 배열로 읽어 준다.
+    /// (`MyMirror`의 decoder가 없는 키를 기본값으로 채운다.)
+    /// 다음 저장 때 v2 형식으로 다시 적힌다. 형식이 실제로 갈라지면 여기 case를 나눈다.
     private func migrate(_ data: Data, from version: Int) throws -> PersistedLibrary {
         switch version {
-        case 1: try JSONDecoder().decode(PersistedLibrary.self, from: data)
+        case 1, 2: try JSONDecoder().decode(PersistedLibrary.self, from: data)
         default: throw CocoaError(.fileReadCorruptFile)
         }
     }
@@ -149,8 +162,8 @@ final class MirrorStore: Sendable {
 
     // MARK: 사진 asset
 
-    func assetURL(_ id: UUID) -> URL {
-        assetsURL.appending(path: "\(id.uuidString).png")
+    func assetURL(_ id: UUID, kind: MirrorAssetKind = .photoSticker) -> URL {
+        assetsDirectory(kind).appending(path: "\(id.uuidString).png")
     }
 
     /// 투명도를 유지해야 하므로 항상 PNG다. JPEG는 쓰지 않는다.
@@ -164,9 +177,9 @@ final class MirrorStore: Sendable {
         return data as Data
     }
 
-    func writeAsset(_ data: Data, id: UUID) {
-        let url = assetURL(id)
-        let directory = assetsURL
+    func writeAsset(_ data: Data, id: UUID, kind: MirrorAssetKind = .photoSticker) {
+        let url = assetURL(id, kind: kind)
+        let directory = assetsDirectory(kind)
         queue.async {
             let fileManager = FileManager()
             try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -174,15 +187,15 @@ final class MirrorStore: Sendable {
         }
     }
 
-    func readAsset(_ id: UUID) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(assetURL(id) as CFURL, nil) else { return nil }
+    func readAsset(_ id: UUID, kind: MirrorAssetKind = .photoSticker) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(assetURL(id, kind: kind) as CFURL, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
     /// 어떤 거울도 참조하지 않는 사진 파일을 지운다.
     /// Editor 작업 중에는 부르지 않는다 — Undo로 되살릴 스티커의 사진을 미리 지우면 안 된다.
-    func collectAssetGarbage(keeping ids: Set<UUID>) {
-        let directory = assetsURL
+    func collectAssetGarbage(keeping ids: Set<UUID>, kind: MirrorAssetKind = .photoSticker) {
+        let directory = assetsDirectory(kind)
         queue.async {
             let fileManager = FileManager()
             guard let files = try? fileManager.contentsOfDirectory(

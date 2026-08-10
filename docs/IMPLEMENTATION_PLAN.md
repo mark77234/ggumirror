@@ -406,16 +406,54 @@ Caches가 아니라 Application Support를 쓴다 — 사용자가 만든 콘텐
 
 이 Phase에서 하지 않은 것
 
-- 클라우드 동기화 / 백엔드, Profile · 조각 잔액 이전(각각 AppStorage / 임시값 그대로), External Artwork Import.
+- 클라우드 동기화 / 백엔드, Profile · 조각 잔액 이전(각각 AppStorage / 임시값 그대로).
 
-## External Mirror Artwork Import (Persistence 이후)
+## Phase 3-6 — External Mirror Artwork Import (확정)
 
-- 1080 × 2340 작업 가이드 export → Procreate / ibisPaint / Photoshop 등에서 작업
-- transparent PNG를 꾸미러로 가져와 전체 Canvas `ImportedArtwork` 레이어로 추가
-- Layers 목록에 레이어 한 줄로 들어간다.
-- 저장 구조는 이미 준비돼 있다: asset 폴더를 하나 더 두고(`ImportedArtworkAssets/`),
-  `StickerSource`처럼 참조 case를 늘린 뒤 `referencedAssetIDs`에 합치면 GC까지 그대로 따라온다.
-  지금 이것 때문에 `PhotoStickerAssetStore`를 범용 시스템으로 갈아엎지 않는다.
+작업 가이드 export → 외부 그림 앱 → transparent PNG → 전체 Canvas 고정 레이어.
+
+작업 가이드
+
+- `MirrorArtworkGuide.makeImage()` — 1080 × 2340 투명 PNG. 거울 외곽선 + 카메라 영역 dashed만.
+- 규격은 `MirrorFrameInsets.standard` / `MirrorGeometry.innerCornerRadius`에서 온다.
+  가이드가 108 / 180 / 220 / 30 같은 숫자를 따로 갖지 않는다.
+- 배경을 채우지 않는다 — 그림 앱에서 참고 레이어로 밑에 깔 수 있어야 한다.
+- `exportPNG()`는 임시 파일이다. persistence(Application Support)에 넣지 않는다. 공유는 `ShareLink`.
+
+가져오기
+
+- 사진(PhotosPicker) / 파일(fileImporter) 두 경로. 넓은 사진 라이브러리 권한을 요구하지 않는다.
+- `MirrorArtworkImporter.normalize` — ImageIO thumbnail로 EXIF 회전 정규화 + 큰 원본 축소.
+  정확히 1080 × 2340이면 그대로, 같은 비율이면 downsample, 다른 비율이면 `wrongAspectRatio`.
+- `coversCamera`는 막지 않고 경고만 한다. 일부러 카메라를 가리는 디자인도 허용한다.
+- 승인 전 Preview 단계를 반드시 거친다 — 실제 거울 geometry 위에 얹어 정렬과 투명도를 확인시킨다.
+
+모델
+
+- `ImportedArtworkObject { id, assetID, opacity, zIndex }`.
+  center / frame / rotation / scale을 **저장하지 않는다.** 언제나 Master Canvas 전체다.
+- 사진 스티커(`StickerSource.photo`)와 합치지 않았다 — 역할이 완전히 다르다.
+- `EditorEdit`: add / replace / delete + 기존 reorder. History에는 assetID만 들어간다.
+- 교체는 같은 레이어다 — id와 zIndex를 유지하고 assetID만 바꾼다.
+
+Layers / 선택
+
+- `DecorationLayer.importedArtwork` 추가. rank는 외부 디자인(0) < 스티커(1) < 텍스트(2).
+- 새 외부 디자인은 장식 스택 맨 뒤에 들어간다. 그 위에 스티커 / 텍스트를 얹기 쉽게 하기 위해서다.
+- **캔버스 hit test에서 제외한다.** 전체를 덮기 때문에 포함하면 어디를 눌러도 그것만 잡힌다.
+  판정은 `MirrorDesign.topSelectableDecoration` 한 곳에만 있고, 선택은 Layers row로 한다.
+- 컨트롤은 교체 / 투명도 / 삭제 / 완료뿐. 이동·크기·회전 handle이 없다.
+
+Persistence
+
+- `ImportedArtworkAssets/<assetID>.png` (PhotoStickerAssets와 분리, `MirrorAssetKind`).
+- schemaVersion **1 → 2**. v1 파일은 `importedArtworks` 키가 없을 뿐이라 빈 배열로 읽힌다.
+- 참조 계산 / GC는 종류별로 따로 돈다. 복제는 파일을 공유하고, 마지막 참조가 사라질 때만 지운다.
+
+이 Phase에서 하지 않은 것
+
+- 비율이 다를 때의 자동 crop/fit, PSD / SVG import, Imported Artwork transform,
+  레이어 숨기기 / 그룹 / blend mode, Store Publish.
 
 ## Sticker Creator (후속 Phase)
 

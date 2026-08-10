@@ -213,6 +213,10 @@ enum EditorEdit {
     /// Layers에서 순서를 바꿨다. 앞에 보이는 것부터 나열한 id 목록.
     /// drag 중이 아니라 놓았을 때 1회만 들어온다.
     case reorderDecorations(frontToBack: [UUID])
+    case addImportedArtwork(ImportedArtworkObject)
+    /// 교체 / 투명도 — 최종값 1회 반영. id와 zIndex는 그대로 유지된다.
+    case replaceImportedArtwork(ImportedArtworkObject)
+    case deleteImportedArtwork(UUID)
 }
 
 /// Undo / Redo가 되돌리는 편집 대상 전체.
@@ -220,6 +224,8 @@ struct EditorSnapshot: Equatable {
     var strokes: [DrawingStroke] = []
     var stickers: [StickerObject] = []
     var texts: [TextObject] = []
+    /// 이미지 binary가 아니라 assetID 참조만 들어온다 — Undo 한 번에 PNG가 복사되지 않는다.
+    var importedArtworks: [ImportedArtworkObject] = []
 }
 
 /// Drawing / Sticker / Text를 하나의 시간순 history로 관리한다.
@@ -266,6 +272,14 @@ struct EditorHistory {
             updated.texts.removeAll { $0.id == id }
         case .reorderDecorations(let frontToBack):
             updated.reorderDecorations(frontToBack: frontToBack)
+        case .addImportedArtwork(let artwork):
+            guard !updated.importedArtworks.contains(where: { $0.id == artwork.id }) else { return }
+            updated.importedArtworks.append(artwork)
+        case .replaceImportedArtwork(let artwork):
+            guard let index = updated.importedArtworks.firstIndex(where: { $0.id == artwork.id }) else { return }
+            updated.importedArtworks[index] = artwork
+        case .deleteImportedArtwork(let id):
+            updated.importedArtworks.removeAll { $0.id == id }
         }
         commit(updated, to: &snapshot)
     }
@@ -286,11 +300,19 @@ struct EditorHistory {
 extension MirrorDesign {
     /// history가 다루는 편집 대상만 떼어내고 되돌려 받는다.
     var snapshot: EditorSnapshot {
-        get { EditorSnapshot(strokes: strokes, stickers: stickers, texts: texts) }
+        get {
+            EditorSnapshot(
+                strokes: strokes,
+                stickers: stickers,
+                texts: texts,
+                importedArtworks: importedArtworks
+            )
+        }
         set {
             strokes = newValue.strokes
             stickers = newValue.stickers
             texts = newValue.texts
+            importedArtworks = newValue.importedArtworks
         }
     }
 }

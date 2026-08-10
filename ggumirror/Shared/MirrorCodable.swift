@@ -213,10 +213,36 @@ extension TextObject: Codable {
     }
 }
 
+// MARK: - Imported artwork
+
+extension ImportedArtworkObject: Codable {
+    private enum CodingKeys: String, CodingKey { case id, assetID, opacity, zIndex }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            assetID: try container.decode(UUID.self, forKey: .assetID),
+            opacity: try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1,
+            zIndex: try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(assetID, forKey: .assetID)
+        try container.encode(opacity, forKey: .opacity)
+        try container.encode(zIndex, forKey: .zIndex)
+    }
+}
+
 // MARK: - Mirror
 
 extension MyMirror: Codable {
-    private enum CodingKeys: String, CodingKey { case id, name, origin, style, strokes, stickers, texts }
+    private enum CodingKeys: String, CodingKey {
+        case id, name, origin, style, strokes, stickers, texts, importedArtworks
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -227,7 +253,11 @@ extension MyMirror: Codable {
             style: try container.decode(MirrorStyle.self, forKey: .style),
             strokes: try container.decodeIfPresent([DrawingStroke].self, forKey: .strokes) ?? [],
             stickers: try container.decodeIfPresent([StickerObject].self, forKey: .stickers) ?? [],
-            texts: try container.decodeIfPresent([TextObject].self, forKey: .texts) ?? []
+            texts: try container.decodeIfPresent([TextObject].self, forKey: .texts) ?? [],
+            // schema v1에는 이 키가 없다. 빈 배열로 읽히는 것이 곧 v1 → v2 마이그레이션이다.
+            importedArtworks: try container.decodeIfPresent(
+                [ImportedArtworkObject].self, forKey: .importedArtworks
+            ) ?? []
         )
     }
 
@@ -240,10 +270,16 @@ extension MyMirror: Codable {
         try container.encode(strokes, forKey: .strokes)
         try container.encode(stickers, forKey: .stickers)
         try container.encode(texts, forKey: .texts)
+        try container.encode(importedArtworks, forKey: .importedArtworks)
     }
 }
 
 extension MyMirror {
-    /// 이 거울이 참조하는 사진 asset. GC와 hydrate가 이 하나를 본다.
-    var photoAssetIDs: Set<UUID> { Set(stickers.compactMap(\.source.photoAssetID)) }
+    /// 이 거울이 참조하는 이미지 파일. GC와 hydrate가 이 하나를 본다.
+    func assetIDs(_ kind: MirrorAssetKind) -> Set<UUID> {
+        switch kind {
+        case .photoSticker: Set(stickers.compactMap(\.source.photoAssetID))
+        case .importedArtwork: Set(importedArtworks.map(\.assetID))
+        }
+    }
 }

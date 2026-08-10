@@ -251,14 +251,15 @@ struct MirrorPersistenceTests {
         #expect(restored.style.doodles[0].rotation == -5)
     }
 
-    @Test("저장 파일에는 schemaVersion 1이 들어간다")
+    @Test("저장 파일에는 지금 schemaVersion이 들어간다")
     func schemaVersionIsWritten() throws {
         let data = try JSONEncoder().encode(
             PersistedLibrary(currentMirrorID: "x", mirrors: [])
         )
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        #expect(json["schemaVersion"] as? Int == 1)
-        #expect(MirrorSchema.current == 1)
+        #expect(json["schemaVersion"] as? Int == MirrorSchema.current)
+        // 외부 디자인이 들어오면서 2가 됐다.
+        #expect(MirrorSchema.current == 2)
     }
 
     // MARK: - Library
@@ -542,7 +543,7 @@ struct MirrorPersistenceTests {
             let fresh = PhotoStickerAssetStore()
             fresh.attach(MirrorStore(root: store.root))
             #expect(fresh.image(for: source.photoAssetID!) != nil)
-            #expect(!reopened.referencedAssetIDs.isEmpty)
+            #expect(!reopened.referencedAssetIDs(.photoSticker).isEmpty)
         }
     }
 
@@ -558,10 +559,10 @@ struct MirrorPersistenceTests {
             library.duplicate(library.mirrors[0])
             store.flush()
 
-            let files = try FileManager().contentsOfDirectory(at: store.assetsURL, includingPropertiesForKeys: nil)
+            let files = try FileManager().contentsOfDirectory(at: store.assetsDirectory(.photoSticker), includingPropertiesForKeys: nil)
             #expect(files.count == 1)
             #expect(library.mirrors[1].stickers[0].source.photoAssetID == source.photoAssetID)
-            #expect(library.referencedAssetIDs.count == 1)
+            #expect(library.referencedAssetIDs(.photoSticker).count == 1)
         }
     }
 

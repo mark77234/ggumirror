@@ -72,6 +72,7 @@ enum MirrorRenderer {
         strokes: [DrawingStroke],
         stickers: [StickerObject] = [],
         texts: [TextObject] = [],
+        importedArtworks: [ImportedArtworkObject] = [],
         activeStroke: DrawingStroke? = nil,
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
@@ -114,18 +115,37 @@ enum MirrorRenderer {
         }
 
         // 5. 사용자 오브젝트 — Drawing 위에 얹힌다.
-        //    스티커(사진 포함)와 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
-        //    선택 hit test도 정확히 같은 규칙을 뒤집어 쓴다.
-        //    rank: zIndex가 같은 예전 데이터에서는 텍스트(1)가 스티커(0) 위.
+        //    외부 디자인 / 스티커(사진 포함) / 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
+        //    선택 hit test도 정확히 같은 규칙을 뒤집어 쓴다 (DecorationLayer.renderRank).
+        //    rank: zIndex가 같으면 외부 디자인(0) < 스티커(1) < 텍스트(2).
         let objects: [(order: (Int, Int), draw: () -> Void)] =
-            stickers.map { sticker in
-                ((sticker.zIndex, 0), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
+            importedArtworks.map { artwork in
+                ((artwork.zIndex, 0), { drawImportedArtwork(artwork, in: context, transform: transform) })
+            } + stickers.map { sticker in
+                ((sticker.zIndex, 1), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
             } + texts.map { text in
-                ((text.zIndex, 1), { drawText(text, in: context, transform: transform, visible: visible) })
+                ((text.zIndex, 2), { drawText(text, in: context, transform: transform, visible: visible) })
             }
         for object in objects.sorted(by: { $0.order < $1.order }) {
             object.draw()
         }
+    }
+
+    // MARK: - Imported artwork
+
+    /// 외부 그림 앱에서 가져온 디자인. **Master Canvas 전체**에 그대로 얹는다.
+    /// 카메라 영역을 따로 잘라내지 않는다 — 투명한 픽셀에서는 카메라가 그대로 비치고,
+    /// 불투명한 픽셀에서는 그 그림이 카메라 위에 보인다. 이게 이 기능의 핵심이다.
+    static func drawImportedArtwork(
+        _ artwork: ImportedArtworkObject,
+        in context: GraphicsContext,
+        transform: MirrorViewTransform
+    ) {
+        // asset이 없으면 조용히 건너뛴다 — 파일을 못 찾아도 거울 전체가 깨지지 않는다.
+        guard let image = ImportedArtworkAssetStore.shared.image(for: artwork.assetID) else { return }
+        var layer = context
+        layer.opacity = artwork.opacity
+        layer.draw(context.resolve(Image(decorative: image, scale: 1)), in: transform.canvasRect)
     }
 
     // MARK: - Text

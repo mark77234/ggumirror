@@ -28,7 +28,7 @@ struct HomeView: View {
                     library: library,
                     // 내 거울에서 고르면 원본을 두고 새 거울로 저장한다.
                     onEditMirror: { onEdit(.init(design: MirrorDesign(mirror: $0), context: .duplicate)) },
-                    onCreateMirror: { onEdit(.init(design: .blank, context: .createNew)) },
+                    onCreateMirror: { onEdit(.init(design: $0, context: .createNew)) },
                     onBrowseStore: { tab = .store }
                 )
             }

@@ -141,6 +141,17 @@ private struct LayerRow: View {
     @ViewBuilder
     private var thumbnail: some View {
         switch layer {
+        case .importedArtwork(let object):
+            // 이미 메모리에 있는 이미지를 그대로 쓴다 — 목록을 열 때마다 파일을 다시 읽지 않는다.
+            if let image = ImportedArtworkAssetStore.shared.image(for: object.assetID) {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(PaperTheme.secondaryInk)
+            }
         case .sticker(let object):
             switch object.source {
             case .builtIn(let builtIn):
