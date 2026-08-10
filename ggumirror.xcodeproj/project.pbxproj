@@ -29,9 +29,48 @@
 		12E5F2EC30274DA8004E6173 /* ggumirrorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ggumirrorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		12A174DD302A157200B79A16 /* Exceptions for "ggumirror" folder in "ggumirrorTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Resources/Fonts/Gaegu-Bold.ttf",
+				"Resources/Fonts/Gaegu-Light.ttf",
+				"Resources/Fonts/Gaegu-Regular.ttf",
+				"Resources/Fonts/GamjaFlower-Regular.ttf",
+				"Resources/Fonts/HiMelody-Regular.ttf",
+				"Resources/Fonts/Jua-Regular.ttf",
+				"Resources/Fonts/NanumBrushScript-Regular.ttf",
+				"Resources/Fonts/NanumPenScript-Regular.ttf",
+				"Resources/Fonts/PoorStory-Regular.ttf",
+				"Resources/Fonts/SingleDay-Regular.ttf",
+			);
+			target = 12E5F2E130274DA8004E6173 /* ggumirrorTests */;
+		};
+		12A174DE302A157200B79A16 /* Exceptions for "ggumirror" folder in "ggumirrorUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Resources/Fonts/Gaegu-Bold.ttf",
+				"Resources/Fonts/Gaegu-Light.ttf",
+				"Resources/Fonts/Gaegu-Regular.ttf",
+				"Resources/Fonts/GamjaFlower-Regular.ttf",
+				"Resources/Fonts/HiMelody-Regular.ttf",
+				"Resources/Fonts/Jua-Regular.ttf",
+				"Resources/Fonts/NanumBrushScript-Regular.ttf",
+				"Resources/Fonts/NanumPenScript-Regular.ttf",
+				"Resources/Fonts/PoorStory-Regular.ttf",
+				"Resources/Fonts/SingleDay-Regular.ttf",
+			);
+			target = 12E5F2EB30274DA8004E6173 /* ggumirrorUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		12E5F2D530274DA6004E6173 /* ggumirror */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				12A174DD302A157200B79A16 /* Exceptions for "ggumirror" folder in "ggumirrorTests" target */,
+				12A174DE302A157200B79A16 /* Exceptions for "ggumirror" folder in "ggumirrorUITests" target */,
+			);
 			path = ggumirror;
 			sourceTree = "<group>";
 		};
