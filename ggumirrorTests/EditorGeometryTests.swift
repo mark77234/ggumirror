@@ -18,9 +18,9 @@ struct EditorGeometryTests {
 
     // MARK: - 좌표 변환
 
-    @Test("화면 좌표 → Master normalized → 화면 좌표 왕복이 일치한다", arguments: EditorSide.allCases)
-    func screenToMasterRoundTrip(side: EditorSide) {
-        let transform = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
+    @Test("화면 좌표 → Master normalized → 화면 좌표 왕복이 일치한다")
+    func screenToMasterRoundTrip() {
+        let transform = EditorCanvasTransform(viewport: viewport)
         let screenPoint = CGPoint(x: 137, y: 209)
 
         let master = transform.masterPoint(from: screenPoint)
@@ -31,35 +31,7 @@ struct EditorGeometryTests {
         #expect(abs(backY - screenPoint.y) < 0.001)
     }
 
-    @Test("frameInsets가 다르면 같은 화면 좌표가 다른 Master 좌표가 된다")
-    func transformFollowsInsets() {
-        let standard = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let thick = SideDetailTransform(side: .left, insets: Self.thickInsets, viewport: viewport)
-        let screenPoint = CGPoint(x: 40, y: 120)
-
-        #expect(standard.masterPoint(from: screenPoint) != thick.masterPoint(from: screenPoint))
-    }
-
-    @Test("선택한 밴드가 화면 안에 들어온다", arguments: EditorSide.allCases)
-    func bandIsVisible(side: EditorSide) {
-        let insets = MirrorFrameInsets.standard
-        let transform = SideDetailTransform(side: side, insets: insets, viewport: viewport)
-        let band = side.boundingBox(with: insets).rect(in: transform.canvasSize)
-        let center = CGPoint(x: band.midX + transform.offset.x, y: band.midY + transform.offset.y)
-
-        #expect(center.x >= 0 && center.x <= viewport.width)
-        #expect(center.y >= 0 && center.y <= viewport.height)
-    }
-
     // MARK: - Frame mask
-
-    @Test("중앙 Mirror Area 안쪽은 그릴 수 없다")
-    func mirrorAreaIsNotDrawable() {
-        let insets = MirrorFrameInsets.standard
-        #expect(insets.isInsideMirrorArea(NormalizedPoint(x: 0.5, y: 0.5)))
-        #expect(!insets.isInsideMirrorArea(NormalizedPoint(x: 0.5, y: 0.02)))
-        #expect(!insets.isInsideMirrorArea(NormalizedPoint(x: 0.03, y: 0.5)))
-    }
 
     @Test("frameInsets가 달라지면 mask 경계도 달라진다")
     func maskFollowsInsets() {
@@ -70,25 +42,6 @@ struct EditorGeometryTests {
     }
 
     // MARK: - 밴드 분할
-
-    @Test("모서리 점은 정확히 한 밴드에만 속한다")
-    func cornersBelongToExactlyOneBand() {
-        let insets = MirrorFrameInsets.standard
-        let rect = CGRect(origin: .zero, size: MirrorCanvas.size)
-        let probes = [
-            CGPoint(x: 20, y: 20),                                     // 좌상단 모서리
-            CGPoint(x: MirrorCanvas.size.width - 20, y: 20),           // 우상단
-            CGPoint(x: 20, y: MirrorCanvas.size.height - 20),          // 좌하단
-            CGPoint(x: MirrorCanvas.size.width - 20, y: MirrorCanvas.size.height - 20)
-        ]
-
-        for probe in probes {
-            let matches = EditorSide.allCases.filter {
-                SideBandShape(side: $0, insets: insets).path(in: rect).contains(probe)
-            }
-            #expect(matches.count == 1, "모서리에서 밴드가 \(matches.count)개 잡힘")
-        }
-    }
 
     // MARK: - Undo / Redo
 
@@ -134,67 +87,18 @@ struct EditorGeometryTests {
 
     // MARK: - Side Detail Pan
 
-    /// 세로 밴드는 pan으로 캔버스 맨 위 / 맨 아래까지 닿아야 한다.
-    @Test("Left / Right는 위·아래 끝까지 이동한다", arguments: [EditorSide.left, .right])
-    func verticalPanReachesBothEnds(side: EditorSide) {
-        let top = SideDetailTransform(side: side, insets: .standard, viewport: viewport, state: .init(pan: CGSize(width: 0, height: 100_000)))
-        let bottom = SideDetailTransform(side: side, insets: .standard, viewport: viewport, state: .init(pan: CGSize(width: 0, height: -100_000)))
-
-        // 위쪽 끝: 캔버스 상단이 화면 상단에 맞는다
-        #expect(abs(top.offset.y) < 0.001)
-        #expect(abs(top.visibleRect.y) < 0.001)
-
-        // 아래쪽 끝: 캔버스 하단이 화면 하단에 맞는다
-        #expect(abs(bottom.offset.y - (viewport.height - bottom.canvasSize.height)) < 0.001)
-        #expect(abs((bottom.visibleRect.y + bottom.visibleRect.height) - 1) < 0.001)
-    }
-
-    /// 세로축에는 어떤 pan에서도 빈 공간이 생기면 안 된다.
-    /// 가로축은 Left / Right에서 밴드를 화면 중앙에 놓기 위한 Editor Workspace Gutter만 허용된다.
-    /// 그 이상 — pan하다 캔버스가 멀리 날아가 생기는 빈 공간 — 은 여전히 금지다.
-    @Test("의도한 workspace gutter 외에는 캔버스 밖으로 pan 되지 않는다", arguments: EditorSide.allCases)
-    func panNeverShowsEmptySpace(side: EditorSide) {
-        for pan in [-5000.0, -500.0, 0.0, 500.0, 5000.0] {
-            let t = SideDetailTransform(side: side, insets: .standard, viewport: viewport, state: .init(pan: CGSize(width: pan, height: pan)))
-
-            if t.canvasSize.width > viewport.width {
-                let band = side.boundingBox(with: .standard).rect(in: t.canvasSize)
-                // 밴드는 화면 중앙을 넘어서까지 밀려나지 않는다.
-                let allowance = side.panAxis == .vertical
-                    ? max(0, viewport.width / 2 - band.width / 2)
-                    : 0
-                #expect(t.offset.x <= allowance + 0.001)
-                #expect(t.offset.x + t.canvasSize.width >= viewport.width - allowance - 0.001)
-                #expect(t.workspaceGutter <= allowance + 0.001)
-            } else {
-                #expect(abs(t.offset.x - (viewport.width - t.canvasSize.width) / 2) < 0.001)
-            }
-
-            if t.canvasSize.height > viewport.height {
-                #expect(t.offset.y <= 0.001)
-                #expect(t.offset.y + t.canvasSize.height >= viewport.height - 0.001)
-            } else {
-                #expect(abs(t.offset.y - (viewport.height - t.canvasSize.height) / 2) < 0.001)
-            }
-        }
-    }
-
     @Test("요청한 pan이 범위를 넘으면 clamp된 값이 돌아온다")
     func appliedPanIsClamped() {
-        let t = SideDetailTransform(
-            side: .right, insets: .standard, viewport: viewport,
-            state: .init(pan: CGSize(width: 0, height: 100_000))
+        let t = EditorCanvasTransform(viewport: viewport, state: .init(pan: CGSize(width: 0, height: 100_000))
         )
         #expect(t.appliedPan.height < 100_000)
     }
 
     @Test("Mini Map viewport가 pan을 따라 움직인다")
     func visibleRectFollowsPan() {
-        let middle = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let up = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                     state: .init(pan: CGSize(width: 0, height: 200)))
-        let down = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                       state: .init(pan: CGSize(width: 0, height: -200)))
+        let middle = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2))
+        let up = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2, pan: CGSize(width: 0, height: 200)))
+        let down = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2, pan: CGSize(width: 0, height: -200)))
 
         #expect(up.visibleRect.y < middle.visibleRect.y)
         #expect(down.visibleRect.y > middle.visibleRect.y)
@@ -204,8 +108,7 @@ struct EditorGeometryTests {
 
     @Test("pan 후에도 화면 좌표 왕복 변환이 일치한다")
     func masterRoundTripAfterPan() {
-        let t = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                    state: .init(pan: CGSize(width: 0, height: -240)))
+        let t = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2, pan: CGSize(width: 0, height: -240)))
         let screenPoint = CGPoint(x: 210, y: 380)
         let master = t.masterPoint(from: screenPoint)
 
@@ -215,9 +118,8 @@ struct EditorGeometryTests {
 
     @Test("pan하면 같은 화면 좌표가 다른 Master 좌표를 가리킨다")
     func panChangesMasterPoint() {
-        let before = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
-        let after = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                        state: .init(pan: CGSize(width: 0, height: -300)))
+        let before = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2))
+        let after = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2, pan: CGSize(width: 0, height: -300)))
         let screenPoint = CGPoint(x: 200, y: 300)
 
         #expect(after.masterPoint(from: screenPoint).y > before.masterPoint(from: screenPoint).y)
@@ -225,43 +127,20 @@ struct EditorGeometryTests {
         #expect(before.canvasSize == after.canvasSize)
     }
 
-    @Test("아래 끝까지 pan하면 Bottom corner가 화면에 들어온다")
-    func bottomCornerReachable() {
-        let t = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                    state: .init(pan: CGSize(width: 0, height: -100_000)))
-        let bottom = t.visibleRect.y + t.visibleRect.height
-        #expect(bottom > 1 - 0.001)
-        // Bottom 밴드 시작점(1 - 0.0769)이 보이는 범위 안에 있다
-        #expect(t.visibleRect.y < 1 - MirrorFrameInsets.standard.bottom)
-    }
-
     // MARK: - Zoom
 
     @Test("Zoom은 지정한 범위를 벗어나지 않는다")
     func zoomIsClamped() {
-        let tiny = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                       state: .init(zoom: -5))
-        let huge = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                       state: .init(zoom: 999))
+        let tiny = EditorCanvasTransform(viewport: viewport, state: .init(zoom: -5))
+        let huge = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 999))
         #expect(tiny.appliedZoom == EditorViewportState.zoomRange.lowerBound)
         #expect(huge.appliedZoom == EditorViewportState.zoomRange.upperBound)
         #expect(tiny.canvasSize.width > 0)
     }
 
-    @Test("Zoom In하면 Mini Map viewport가 작아진다")
-    func miniMapShrinksWhenZoomed() {
-        let fit = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let zoomed = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                         state: .init(zoom: 2))
-        #expect(zoomed.visibleRect.width < fit.visibleRect.width)
-        #expect(zoomed.visibleRect.height < fit.visibleRect.height)
-    }
-
     @Test("배율이 바뀌어도 화면↔Master 왕복이 일치한다", arguments: [1.0, 2.0, 3.0])
     func roundTripAtZoom(zoom: Double) {
-        let t = SideDetailTransform(
-            side: .right, insets: .standard, viewport: viewport,
-            state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: -120))
+        let t = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: -120))
         )
         let screenPoint = CGPoint(x: 180, y: 260)
         let master = t.masterPoint(from: screenPoint)
@@ -270,23 +149,22 @@ struct EditorGeometryTests {
         #expect(abs(back.y - screenPoint.y) < 0.001)
     }
 
-    @Test("Zoom Out하면 pan이 다시 clamp되어 빈 공간이 생기지 않는다")
+    @Test("Zoom Out하면 pan이 다시 clamp되어 거울 한 장이 그대로 보인다")
     func panReclampedAfterZoomOut() {
-        // 최대 배율에서 끝까지 이동한 pan 값을 그대로 fit 배율에 적용해도 빈 공간이 없어야 한다.
-        let zoomedIn = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                           state: .init(zoom: 3, pan: CGSize(width: 0, height: -100_000)))
-        let backToFit = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                            state: .init(zoom: 1, pan: zoomedIn.appliedPan))
-        #expect(backToFit.offset.y <= 0.001)
-        #expect(backToFit.offset.y + backToFit.canvasSize.height >= viewport.height - 0.001)
+        // 최대 배율에서 끝까지 이동한 pan 값을 그대로 맞춤 배율에 적용해도 가운데 정렬로 돌아간다.
+        let zoomedIn = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3, pan: CGSize(width: 0, height: -100_000)))
+        let backToFit = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 1, pan: zoomedIn.appliedPan))
+
+        #expect(backToFit.appliedPan == .zero)
+        #expect(abs(backToFit.visibleRect.width - 1) < 0.0001)
+        #expect(abs(backToFit.visibleRect.height - 1) < 0.0001)
     }
 
     @Test("Brush 굵기는 배율과 무관하다")
     func brushWidthIsIndependentFromZoom() {
         let width = EditorBrush.pen.defaultWidth
-        let fit = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let zoomed = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                         state: .init(zoom: 3))
+        let fit = EditorCanvasTransform(viewport: viewport)
+        let zoomed = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3))
         // 저장되는 값은 normalized라 배율이 달라도 그대로다. 화면 굵기만 커진다.
         let stroke = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: width)
         #expect(stroke.width == width)
@@ -295,9 +173,8 @@ struct EditorGeometryTests {
 
     @Test("지우개 반경은 배율에 따라 Master 기준으로 환산된다")
     func eraserRadiusFollowsZoom() {
-        let fit = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let zoomed = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                         state: .init(zoom: 3))
+        let fit = EditorCanvasTransform(viewport: viewport)
+        let zoomed = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3))
         #expect(zoomed.masterLength(fromScreen: 22) < fit.masterLength(fromScreen: 22))
     }
 
@@ -311,11 +188,11 @@ struct EditorGeometryTests {
         ]
         let original = strokes
 
-        for side in EditorSide.allCases {
+        do {
             for zoom in [1.0, 1.7, 3.0] {
                 for pan in [-800.0, 0.0, 800.0] {
-                    _ = SideDetailTransform(
-                        side: side, insets: .standard, viewport: viewport,
+                    _ = EditorCanvasTransform(
+                        viewport: viewport,
                         state: .init(zoom: CGFloat(zoom), pan: CGSize(width: pan, height: pan))
                     )
                 }
@@ -378,11 +255,9 @@ struct EditorGeometryTests {
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: 0.01)
 
         history.apply(.addStroke(a), to: &snapshot)
-        _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                state: .init(zoom: 2, pan: CGSize(width: 0, height: -200)))
+        _ = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2, pan: CGSize(width: 0, height: -200)))
         history.apply(.addStroke(b), to: &snapshot)
-        _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                state: .init(zoom: 1, pan: .zero))
+        _ = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 1, pan: .zero))
 
         history.undo(&snapshot)
         #expect(snapshot.strokes.map(\.id) == [a.id])
@@ -398,7 +273,7 @@ struct EditorGeometryTests {
     /// 렌더러가 실제로 쓰는 판정과 같은 규칙.
     private func strokeIsRendered(
         _ stroke: DrawingStroke,
-        transform: SideDetailTransform,
+        transform: EditorCanvasTransform,
         viewport: CGSize
     ) -> Bool {
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
@@ -410,21 +285,19 @@ struct EditorGeometryTests {
             .intersects(CGRect(origin: .zero, size: viewport))
     }
 
-    /// Left frame을 세로로 가로지르는 긴 획.
-    private var longLeftStroke: DrawingStroke {
+    /// 캔버스를 세로로 가로지르는 긴 획. 프레임과 카메라 영역을 모두 지난다.
+    private var longStroke: DrawingStroke {
         DrawingStroke(
-            points: (0...20).map { NormalizedPoint(x: 0.05, y: 0.03 + Double($0) * 0.047) },
+            points: (0...20).map { NormalizedPoint(x: 0.5, y: 0.03 + Double($0) * 0.047) },
             width: 14 / MirrorCanvas.size.width
         )
     }
 
     @Test("일부만 화면에 걸친 긴 획도 렌더 대상이다", arguments: [1.0, 2.0, 3.0])
     func partiallyVisibleStrokeIsRendered(zoom: Double) {
-        let stroke = longLeftStroke
+        let stroke = longStroke
         for pan in [0.0, -400.0, -1200.0, 400.0, 1200.0] {
-            let transform = SideDetailTransform(
-                side: .left, insets: .standard, viewport: viewport,
-                state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: pan))
+            let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: pan))
             )
             #expect(
                 strokeIsRendered(stroke, transform: transform, viewport: viewport),
@@ -435,9 +308,8 @@ struct EditorGeometryTests {
 
     @Test("bounding box가 viewport보다 커도 skip하지 않는다")
     func oversizedStrokeIsNotSkipped() {
-        let stroke = longLeftStroke
-        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                            state: .init(zoom: 3))
+        let stroke = longStroke
+        let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3))
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let box = StrokeRenderer.path(for: stroke, in: placement.canvasSize)
             .offsetBy(dx: placement.offset.x, dy: placement.offset.y)
@@ -456,10 +328,11 @@ struct EditorGeometryTests {
             points: [NormalizedPoint(x: 0.05, y: 0.985), NormalizedPoint(x: 0.06, y: 0.99)],
             width: 8 / MirrorCanvas.size.width
         )
-        let top = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                      state: .init(zoom: 3, pan: CGSize(width: 0, height: 100_000)))
-        let bottom = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                         state: .init(zoom: 3, pan: CGSize(width: 0, height: -100_000)))
+        let top = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3, pan: CGSize(width: 0, height: 100_000)))
+        let bottom = EditorCanvasTransform(
+            viewport: viewport,
+            state: .init(zoom: 3, pan: CGSize(width: 100_000, height: -100_000))
+        )
 
         #expect(!strokeIsRendered(stroke, transform: top, viewport: viewport))
         #expect(strokeIsRendered(stroke, transform: bottom, viewport: viewport))
@@ -474,22 +347,22 @@ struct EditorGeometryTests {
             ],
             width: 12 / MirrorCanvas.size.width
         )
-        // Top은 fit 상태에서 상단이 보이고, Right는 위로 이동해야 같은 모서리가 보인다.
-        let top = SideDetailTransform(side: .top, insets: .standard, viewport: viewport,
-                                      state: .init(zoom: 2))
-        let right = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                        state: .init(zoom: 2, pan: CGSize(width: 0, height: 100_000)))
-        #expect(strokeIsRendered(stroke, transform: top, viewport: viewport))
-        #expect(strokeIsRendered(stroke, transform: right, viewport: viewport))
+        // 맞춤에서는 전부 보이고, 오른쪽 위로 확대해도 같은 획이 보인다.
+        let fitted = EditorCanvasTransform(viewport: viewport)
+        let zoomedCorner = EditorCanvasTransform(
+            viewport: viewport,
+            state: .init(zoom: 2, pan: CGSize(width: -100_000, height: 100_000))
+        )
+        #expect(strokeIsRendered(stroke, transform: fitted, viewport: viewport))
+        #expect(strokeIsRendered(stroke, transform: zoomedCorner, viewport: viewport))
     }
 
     @Test("Master 획 데이터는 viewport 기준으로 잘리지 않는다")
     func strokePointsAreNeverTrimmed() {
-        let stroke = longLeftStroke
+        let stroke = longStroke
         let original = stroke.points
         for pan in [-1200.0, 0.0, 1200.0] {
-            _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                    state: .init(zoom: 3, pan: CGSize(width: 0, height: pan)))
+            _ = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3, pan: CGSize(width: 0, height: pan)))
         }
         #expect(stroke.points == original)
     }
@@ -507,6 +380,8 @@ struct EditorGeometryTests {
                 style: design.style,
                 strokes: design.strokes,
                 transform: transform,
+                // Editor와 같이 카메라 영역까지 배경색으로 채운 뒤 그 위의 잉크를 센다.
+                mirrorAreaFill: design.style.frame,
                 in: context,
                 viewport: canvasSize
             )
@@ -526,30 +401,25 @@ struct EditorGeometryTests {
         )!
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        // 중앙 Mirror Area(어두운 면)를 뺀 프레임 영역에서만 잉크 픽셀을 센다.
-        let mirror = transform.rect(design.insets.mirrorArea)
+        // 카메라 영역을 포함한 캔버스 전체에서 잉크 픽셀을 센다.
         var dark = 0
         var total = 0
-        for y in stride(from: 0, to: height, by: 2) {
-            for x in stride(from: 0, to: width, by: 2) {
-                let point = CGPoint(x: x, y: y)
-                guard !mirror.contains(point) else { continue }
+        for y in 0..<height {
+            for x in 0..<width {
                 total += 1
                 let i = (y * width + x) * 4
-                if data[i] < 90 && data[i + 1] < 90 && data[i + 2] < 90 { dark += 1 }
+                if data[i] < 120 && data[i + 1] < 120 && data[i + 2] < 120 { dark += 1 }
             }
         }
         return (dark, total)
     }
 
-    @Test("Side Detail에서도 획이 실제로 렌더된다", arguments: [1.0, 2.0, 3.0])
-    func strokeActuallyRendersInSideDetail(zoom: Double) {
+    @Test("확대해도 획이 실제로 렌더된다", arguments: [1.0, 2.0, 3.0])
+    func strokeActuallyRendersWhenZoomed(zoom: Double) {
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.strokes = [longLeftStroke]
+        design.strokes = [longStroke]
 
-        let transform = SideDetailTransform(
-            side: .left, insets: .standard, viewport: viewport,
-            state: .init(zoom: CGFloat(zoom))
+        let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom))
         )
         let result = renderedPixels(
             design: design,
@@ -558,13 +428,13 @@ struct EditorGeometryTests {
         )
 
         #expect(result.total > 0)
-        #expect(result.dark > 0, "zoom \(zoom) Side Detail에서 획이 한 픽셀도 그려지지 않음")
+        #expect(result.dark > 0, "zoom \(zoom)에서 획이 한 픽셀도 그려지지 않음")
     }
 
-    @Test("Overview에서도 획이 실제로 렌더된다")
-    func strokeActuallyRendersInOverview() {
+    @Test("맞춤 상태에서도 획이 실제로 렌더된다")
+    func strokeActuallyRendersWhenFitted() {
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.strokes = [longLeftStroke]
+        design.strokes = [longStroke]
 
         let size = CGSize(width: 300, height: 650)
         let result = renderedPixels(design: design, transform: .fitted(in: size), size: size)
@@ -573,53 +443,11 @@ struct EditorGeometryTests {
 
     // MARK: - Scroll Handle
 
-    @Test("Handle 위치는 viewport 위치를 그대로 따른다")
-    func handleProgressFollowsViewport() {
-        func progress(_ pan: CGFloat) -> Double {
-            let t = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                        state: .init(pan: CGSize(width: 0, height: pan)))
-            let travel = 1 - t.visibleRect.height
-            return travel > 0.0001 ? min(max(t.visibleRect.y / travel, 0), 1) : 0
-        }
-        let top = progress(100_000)
-        let middle = progress(0)
-        let bottom = progress(-100_000)
-
-        #expect(abs(top) < 0.001)
-        #expect(abs(bottom - 1) < 0.001)
-        #expect(middle > top && middle < bottom)
-    }
-
     // MARK: - Zoom 정책
-
-    @Test("Left / Right 기본 화면이 Top / Bottom과 지나치게 다르지 않다")
-    func verticalSidesShowEnoughContext() {
-        let left = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let top = SideDetailTransform(side: .top, insets: .standard, viewport: viewport)
-
-        // 세로 밴드가 화면 폭의 절반을 넘게 차지하지 않는다 = 중앙 Mirror Area도 함께 보인다.
-        let bandWidth = MirrorFrameInsets.standard.left * left.canvasSize.width
-        #expect(bandWidth < viewport.width * 0.45)
-
-        // 세로 밴드 기본 배율이 가로 밴드보다 지나치게 크지 않다.
-        #expect(left.canvasSize.height < top.canvasSize.height * 2.6)
-    }
-
-    @Test("최소 배율에서는 기본보다 더 넓은 영역이 보인다", arguments: [EditorSide.left, .right])
-    func minimumZoomShowsMoreContext(side: EditorSide) {
-        let base = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
-        let zoomedOut = SideDetailTransform(side: side, insets: .standard, viewport: viewport,
-                                            state: .init(zoom: 0.1))   // 정책 하한으로 clamp
-        #expect(zoomedOut.appliedZoom < 1)
-        #expect(zoomedOut.visibleRect.height > base.visibleRect.height)
-        // 그래도 캔버스가 화면보다 좁아져 떠다니지는 않는다.
-        #expect(zoomedOut.canvasSize.width >= viewport.width - 0.001)
-    }
 
     @Test("최대 배율은 정책 상한을 넘지 않는다")
     func maximumZoomIsClamped() {
-        let t = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                    state: .init(zoom: 99))
+        let t = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 99))
         #expect(t.appliedZoom == EditorViewportState.zoomRange.upperBound)
     }
 
@@ -629,44 +457,13 @@ struct EditorGeometryTests {
         #expect(!moved.isFitted)
         #expect(EditorViewportState().isFitted)
 
-        let fitted = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let base = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                       state: EditorViewportState())
+        let fitted = EditorCanvasTransform(viewport: viewport)
+        let base = EditorCanvasTransform(viewport: viewport, state: EditorViewportState())
         #expect(fitted.offset == base.offset)
         #expect(fitted.canvasSize == base.canvasSize)
     }
 
     // MARK: - Scroll Handle 스크럽
-
-    @Test("Handle 위치가 그대로 viewport 위치가 된다", arguments: [0.0, 0.5, 1.0])
-    func scrubMapsProgressToViewport(progress: Double) {
-        let start = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let pan = start.pan(forVerticalProgress: progress, viewport: viewport)
-        let moved = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                        state: .init(pan: pan))
-        #expect(abs(moved.verticalProgress - progress) < 0.01)
-    }
-
-    @Test("Handle track 한 번으로 프레임 끝에서 끝까지 간다")
-    func scrubCoversFullRange() {
-        let start = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let top = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                      state: .init(pan: start.pan(forVerticalProgress: 0, viewport: viewport)))
-        let bottom = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                         state: .init(pan: start.pan(forVerticalProgress: 1, viewport: viewport)))
-        #expect(abs(top.visibleRect.y) < 0.001)
-        #expect(abs((bottom.visibleRect.y + bottom.visibleRect.height) - 1) < 0.001)
-    }
-
-    @Test("확대해도 Handle 위치 계산이 일치한다", arguments: [1.0, 2.0, 3.0])
-    func scrubStaysConsistentWhenZoomed(zoom: Double) {
-        let start = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                        state: .init(zoom: CGFloat(zoom)))
-        let pan = start.pan(forVerticalProgress: 0.75, viewport: viewport)
-        let moved = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                        state: .init(zoom: CGFloat(zoom), pan: pan))
-        #expect(abs(moved.verticalProgress - 0.75) < 0.01)
-    }
 
     // MARK: - Brush preset
 
@@ -703,17 +500,13 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         design.strokes = [
             DrawingStroke(
-                points: (0...10).map { NormalizedPoint(x: 0.05, y: 0.2 + Double($0) * 0.03) },
+                points: (0...10).map { NormalizedPoint(x: 0.5, y: 0.2 + Double($0) * 0.03) },
                 brush: brush,
                 width: brush.defaultWidth
             )
         ]
-        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let result = renderedPixels(
-            design: design,
-            transform: MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset),
-            size: viewport
-        )
+        let size = CGSize(width: 300, height: 650)
+        let result = renderedPixels(design: design, transform: .fitted(in: size), size: size)
         #expect(result.dark > 0 || brush.opacity < 0.5, "\(brush.title) 획이 렌더되지 않음")
     }
 
@@ -795,20 +588,6 @@ struct EditorGeometryTests {
         #expect((empty?.red ?? 0) > 200, "획이 없는 상태와 구분되지 않음")
     }
 
-    @Test("중앙 Mirror Area에는 획이 남지 않는다")
-    func runtimeNeverDrawsOverCamera() {
-        var design = mirrorDesign(.white)
-        // 중앙을 가로지르는 획을 억지로 넣어도 마스크가 막는다.
-        design.strokes = [
-            DrawingStroke(
-                points: [NormalizedPoint(x: 0.2, y: 0.5), NormalizedPoint(x: 0.8, y: 0.5)],
-                color: .black,
-                width: 40 / MirrorCanvas.size.width
-            )
-        ]
-        #expect(runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha == 0)
-    }
-
     @Test("Editor viewport 상태는 실제 Mirror 결과에 영향을 주지 않는다")
     func runtimeIgnoresEditorViewport() {
         var design = mirrorDesign(.softPink)
@@ -820,8 +599,7 @@ struct EditorGeometryTests {
             )
         ]
         // Editor에서 확대·이동한 뒤 저장해도 Master 좌표만 남는다.
-        _ = SideDetailTransform(side: .right, insets: .standard, viewport: viewport,
-                                state: .init(zoom: 3, pan: CGSize(width: 0, height: -900)))
+        _ = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 3, pan: CGSize(width: 0, height: -900)))
         let pixel = runtimePixel(design: design, at: NormalizedPoint(x: 0.95, y: 0.91))
         #expect((pixel?.red ?? 255) < 120)
     }
@@ -893,28 +671,23 @@ struct EditorGeometryTests {
     func stickerInsertsNearViewport() {
         let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         // Right 하단을 보고 있는 상태
-        let transform = SideDetailTransform(
-            side: .right, insets: .standard, viewport: viewport,
-            state: .init(pan: CGSize(width: 0, height: -100_000))
+        let transform = EditorCanvasTransform(viewport: viewport, state: .init(pan: CGSize(width: 0, height: -100_000))
         )
-        let placed = StickerPlacement.insert(.builtIn(.heart), in: design, visibleRect: transform.visibleRect, side: .right)
+        let placed = StickerPlacement.insert(.builtIn(.heart), in: design, visibleRect: transform.visibleRect)
 
-        #expect(placed.center.y > 0.6, "하단을 보고 있는데 위쪽에 생김")
-        #expect(placed.center.x > 0.5, "오른쪽을 보고 있는데 왼쪽에 생김")
-        #expect(!design.insets.isInsideMirrorArea(placed.center))
-    }
-
-    @Test("스티커 중심은 중앙 Mirror Area에 들어가지 않는다")
-    func stickerCenterStaysOutOfMirrorArea() {
-        let insets = MirrorFrameInsets.standard
-        let pushed = sticker(at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: insets)
-        #expect(!insets.isInsideMirrorArea(pushed.center))
+        // 보고 있는 화면 한가운데에 생긴다. 프레임 / 카메라를 가리지 않는다.
+        let center = NormalizedPoint(
+            x: transform.visibleRect.x + transform.visibleRect.width / 2,
+            y: transform.visibleRect.y + transform.visibleRect.height / 2
+        )
+        #expect(abs(placed.center.x - center.x) < 0.001)
+        #expect(abs(placed.center.y - center.y) < 0.001)
     }
 
     @Test("모서리를 걸친 스티커도 하나의 오브젝트다")
     func cornerStickerStaysSingleObject() {
         let insets = MirrorFrameInsets.standard
-        let corner = sticker(at: NormalizedPoint(x: 0.96, y: 0.04)).constrained(to: insets)
+        let corner = sticker(at: NormalizedPoint(x: 0.96, y: 0.04)).constrained()
         #expect(corner.center.x > 0.9 && corner.center.y < 0.1)
         // 밴드를 넘어가는 부분이 있어도 잘리거나 복제되지 않는다.
         #expect(corner.frame.x < insets.mirrorArea.x + insets.mirrorArea.width)
@@ -922,8 +695,7 @@ struct EditorGeometryTests {
 
     @Test("이동은 화면 배율과 무관하게 같은 Master 위치가 된다", arguments: [1.0, 3.0])
     func stickerMoveMapsToMaster(zoom: Double) {
-        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                            state: .init(zoom: CGFloat(zoom)))
+        let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom)))
         let screenPoint = CGPoint(x: 40, y: 200)
         let master = transform.masterPoint(from: screenPoint)
         let moved = sticker(at: NormalizedPoint(x: 0.05, y: 0.2)).moved(to: master)
@@ -958,10 +730,10 @@ struct EditorGeometryTests {
 
     @Test("회전해도 위치가 갑자기 튀지 않는다")
     func rotationDoesNotMoveSticker() {
-        var item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5)).constrained(to: .standard)
+        var item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5)).constrained()
         let before = item.center
         item.rotation = 40
-        let after = item.constrained(to: .standard).center
+        let after = item.constrained().center
         #expect(abs(after.x - before.x) < 0.0001)
         #expect(abs(after.y - before.y) < 0.0001)
     }
@@ -1050,8 +822,7 @@ struct EditorGeometryTests {
         let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
         let snapshot = EditorSnapshot(stickers: [item])
         for zoom in [1.0, 2.0, 3.0] {
-            _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
-                                    state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: -300)))
+            _ = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: -300)))
         }
         #expect(snapshot.stickers == [item])
     }
@@ -1088,7 +859,7 @@ struct EditorGeometryTests {
         var design = mirrorDesign(.white)
         // 중앙에 넣으려 해도 배치 제약이 프레임으로 밀어낸다.
         design.stickers = [sticker(at: NormalizedPoint(x: 0.5, y: 0.5), width: 0.4)
-            .constrained(to: .standard)]
+            .constrained()]
         #expect(runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha == 0)
     }
 
@@ -1309,93 +1080,10 @@ struct EditorGeometryTests {
 
     // MARK: - Editor Workspace Gutter (Side Workspace Centering)
 
-    /// 선택한 밴드의 화면상 중심 x.
-    private func bandCenterX(_ side: EditorSide) -> CGFloat {
-        let transform = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
-        let band = side.boundingBox(with: .standard).rect(in: transform.canvasSize)
-        return band.midX + transform.offset.x
-    }
-
-    @Test("Left 프레임은 기본 상태에서 화면 가로 중앙에 온다")
-    func leftBandIsCentered() {
-        #expect(abs(bandCenterX(.left) - viewport.width / 2) < 0.5)
-    }
-
-    @Test("Right 프레임은 기본 상태에서 화면 가로 중앙에 온다")
-    func rightBandIsCentered() {
-        #expect(abs(bandCenterX(.right) - viewport.width / 2) < 0.5)
-    }
-
-    @Test("Left / Right workspace는 정확히 대칭이다")
-    func leftRightWorkspaceIsSymmetric() {
-        let left = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
-        let right = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
-        #expect(abs(left.workspaceGutter - right.workspaceGutter) < 0.5)
-        #expect(left.workspaceGutter > 0)
-        // gutter는 캔버스 바깥쪽에만 생긴다.
-        #expect(left.offset.x > 0)                                      // 왼쪽 바깥
-        #expect(right.offset.x + right.canvasSize.width < viewport.width)   // 오른쪽 바깥
-    }
-
-    @Test("Workspace Gutter는 MirrorDesign이 아니다")
-    func workspaceGutterIsNotPartOfDesign() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
-        #expect(transform.workspaceGutter > 0)
-
-        // Mini Map이 보는 영역은 항상 Master Canvas 안쪽이다.
-        #expect(transform.visibleRect.x >= -0.0001)
-        #expect(transform.visibleRect.x + transform.visibleRect.width <= 1.0001)
-
-        // Gutter 위치는 Master 좌표계 밖으로 나간다 — 저장할 수 있는 좌표가 아니다.
-        let gutterPoint = CGPoint(x: viewport.width - 2, y: viewport.height / 2)
-        #expect(transform.masterPoint(from: gutterPoint).x > 1)
-
-        // 디자인 데이터에는 gutter라는 개념 자체가 없다.
-        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        #expect(design.insets == .standard)
-    }
-
-    @Test("Gutter에서는 그리기가 시작되지 않는다")
-    func gutterTouchCannotCreateDrawing() {
-        let insets = MirrorFrameInsets.standard
-        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 1.08, y: 0.5)))   // 오른쪽 gutter
-        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: -0.08, y: 0.5)))  // 왼쪽 gutter
-        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: 0.5)))    // 중앙 Mirror Area
-        #expect(insets.isInsideFrameBand(NormalizedPoint(x: 0.05, y: 0.5)))    // 실제 프레임 밴드
-    }
-
-    @Test("Gutter는 스티커 위치가 될 수 없다")
-    func gutterCannotBecomeStickerPosition() {
-        let insets = MirrorFrameInsets.standard
-        let placed = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
-            .moved(to: NormalizedPoint(x: 1.4, y: 0.5))
-            .constrained(to: insets)
-        #expect(placed.center.x <= 1.0001)
-        #expect(placed.center.x >= -0.0001)
-    }
-
-    @Test("맞춤은 중앙 배치 기본 상태로 되돌린다")
-    func fitReturnsToCenteredSideLayout() {
-        for side in [EditorSide.left, .right] {
-            let panned = SideDetailTransform(
-                side: side, insets: .standard, viewport: viewport,
-                state: .init(zoom: 2, pan: CGSize(width: -400, height: 300))
-            )
-            #expect(panned.appliedPan != .zero || panned.appliedZoom != 1)
-
-            // 맞춤 = 기본 EditorViewportState
-            let fitted = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
-            #expect(fitted.appliedPan == .zero)
-            #expect(abs(bandCenterX(side) - viewport.width / 2) < 0.5)
-        }
-    }
-
     @Test("Pan / Zoom 후에도 Master 좌표 변환이 유효하다")
     func panZoomRetainsValidMasterMapping() {
         for zoom in [0.7, 1.0, 2.4] {
-            let transform = SideDetailTransform(
-                side: .right, insets: .standard, viewport: viewport,
-                state: .init(zoom: CGFloat(zoom), pan: CGSize(width: -120, height: -260))
+            let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom), pan: CGSize(width: -120, height: -260))
             )
             let screen = CGPoint(x: 90, y: 300)
             let master = transform.masterPoint(from: screen)
@@ -1405,31 +1093,6 @@ struct EditorGeometryTests {
         }
     }
 
-    @Test("실제 Mirror는 Editor workspace gutter의 영향을 받지 않는다")
-    func runtimeUnaffectedByWorkspaceGutter() {
-        let size = CGSize(width: 300, height: 650)
-        let runtime = MirrorViewTransform.aspectFilled(in: size)
-        // 카메라 위에서는 캔버스가 화면을 완전히 덮는다 — 빈 여백이 없다.
-        #expect(runtime.canvasRect.minX <= 0.001)
-        #expect(runtime.canvasRect.maxX >= size.width - 0.001)
-        #expect(runtime.canvasRect.minY <= 0.001)
-        #expect(runtime.canvasRect.maxY >= size.height - 0.001)
-
-        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        let edge = runtimePixel(design: design, at: NormalizedPoint(x: 0.02, y: 0.5), size: size)
-        #expect((edge?.alpha ?? 0) > 200)   // 프레임이 그대로 칠해진다
-    }
-
-    @Test("Capture 결과도 workspace gutter의 영향을 받지 않는다")
-    func captureUnaffectedByWorkspaceGutter() {
-        let size = CGSize(width: 300, height: 650)
-        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        let image = MirrorCapture.compose(frame: nil, design: design, size: size)
-        #expect(image != nil)
-        #expect(abs((image?.size.width ?? 0) - size.width) < 1)
-        #expect(abs((image?.size.height ?? 0) - size.height) < 1)
-    }
-
     // MARK: - Sticker 재선택 / Focus
 
     /// 화면 좌표 hit test. SideDetailCanvas.sticker(at:transform:)와 같은 규칙이다.
@@ -1437,7 +1100,7 @@ struct EditorGeometryTests {
     private func hitSticker(
         _ stickers: [StickerObject],
         at location: CGPoint,
-        transform: SideDetailTransform
+        transform: EditorCanvasTransform
     ) -> StickerObject? {
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         return stickers.enumerated()
@@ -1447,7 +1110,7 @@ struct EditorGeometryTests {
     }
 
     /// 스티커의 화면상 중심.
-    private func screenCenter(_ object: StickerObject, _ transform: SideDetailTransform) -> CGPoint {
+    private func screenCenter(_ object: StickerObject, _ transform: EditorCanvasTransform) -> CGPoint {
         let rect = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
             .rect(object.frame)
         return CGPoint(x: rect.midX, y: rect.midY)
@@ -1455,7 +1118,7 @@ struct EditorGeometryTests {
 
     @Test("스티커를 탭하면 그 스티커가 선택된다")
     func stickerTapSelectsObject() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let center = placement.rect(target.frame)
@@ -1466,7 +1129,7 @@ struct EditorGeometryTests {
 
     @Test("완료로 선택을 푼 뒤 다시 탭하면 같은 스티커가 선택된다")
     func doneThenReselectWorks() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let point = CGPoint(x: placement.rect(target.frame).midX, y: placement.rect(target.frame).midY)
@@ -1486,7 +1149,7 @@ struct EditorGeometryTests {
         target.tintColor = .red
         target.isFlippedHorizontally = true
 
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let rect = placement.rect(target.frame)
         let found = hitSticker([target], at: CGPoint(x: rect.midX, y: rect.midY), transform: transform)
@@ -1499,7 +1162,7 @@ struct EditorGeometryTests {
         var locked = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         locked.isLocked = true
 
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let rect = placement.rect(locked.frame)
 
@@ -1511,7 +1174,7 @@ struct EditorGeometryTests {
     @Test("화면 밖으로 나간 스티커는 zoom을 유지한 채 최소한만 끌어온다")
     func partiallyOffscreenStickerAppliesMinimalFocus() {
         let state = EditorViewportState(zoom: 1.6)
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let transform = EditorCanvasTransform(viewport: viewport, state: state)
         // 아래쪽 멀리 있는 스티커
         let far = sticker(at: NormalizedPoint(x: 0.95, y: 0.95))
 
@@ -1519,8 +1182,7 @@ struct EditorGeometryTests {
         #expect(focused != nil)
         #expect(focused?.zoom == state.zoom)             // zoom은 절대 바꾸지 않는다
 
-        let after = SideDetailTransform(
-            side: .right, insets: .standard, viewport: viewport, state: focused ?? state
+        let after = EditorCanvasTransform(viewport: viewport, state: focused ?? state
         )
         let placement = MirrorViewTransform(canvasSize: after.canvasSize, offset: after.offset)
         let rect = placement.rect(far.frame)
@@ -1534,7 +1196,7 @@ struct EditorGeometryTests {
     @Test("이미 충분히 보이는 스티커는 화면을 움직이지 않는다")
     func fullyVisibleStickerDoesNotMoveViewport() {
         let state = EditorViewportState()
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let transform = EditorCanvasTransform(viewport: viewport, state: state)
         // 기본 화면 중앙 근처
         let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
         let visible = sticker(at: master, width: 0.1)
@@ -1544,7 +1206,7 @@ struct EditorGeometryTests {
 
     @Test("다른 스티커를 고르면 이전 선택은 풀린다")
     func selectingADeselectsB() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         var a = sticker(at: NormalizedPoint(x: 0.95, y: 0.44))
         var b = sticker(at: NormalizedPoint(x: 0.95, y: 0.56))
@@ -1563,7 +1225,7 @@ struct EditorGeometryTests {
     @Test("Focus는 스티커 데이터를 바꾸지 않는다")
     func stickerDataUnchangedByFocus() {
         let state = EditorViewportState(zoom: 1.6)
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let transform = EditorCanvasTransform(viewport: viewport, state: state)
         let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.95))
         let before = target
 
@@ -1573,7 +1235,7 @@ struct EditorGeometryTests {
 
     @Test("회전하거나 작은 스티커도 눈에 보이는 곳을 누르면 잡힌다")
     func rotatedAndSmallStickersStayTappable() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
 
         var rotated = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
@@ -1600,15 +1262,15 @@ struct EditorGeometryTests {
 
     @Test("스티커 도구의 한 손가락 Pan은 같은 viewport state를 쓴다")
     func oneFingerPanUsesSameViewportState() {
-        let start = EditorViewportState()
+        let start = EditorViewportState(zoom: 2)
         var next = start
         next.pan.height -= 160                       // 빈 공간에서 한 손가락으로 끌어올림
 
-        let moved = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: next)
-        let base = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: start)
+        let moved = EditorCanvasTransform(viewport: viewport, state: next)
+        let base = EditorCanvasTransform(viewport: viewport, state: start)
         #expect(moved.offset.y < base.offset.y)
-        // Mini Map / Scroll Handle이 같은 값을 즉시 따라간다.
-        #expect(moved.verticalProgress > base.verticalProgress)
+        // 보이는 영역이 함께 내려간다.
+        #expect(moved.visibleRect.y > base.visibleRect.y)
         #expect(moved.appliedZoom == base.appliedZoom)
     }
 
@@ -1716,18 +1378,6 @@ struct EditorGeometryTests {
         }
     }
 
-    @Test("둥근 FrameMask가 그리기를 정확히 막는다")
-    func roundedFrameMaskBlocksDrawing() {
-        let insets = MirrorFrameInsets.standard
-        // 직선 구간 안쪽 = 그릴 수 없다
-        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: 0.5)))
-        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: insets.top + 0.01)))
-        // 모서리 곡선 바깥 = 프레임이라 그릴 수 있다
-        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
-        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
-        #expect(insets.isInsideFrameBand(nearInnerCorner((0, 0), dx: rx * 0.1, dy: ry * 0.1)))
-    }
-
     @Test("실제 Mirror의 투명 구멍도 둥근 사각형이다")
     func runtimeUsesRoundedOpening() {
         let size = CGSize(width: 300, height: 650)
@@ -1772,23 +1422,6 @@ struct EditorGeometryTests {
         #expect(abs(a - CGFloat(MirrorGeometry.innerCornerRadius) * small.width / MirrorCanvas.size.width) < 0.001)
     }
 
-    @Test("스티커 제약도 둥근 Mirror Area를 따른다")
-    func stickerConstraintUsesRoundedMirrorArea() {
-        let insets = MirrorFrameInsets.standard
-        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
-        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
-
-        // 곡선 바깥(= 프레임)에 있는 중심은 그대로 유지된다.
-        let corner = nearInnerCorner((0, 0), dx: rx * 0.1, dy: ry * 0.1)
-        let kept = sticker(at: corner).constrained(to: insets)
-        #expect(abs(kept.center.x - corner.x) < 0.0001)
-        #expect(abs(kept.center.y - corner.y) < 0.0001)
-
-        // 곡선 안쪽(= 카메라)에 있는 중심은 밴드로 밀려난다.
-        let inside = sticker(at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: insets)
-        #expect(!insets.isInsideMirrorArea(inside.center))
-    }
-
     // MARK: - Sticker 재선택 (Tap)
 
     /// Editor의 선택 상태 전이를 그대로 옮긴 것.
@@ -1796,7 +1429,7 @@ struct EditorGeometryTests {
     private func tap(
         _ stickers: [StickerObject],
         at location: CGPoint,
-        transform: SideDetailTransform,
+        transform: EditorCanvasTransform,
         selection: UUID?
     ) -> UUID? {
         hitSticker(stickers, at: location, transform: transform)?.id
@@ -1812,7 +1445,7 @@ struct EditorGeometryTests {
 
     @Test("완료 → 재탭 → 완료를 반복해도 계속 선택된다")
     func doneAndReselectRepeats() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         let point = screenCenter(target, transform)
 
@@ -1827,7 +1460,7 @@ struct EditorGeometryTests {
 
     @Test("회전 / 뒤집기한 스티커도 재탭으로 선택된다")
     func rotatedAndFlippedStickerIsReselectable() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         for rotation in [0.0, 24.0, 45.0, 137.0, -60.0] {
             var target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
             target.rotation = rotation
@@ -1845,8 +1478,7 @@ struct EditorGeometryTests {
             EditorViewportState(zoom: 1.4, pan: CGSize(width: -60, height: -240))
         ]
         for state in states {
-            let transform = SideDetailTransform(
-                side: .right, insets: .standard, viewport: viewport, state: state
+            let transform = EditorCanvasTransform(viewport: viewport, state: state
             )
             // 화면 중앙이 가리키는 Master 지점에 스티커를 둔다 — 어떤 viewport에서도 보이는 자리다.
             let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
@@ -1858,7 +1490,7 @@ struct EditorGeometryTests {
 
     @Test("겹친 스티커는 화면에서 위에 보이는 것이 선택된다")
     func overlappingStickersSelectTopmost() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         var bottom = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         var top = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         bottom.zIndex = 1
@@ -1879,7 +1511,7 @@ struct EditorGeometryTests {
 
     @Test("잠긴 스티커도 재탭으로 선택된다")
     func lockedStickerIsReselectable() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         var locked = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         locked.isLocked = true
         let point = screenCenter(locked, transform)
@@ -1893,7 +1525,7 @@ struct EditorGeometryTests {
     @Test("스티커 tap은 화면을 밀지 않고, 빈 곳 tap만 선택을 푼다")
     func tapDoesNotPanAndEmptyTapDeselects() {
         let state = EditorViewportState()
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let transform = EditorCanvasTransform(viewport: viewport, state: state)
         let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
         let target = sticker(at: master, width: 0.1)
 
@@ -1907,7 +1539,7 @@ struct EditorGeometryTests {
 
     @Test("재선택은 스티커 / 디자인 / history를 바꾸지 않는다")
     func reselectDoesNotMutateState() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         var target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         target.rotation = 30
         target.opacity = 0.7
@@ -1926,7 +1558,7 @@ struct EditorGeometryTests {
 
     @Test("실제로 끌면 스티커가 움직인다")
     func actualDragMovesSticker() {
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         let start = transform.masterPoint(from: screenCenter(target, transform))
         let moved = transform.masterPoint(
@@ -1935,7 +1567,7 @@ struct EditorGeometryTests {
         let grab = NormalizedPoint(x: start.x - target.center.x, y: start.y - target.center.y)
         let dragged = target
             .moved(to: NormalizedPoint(x: moved.x - grab.x, y: moved.y - grab.y))
-            .constrained(to: .standard)
+            .constrained()
 
         #expect(dragged.center.y > target.center.y)
         #expect(abs(dragged.center.x - target.center.x) < 0.0001)
@@ -2141,18 +1773,20 @@ struct EditorGeometryTests {
         // 크기 범위 제한은 기본 스티커와 동일
         #expect(item.resized(width: 5).frame.width == StickerObject.sizeRange.upperBound)
 
-        // 둥근 Mirror Area 제약도 동일
-        let pushed = sticker(source, at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: .standard)
-        #expect(!MirrorFrameInsets.standard.isInsideMirrorArea(pushed.center))
+        // 카메라 영역 한가운데도 그대로 유효한 자리다.
+        let inCamera = sticker(source, at: NormalizedPoint(x: 0.5, y: 0.5)).constrained()
+        #expect(abs(inCamera.center.x - 0.5) < 0.0001)
+        #expect(abs(inCamera.center.y - 0.5) < 0.0001)
+        #expect(MirrorFrameInsets.standard.isInsideMirrorArea(inCamera.center))
 
         // 배치도 기존 StickerPlacement 그대로
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         design.stickers = []
-        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let transform = EditorCanvasTransform(viewport: viewport)
         let placed = StickerPlacement.insert(
-            source, in: design, visibleRect: transform.visibleRect, side: .right
+            source, in: design, visibleRect: transform.visibleRect
         )
-        #expect(placed.center.x > 0.5)
+        #expect(abs(placed.center.x - 0.5) < 0.001)
         #expect(abs(placed.frame.width / placed.frame.height
                     * MirrorCanvas.size.width / MirrorCanvas.size.height - 1.5) < 0.001)
     }
@@ -2164,8 +1798,7 @@ struct EditorGeometryTests {
 
         for zoom in [1.0, 3.0] {
             let state = EditorViewportState(zoom: CGFloat(zoom))
-            let transform = SideDetailTransform(
-                side: .right, insets: .standard, viewport: viewport, state: state
+            let transform = EditorCanvasTransform(viewport: viewport, state: state
             )
             let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
             var item = sticker(source, at: master, width: 0.12)
@@ -2396,12 +2029,263 @@ struct EditorGeometryTests {
         #expect(library.mirrors.count == MirrorStoragePolicy.freeCreatedSlots)
     }
 
-    @Test("프레임 두께는 여전히 108 / 180으로 고정이다")
+    // MARK: - Free Canvas
+
+    /// 카메라 영역 한가운데. 예전 정책이라면 금지 구역이었다.
+    private var cameraCenter: NormalizedPoint { NormalizedPoint(x: 0.5, y: 0.5) }
+
+    @Test("Master Canvas 전체가 편집 영역이다")
+    func wholeCanvasIsEditable() {
+        // 프레임, 카메라 안, 경계 어디든 그릴 수 있다.
+        for point in [
+            NormalizedPoint(x: 0.02, y: 0.02),      // 프레임 모서리
+            NormalizedPoint(x: 0.5, y: 0.03),       // 위 프레임
+            cameraCenter,                            // 카메라 한가운데
+            NormalizedPoint(x: 0.11, y: 0.5),       // 프레임 ↔ 카메라 경계
+            NormalizedPoint(x: 0.5, y: 0.97)        // 아래 프레임
+        ] {
+            #expect(MirrorEditorCanvas.isInsideCanvas(point))
+        }
+        // 캔버스 밖만 막는다.
+        #expect(!MirrorEditorCanvas.isInsideCanvas(NormalizedPoint(x: 1.05, y: 0.5)))
+        #expect(!MirrorEditorCanvas.isInsideCanvas(NormalizedPoint(x: 0.5, y: -0.02)))
+    }
+
+    @Test("프레임과 카메라를 가로지르는 획도 잘리지 않는다")
+    func strokeCrossesFrameAndCameraBoundary() {
+        let insets = MirrorFrameInsets.standard
+        let stroke = DrawingStroke(
+            points: [
+                NormalizedPoint(x: 0.03, y: 0.5),   // 왼쪽 프레임
+                NormalizedPoint(x: 0.20, y: 0.5),   // 카메라 안
+                NormalizedPoint(x: 0.50, y: 0.5)    // 카메라 한가운데
+            ],
+            width: 14 / MirrorCanvas.size.width
+        )
+        // 데이터가 두 영역으로 잘리지 않는다 — 한 획 그대로다.
+        #expect(stroke.points.count == 3)
+        #expect(!insets.isInsideMirrorArea(stroke.points[0]))
+        #expect(insets.isInsideMirrorArea(stroke.points[2]))
+
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.strokes = [stroke]
+        let size = CGSize(width: 300, height: 650)
+        let result = renderedPixels(design: design, transform: .fitted(in: size), size: size)
+        #expect(result.dark > 0)
+    }
+
+    @Test("지우개도 카메라 영역에서 동작한다")
+    func eraserWorksInsideCameraArea() {
+        let stroke = DrawingStroke(points: [cameraCenter], width: 20 / MirrorCanvas.size.width)
+        #expect(MirrorEditorCanvas.isInsideCanvas(cameraCenter))
+        #expect(stroke.isHit(by: cameraCenter, radius: 20))
+
+        var snapshot = EditorSnapshot(strokes: [stroke])
+        var history = EditorHistory()
+        history.apply(.eraseStrokes([stroke.id]), to: &snapshot)
+        #expect(snapshot.strokes.isEmpty)
+    }
+
+    @Test("스티커도 카메라 영역 안에 놓을 수 있다")
+    func stickerCanSitInsideCameraArea() {
+        let insets = MirrorFrameInsets.standard
+        for source in [StickerSource.builtIn(.heart), .photo(assetID: UUID(), aspectRatio: 1.5)] {
+            let placed = sticker(source, at: cameraCenter).constrained()
+            #expect(abs(placed.center.x - 0.5) < 0.0001)
+            #expect(abs(placed.center.y - 0.5) < 0.0001)
+            #expect(insets.isInsideMirrorArea(placed.center))
+        }
+    }
+
+    @Test("카메라 영역 안에서 이동 / 크기 / 회전이 모두 동작한다")
+    func stickerTransformsInsideCameraArea() {
+        var item = sticker(at: cameraCenter)
+
+        let moved = item.moved(to: NormalizedPoint(x: 0.4, y: 0.35)).constrained()
+        #expect(abs(moved.center.x - 0.4) < 0.0001)
+        #expect(abs(moved.center.y - 0.35) < 0.0001)
+
+        let resized = item.resized(width: 0.3).constrained()
+        #expect(resized.frame.width == 0.3)
+        #expect(abs(resized.center.x - 0.5) < 0.0001)
+
+        item.rotation = 35
+        #expect(abs(item.center.x - cameraCenter.x) < 0.0001)   // 회전해도 위치는 그대로
+    }
+
+    @Test("카메라 영역 안 스티커도 완료 후 다시 선택된다")
+    func stickerInsideCameraIsReselectable() {
+        let transform = EditorCanvasTransform(viewport: viewport)
+        var locked = sticker(at: cameraCenter)
+        locked.isLocked = true
+        let point = screenCenter(locked, transform)
+
+        var selection: UUID?
+        selection = tap([locked], at: point, transform: transform, selection: selection)
+        #expect(selection == locked.id)
+        selection = nil                                       // 완료
+        selection = tap([locked], at: point, transform: transform, selection: selection)
+        #expect(selection == locked.id)                       // 잠겨 있어도 다시 선택된다
+    }
+
+    @Test("스티커는 Master Canvas 밖으로만 나가지 못한다")
+    func stickerConstrainedOnlyByCanvas() {
+        for point in [NormalizedPoint(x: 1.6, y: 0.5), NormalizedPoint(x: -0.4, y: 1.9)] {
+            let placed = sticker(at: point).constrained()
+            #expect((0...1).contains(placed.center.x))
+            #expect((0...1).contains(placed.center.y))
+        }
+        // 캔버스 안이면 어디든 그대로 둔다.
+        let kept = sticker(at: NormalizedPoint(x: 0.32, y: 0.71)).constrained()
+        #expect(abs(kept.center.x - 0.32) < 0.0001)
+        #expect(abs(kept.center.y - 0.71) < 0.0001)
+    }
+
+    @Test("실제 Mirror에서 배경은 카메라를 덮지 않고 장식은 그 위에 보인다")
+    func backgroundStaysOutOfCameraButDecorationDoesNot() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+
+        // 장식이 없으면 카메라 영역은 완전히 투명하다.
+        #expect((runtimePixel(design: design, at: cameraCenter)?.alpha ?? 255) < 20)
+
+        // 카메라 한가운데에 그린 획은 그대로 보인다.
+        design.strokes = [
+            DrawingStroke(
+                points: [NormalizedPoint(x: 0.42, y: 0.5), NormalizedPoint(x: 0.58, y: 0.5)],
+                width: 40 / MirrorCanvas.size.width
+            )
+        ]
+        #expect((runtimePixel(design: design, at: cameraCenter)?.alpha ?? 0) > 200)
+
+        // 바로 옆은 여전히 카메라가 비친다 — 배경이 채워지지 않았다.
+        #expect((runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.75))?.alpha ?? 255) < 20)
+    }
+
+    @Test("카메라 영역 위의 스티커도 실제 Mirror와 Capture에 나온다")
+    func stickerOverCameraReachesRuntimeAndCapture() {
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [
+            sticker(.builtIn(.heart), at: NormalizedPoint(x: 0.35, y: 0.45), width: 0.16),
+            sticker(source, at: NormalizedPoint(x: 0.65, y: 0.55), width: 0.16)
+        ]
+
+        #expect((runtimePixel(design: design, at: NormalizedPoint(x: 0.65, y: 0.55))?.alpha ?? 0) > 200)
+
+        let size = CGSize(width: 300, height: 650)
+        let image = MirrorCapture.compose(frame: nil, design: design, size: size)
+        #expect(image != nil)
+    }
+
+    @Test("카메라 안내 점선은 Editor 밖으로 새어 나가지 않는다")
+    func cameraGuideIsEditorOnly() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.backgroundColor = .white
+
+        // 실제 Mirror: 카메라 경계 안쪽은 완전히 투명 — 점선이 없다.
+        let insets = design.insets
+        let justInside = NormalizedPoint(x: insets.left + 0.02, y: 0.5)
+        #expect(insets.isInsideMirrorArea(justInside))
+        #expect((runtimePixel(design: design, at: justInside)?.alpha ?? 255) < 20)
+
+        // 미리보기(Home / My Mirrors)도 안내선을 그리지 않는다 — 기본값이 꺼져 있다.
+        let canvas = MirrorCanvasView(design: design)
+        #expect(!canvas.showsCameraGuide)
+    }
+
+    @Test("미리보기는 카메라 영역의 장식을 지우지 않는다")
+    func previewKeepsCameraAreaDecoration() {
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [sticker(source, at: cameraCenter, width: 0.2)]
+
+        var mirror = MirrorLibrary.defaultMirror
+        mirror.stickers = design.stickers
+        let pixel = previewPixel(mirror, at: cameraCenter)
+        #expect((pixel?.blue ?? 0) > (pixel?.red ?? 255))     // 파란 테스트 사진이 그대로 보인다
+    }
+
+    @Test("Editor는 거울 한 장이 통째로 보이는 상태로 시작한다")
+    func editorStartsFitted() {
+        let transform = EditorCanvasTransform(viewport: viewport)
+
+        #expect(transform.appliedZoom == 1)
+        #expect(transform.appliedPan == .zero)
+        #expect(abs(transform.visibleRect.width - 1) < 0.0001)
+        #expect(abs(transform.visibleRect.height - 1) < 0.0001)
+        // 캔버스는 화면 안에 들어오고 비율을 유지한다.
+        #expect(transform.canvasSize.width <= viewport.width)
+        #expect(transform.canvasSize.height <= viewport.height)
+        let ratio = transform.canvasSize.width / transform.canvasSize.height
+        #expect(abs(ratio - MirrorCanvas.aspectRatio) < 0.0001)
+    }
+
+    @Test("맞춤은 거울 한 장 전체로 되돌린다")
+    func fitReturnsWholeCanvas() {
+        let panned = EditorCanvasTransform(
+            viewport: viewport,
+            state: .init(zoom: 3, pan: CGSize(width: -200, height: 400))
+        )
+        #expect(panned.visibleRect.width < 1)
+
+        let fitted = EditorCanvasTransform(viewport: viewport, state: EditorViewportState())
+        #expect(fitted.appliedPan == .zero)
+        #expect(abs(fitted.visibleRect.width - 1) < 0.0001)
+    }
+
+    @Test("맞춤보다 더 축소되지 않는다")
+    func zoomNeverGoesBelowFit() {
+        let tooSmall = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 0.2))
+        #expect(tooSmall.appliedZoom == 1)
+        #expect(EditorViewportState.zoomRange.lowerBound == 1)
+    }
+
+    @Test("카메라 안내선은 실제 카메라 영역과 같은 geometry를 쓴다")
+    func cameraGuideMatchesRuntimeArea() {
+        let rect = CGRect(x: 0, y: 0, width: 300, height: 650)
+        let guidePath = MirrorFrameInsets.standard.mirrorAreaPath(in: rect)
+        let area = MirrorFrameInsets.standard.mirrorArea.rect(in: rect.size)
+
+        #expect(abs(guidePath.boundingRect.width - area.width) < 0.5)
+        #expect(abs(guidePath.boundingRect.height - area.height) < 0.5)
+        // 모서리는 둥글다 — 안내선도 같은 반경을 쓴다.
+        #expect(!guidePath.contains(CGPoint(x: area.minX + 0.5, y: area.minY + 0.5)))
+    }
+
+    @Test("기존 데이터는 그대로 같은 자리에 남는다")
+    func existingDataNeedsNoMigration() {
+        // 예전 Side Editor 시절 프레임 안에 저장된 좌표
+        let stroke = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.4)], width: 0.01)
+        let item = sticker(at: NormalizedPoint(x: 0.95, y: 0.6))
+
+        var mirror = MirrorLibrary.defaultMirror
+        mirror.strokes = [stroke]
+        mirror.stickers = [item]
+
+        let design = MirrorDesign(mirror: mirror)
+        #expect(design.strokes[0].points == stroke.points)      // 재배치 없음
+        #expect(design.stickers[0].frame == item.frame)
+        #expect(design.stickers[0].constrained().frame == item.frame)
+    }
+
+    @Test("프레임 두께는 108 / 108 / 180 / 220으로 고정이다")
     func frameThicknessUnchanged() {
-        #expect(MirrorFrameInsets.standard.left == 108.0 / 1080.0)
-        #expect(MirrorFrameInsets.standard.right == 108.0 / 1080.0)
-        #expect(abs(MirrorFrameInsets.standard.top - 180.0 / 2340.0) < 0.0001)
-        #expect(abs(MirrorFrameInsets.standard.bottom - 180.0 / 2340.0) < 0.0001)
+        let standard = MirrorFrameInsets.standard
+        #expect(standard.left == 108.0 / 1080.0)
+        #expect(standard.right == 108.0 / 1080.0)
+        #expect(abs(standard.top - 180.0 / 2340.0) < 0.0001)
+        #expect(abs(standard.bottom - 220.0 / 2340.0) < 0.0001)
+        // 아래가 위보다 두껍다.
+        #expect(standard.bottom > standard.top)
         #expect(MirrorLibrary.defaultMirror.style.insets == .standard)
+
+        // 카메라 영역이 비대칭 inset을 그대로 반영한다.
+        let area = standard.mirrorArea
+        #expect(abs(area.x * MirrorCanvas.size.width - 108) < 0.001)
+        #expect(abs(area.y * MirrorCanvas.size.height - 180) < 0.001)
+        let expectedWidth: Double = 1080 - 108 - 108
+        let expectedHeight: Double = 2340 - 180 - 220
+        #expect(abs(area.width * MirrorCanvas.size.width - expectedWidth) < 0.001)
+        #expect(abs(area.height * MirrorCanvas.size.height - expectedHeight) < 0.001)
     }
 }

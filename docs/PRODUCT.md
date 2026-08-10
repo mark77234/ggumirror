@@ -30,24 +30,26 @@ Mirror 화면의 액션은 **홈으로 / 촬영** 둘뿐이다.
 - transient controls(홈으로, 촬영 버튼 등)는 결과 이미지에 포함하지 않는다.
 - 저장은 Photos. 사진 추가 권한(add-only)만 사용한다.
 
-## Editor
-- 하나의 연속된 Mirror Canvas.
-- 위 / 오른쪽 / 아래 / 왼쪽 4면 편집.
-- 네 밴드 전체가 tap target.
-- Corner continuity, minimap.
+## Editor (Free Canvas — 최신)
+- **1080 × 2340 거울 한 장 전체를 자유롭게 꾸민다.**
+- 상 / 하 / 좌 / 우를 고르는 단계는 없다. (기존 4면 Side Editing 정책은 폐기)
+- Editor에 들어오면 거울 한 장이 통째로 화면에 맞춰 보인다.
+- Camera Area는 **안내용 얇은 점선**일 뿐 장식 금지 구역이 아니다.
+- Drawing / Sticker / Photo Sticker를 Camera Area 위에도 놓을 수 있다.
+- 프레임과 Camera Area의 경계를 가로지르는 장식도 잘리지 않는다.
+- Editor에서는 Camera Area까지 배경색으로 채워 한 장의 연속된 캔버스처럼 보인다.
 - Drawing, Brush, Undo/Redo.
 - Photo → Background Removal → Sticker (기기 내 처리).
 - Move / Resize / Rotate / Flip / Duplicate / Lock / Opacity.
 - Text, Frame, Background Color, Layers, Preview, Save.
 - 위치/크기는 0...1 normalized coordinate 우선.
 
-## Editor Workspace (Side Detail)
-- Left / Right 프레임을 고르면 그 밴드가 **화면 가로 중앙 근처**에 온다.
-- 바깥쪽에 생기는 여백은 **Editor Workspace Gutter** — 편집용 공간이고 MirrorDesign이 아니다.
-- Gutter는 Side Detail 화면에만 있다. Preview / 홈 미리보기 / 실제 Mirror / Capture에는 존재하지 않는다.
-- Gutter 위에서는 그리기도 스티커 배치도 되지 않는다. 손가락을 놓을 자리일 뿐이다.
-- 빈 공간 정책: 의도하지 않은 빈 공간은 여전히 금지. 밴드를 중앙에 놓기 위한 gutter만 geometry로 정확히 허용한다.
-- Left / Right는 정확히 대칭이고, "맞춤"은 이 중앙 배치 상태로 되돌린다.
+## Editor Viewport
+- 진입 시 거울 한 장 전체가 화면에 맞춰 보인다(맞춤 = 배율 1).
+- Pinch로 확대, 빈 공간 드래그로 이동. 맞춤보다 더 축소되지는 않는다.
+- "맞춤"은 언제나 거울 한 장 전체로 되돌린다.
+- 확대 중에도 캔버스 밖 빈 공간은 보이지 않는다.
+- Side 선택 / Workspace Gutter / Scroll Handle / Mini Map은 Free Canvas 전환과 함께 제거됐다.
 
 ## Sticker
 - 기본 제공 스티커는 카테고리(전체 / 하트 / 리본 / 반짝임 / 꽃 / 두들)로 나눠 고른다.
@@ -60,7 +62,8 @@ Mirror 화면의 액션은 **홈으로 / 촬영** 둘뿐이다.
 - 재선택 시 스티커가 이미 충분히 보이면 화면을 움직이지 않는다. 화면 밖이면 배율을 유지한 채 최소한만 끌어온다.
 - 회전하거나 작은 스티커도 눈에 보이는 자리를 누르면 잡힌다 (최소 tap target 44pt).
 - 스티커 도구에서는 빈 곳을 한 손가락으로 끌면 화면이 움직인다. 그리기 / 지우개의 한 손가락 동작은 그대로다.
-- 제스처 우선순위: 크기·회전 handle → 스티커 → 스크롤바 → 빈 캔버스 / Gutter(화면 이동).
+- 제스처 우선순위: 크기·회전 handle → 스티커 → 빈 캔버스(화면 이동).
+- 스티커는 Camera Area를 포함한 캔버스 어디에나 놓을 수 있다. 캔버스 밖으로만 나가지 못한다.
 
 ## Photo Sticker
 - 스티커 고르기 맨 위에 "내 사진으로 만들기".
@@ -78,10 +81,16 @@ Mirror 화면의 액션은 **홈으로 / 촬영** 둘뿐이다.
 
 ## Mirror Frame 규격 (MVP 확정)
 - 모든 거울의 프레임 두께는 동일하다.
-- Master 1080 × 2340 기준 좌우 108px(0.10) / 상하 180px(약 0.0769).
-- 중앙 Mirror Area 크기도 모든 거울에서 같다 (864 × 1980).
-- 중앙 Mirror Area의 안쪽 네 모서리는 같은 값으로 살짝 둥글다 (Master 기준 30px). capsule처럼 과하지 않다.
-- 이 모서리는 렌더 / FrameMask / 그리기 제한 / 스티커 제약 / 실제 Mirror / Capture가 모두 같은 geometry를 쓴다.
+- Master 1080 × 2340 기준 좌우 108px / 위 180px / **아래 220px**.
+- 중앙 Camera Area 크기도 모든 거울에서 같다 (864 × 1940).
+- 중앙 Camera Area의 안쪽 네 모서리는 같은 값으로 살짝 둥글다 (Master 기준 30px). capsule처럼 과하지 않다.
+- 이 모서리는 렌더 / FrameMask / Editor 안내선 / 실제 Mirror / Capture가 모두 같은 geometry를 쓴다.
+
+## Layer 정책 (중요)
+- **배경 / 프레임 베이스**: 실제 거울에서 Camera Area를 덮지 않는다. 그 아래 카메라 영상이 그대로 비친다.
+- **장식(그림 / 스티커 / 사진 / 향후 텍스트)**: 캔버스 전체에 그려진다. Camera Area 위도 포함이다.
+- 실제 Mirror 레이어 순서: 카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커.
+- Capture도 같은 순서로 합성한다. Editor 안내 점선과 컨트롤은 포함하지 않는다.
 - 사용자가 프레임 두께를 바꾸는 기능은 없다.
 - 상점 거울의 가치는 두꺼운 프레임이 아니라 같은 공간 안의 artwork 밀도로 만든다.
 

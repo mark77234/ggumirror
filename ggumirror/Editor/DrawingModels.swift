@@ -117,9 +117,9 @@ struct FrameMaskShape: Shape {
 }
 
 extension MirrorFrameInsets {
-    /// 중앙 Mirror Area 안쪽인지. 여기에는 그림이 남으면 안 된다.
-    /// Mirror Area는 모서리가 둥근 사각형이라 곡선 바깥(= 프레임 쪽)은 그릴 수 있다.
-    /// 렌더 / 마스크 / 제약이 모두 같은 geometry를 보도록 반경도 MirrorGeometry에서 온다.
+    /// 실제 거울에서 카메라가 비치는 영역 안쪽인지.
+    /// **장식 금지 구역이 아니다** — 배경을 비우고 Editor 안내 점선을 그릴 때 쓰는 판정이다.
+    /// 모서리가 둥근 사각형이므로 곡선 바깥은 프레임 쪽으로 본다.
     func isInsideMirrorArea(_ point: NormalizedPoint) -> Bool {
         let area = mirrorArea
         guard point.x > area.x, point.x < area.x + area.width,
@@ -137,12 +137,6 @@ extension MirrorFrameInsets {
         return nx * nx + ny * ny <= 1
     }
 
-    /// 실제로 칠할 수 있는 프레임 밴드인지.
-    /// Master Canvas 밖(= Editor Workspace Gutter)과 중앙 Mirror Area는 모두 제외된다.
-    func isInsideFrameBand(_ point: NormalizedPoint) -> Bool {
-        guard (0...1).contains(point.x), (0...1).contains(point.y) else { return false }
-        return !isInsideMirrorArea(point)
-    }
 }
 
 // MARK: - Render

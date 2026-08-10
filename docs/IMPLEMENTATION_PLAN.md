@@ -130,7 +130,36 @@ Phase 1의 Home은 4개만 표시:
 5. `feat(home): add home routing`
 6. `test(mirror): validate phase one device flows`
 
-## Phase 3-3A — Side Detail Pan (다음 Phase 최우선)
+## Phase 3-3E — Free Canvas Mirror Editor (확정, 최신)
+
+Editor의 핵심 편집 방식을 바꿨다. **아래 정책이 기존 4면 Side Editing보다 최신이다.**
+
+- Editor는 1080 × 2340 거울 한 장을 통째로 편집한다. 상/하/좌/우 선택 단계 없음.
+- Camera Area는 **안내용 점선**이다. 장식 금지 구역이 아니다.
+- 배경 Layer만 Camera Area를 비운다. 장식 Layer는 캔버스 전체를 쓴다.
+- 실제 Mirror 레이어: 카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커.
+- 표준 inset이 **108 / 108 / 180 / 220**으로 바뀌었다 (아래를 조금 더 두껍게).
+
+제거한 것
+
+- `EditorSide` / `SideBandShape` / `SideDetailTransform`
+- Side 선택 UX, Side별 title, Side workspace gutter / centering
+- `ScrollHandle`, `EditorMiniMap` — 전체 캔버스를 직접 보므로 필요 없다
+- Drawing의 프레임 밴드 제한(`isInsideFrameBand`), Sticker의 밴드 constraint
+
+재사용한 것 (다시 만들지 않았다)
+
+- `SideDetailCanvas` → `MirrorEditorCanvas`로 일반화: Drawing / Eraser / Sticker /
+  Photo Sticker / selection / transform / tap·drag / pinch / pan / undo·redo 전부 유지
+- `SideDetailTransform` → `EditorCanvasTransform`: 같은 uniform scale + translation,
+  같은 masterPoint / screenPoint / focusState 구조
+
+Deprecated
+
+- 아래 "Phase 3-3A / 3-3C.2"의 Side Detail Pan · Workspace Centering 항목은
+  이 Phase에서 대체되었다. 기록으로만 남긴다.
+
+## Phase 3-3A — Side Detail Pan (대체됨 · 기록용)
 
 현재 Left / Right Side Detail은 확대 배율이 고정이라
 프레임 전체 높이를 편집할 수 없다. 다음 Phase에서 반드시 해결한다.
@@ -171,7 +200,10 @@ Sticker
 - 조각 차감, StoreKit / IAP, Ledger, 가격 확정
 - 슬롯·거울의 서버 persistence
 
-## Phase 3-3C.2 — Side Workspace Centering + Sticker Refocus (확정)
+## Phase 3-3C.2 — Side Workspace Centering + Sticker Refocus (일부 대체됨 · 기록용)
+
+> Workspace Centering / Gutter 부분은 Phase 3-3E Free Canvas로 대체되었다.
+> Sticker 재선택 / focus / 제스처 우선순위 / Mirror Inner Corner는 그대로 유효하다.
 
 Editor Workspace
 

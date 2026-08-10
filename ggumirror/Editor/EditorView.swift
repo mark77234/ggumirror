@@ -2,8 +2,8 @@
 //  EditorView.swift
 //  ggumirror
 //
-//  Editor 기반. Overview ↔ Side Detail은 같은 Master Canvas를 보는 두 가지 방식이다.
-//  Drawing / Sticker / Text는 Phase 3-2.
+//  거울 한 장 전체를 자유롭게 꾸미는 편집기.
+//  상/하/좌/우를 고르는 단계는 없다 — 카메라 영역을 포함한 캔버스 전체가 편집 대상이다.
 //
 
 import PhotosUI
@@ -17,9 +17,8 @@ struct EditorView: View {
     var context: MirrorEditorContext
     var onSaved: () -> Void
 
-    @State private var mode: EditorMode = .overview
-    /// Side Detail에서 실제로 보이는 영역. Mini Map이 이 값을 그린다.
-    @State private var detailViewport = NormalizedRect(x: 0, y: 0, width: 1, height: 1)
+    /// 지금 화면에 보이는 Master 영역. 새 스티커를 여기 중앙에 넣는다.
+    @State private var visibleRect = NormalizedRect(x: 0, y: 0, width: 1, height: 1)
     @State private var isPreviewing = false
     @State private var isChoosingBackground = false
 
@@ -40,35 +39,16 @@ struct EditorView: View {
     @State private var photoTask: Task<Void, Never>?
     @State private var isMakingPhotoSticker = false
     @State private var photoFallback: PhotoStickerFallback?
-    /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
-    @State private var viewports: [EditorSide: EditorViewportState] = [:]
+    /// 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
+    @State private var viewport = EditorViewportState()
     @State private var isEditingDrawSettings = false
-    @State private var hintPulse = false
-    /// 한 번 프레임을 눌러본 사용자에게는 다시 힌트를 보여주지 않는다.
-    @AppStorage("editorSideHintSeen") private var hasSeenSideHint = false
     @Environment(\.dismiss) private var dismiss
-
-    enum EditorMode: Hashable {
-        case overview
-        case side(EditorSide)
-
-        var side: EditorSide? {
-            if case .side(let side) = self { side } else { nil }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             InkSeparator()
-
-            switch mode {
-            case .overview:
-                overviewCanvas
-            case .side(let side):
-                sideDetail(side)
-            }
-
+            canvas
             InkSeparator()
             primaryToolBar
         }
@@ -154,154 +134,45 @@ struct EditorView: View {
 
     // MARK: - Header
 
-    @ViewBuilder
     private var header: some View {
-        switch mode {
-        case .overview:
-            HStack {
-                Button("취소") { dismiss() }
-                    .frame(minWidth: 44, minHeight: 44)
+        HStack {
+            Button("취소") { dismiss() }
+                .frame(minWidth: 44, minHeight: 44)
 
-                Spacer()
+            Spacer()
 
-                Text(design.name)
-                    .font(InkFont.body.weight(.semibold))
-                    .lineLimit(1)
+            Text("거울 꾸미기")
+                .font(InkFont.body.weight(.semibold))
+                .lineLimit(1)
 
-                Spacer()
+            Spacer()
 
-                Button("저장") { beginSave() }
+            Button("저장") { beginSave() }
                 .font(InkFont.body.weight(.semibold))
                 .frame(minWidth: 44, minHeight: 44)
-            }
-            .foregroundStyle(PaperTheme.ink)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
-        case .side(let side):
-            HStack(spacing: 11) {
-                EditorMiniMap(insets: design.insets, side: side, viewport: detailViewport)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(side.title) 프레임")
-                        .font(InkFont.body.weight(.semibold))
-                        .foregroundStyle(PaperTheme.ink)
-                    Text("같은 거울의 \(side.title) 부분을 확대해서 보고 있어요")
-                        .font(InkFont.caption)
-                        .foregroundStyle(PaperTheme.secondaryInk)
-                        .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button("완료") {
-                    withAnimation(.easeOut(duration: 0.2)) { mode = .overview }
-                }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.ink)
-                .frame(minWidth: 44, minHeight: 44)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
+        .foregroundStyle(PaperTheme.ink)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
-    // MARK: - Overview
 
-    private var overviewCanvas: some View {
-        GeometryReader { geometry in
-            ZStack {
-                MirrorCanvasView(
-                    design: design,
-                    showsBandGuides: true,
-                    highlightsBands: !hasSeenSideHint
-                )
-                .opacity(hintPulse ? 0.92 : 1)
+    // MARK: - Canvas
 
-                // 네 밴드 전체가 tap target. 모서리는 45도로 나뉘어 겹치지 않는다.
-                sideHitTargets
-
-                if !hasSeenSideHint {
-                    sideHint
-                }
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 16)
-    }
-
-    private var sideHitTargets: some View {
-        GeometryReader { geometry in
-            let canvas = canvasRect(in: geometry.size)
-            ForEach(EditorSide.allCases) { side in
-                Button {
-                    hasSeenSideHint = true
-                    withAnimation(.easeOut(duration: 0.2)) { mode = .side(side) }
-                } label: {
-                    Color.clear
-                }
-                .frame(width: canvas.width, height: canvas.height)
-                .contentShape(SideBandShape(side: side, insets: design.insets))
-                .position(x: canvas.midX, y: canvas.midY)
-                .accessibilityLabel("\(side.title) 프레임 편집")
-            }
-        }
-    }
-
-    /// 처음 들어온 사용자에게 무엇을 눌러야 하는지 알려준다.
-    private var sideHint: some View {
-        Text("상·하·좌·우 중 꾸미고 싶은 프레임을 선택해주세요")
-            .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.ink)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-            .minimumScaleFactor(0.85)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background {
-                UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                    .fill(PaperTheme.subtleSurface)
-                    .overlay(
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .stroke(PaperTheme.ink, lineWidth: 1.5)
-                    )
-            }
-            .allowsHitTesting(false)
-            .accessibilityLabel("상·하·좌·우 중 꾸미고 싶은 프레임을 선택해주세요")
-    }
-
-    /// 캔버스는 aspect fit으로 놓이므로 실제 그려진 사각형을 다시 계산한다.
-    private func canvasRect(in size: CGSize) -> CGRect {
-        let scale = min(size.width / MirrorCanvas.size.width, size.height / MirrorCanvas.size.height)
-        let drawn = CGSize(
-            width: MirrorCanvas.size.width * scale,
-            height: MirrorCanvas.size.height * scale
-        )
-        return CGRect(
-            x: (size.width - drawn.width) / 2,
-            y: (size.height - drawn.height) / 2,
-            width: drawn.width,
-            height: drawn.height
-        )
-    }
-
-    // MARK: - Side Detail
-
-    private func sideDetail(_ side: EditorSide) -> some View {
-        SideDetailCanvas(
+    private var canvas: some View {
+        MirrorEditorCanvas(
             design: design,
-            side: side,
             tool: tool,
             brush: brush,
             brushWidth: brushWidth,
             brushColor: brushColor,
-            viewport: viewportBinding(for: side),
-            visibleRect: $detailViewport,
+            viewport: $viewport,
+            visibleRect: $visibleRect,
             selectedStickerID: $selectedStickerID,
             onEdit: { history.apply($0, to: &design.snapshot) }
         )
         .overlay(alignment: .topTrailing) { historyControls }
-        .overlay(alignment: .bottomTrailing) { fitControl(side) }
+        .overlay(alignment: .bottomTrailing) { fitControl }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if tool == .sticker, let sticker = selectedSticker {
                 stickerContextBar(sticker)
@@ -327,12 +198,12 @@ struct EditorView: View {
         .padding(10)
     }
 
-    /// 위치를 잃었을 때 기본 fit 상태로 되돌린다.
+    /// 위치를 잃었을 때 거울 한 장이 전부 보이는 상태로 되돌린다.
     @ViewBuilder
-    private func fitControl(_ side: EditorSide) -> some View {
-        if !(viewports[side] ?? EditorViewportState()).isFitted {
+    private var fitControl: some View {
+        if !viewport.isFitted {
             Button {
-                withAnimation(.easeOut(duration: 0.2)) { viewports[side] = EditorViewportState() }
+                withAnimation(.easeOut(duration: 0.2)) { viewport = EditorViewportState() }
             } label: {
                 Label("맞춤", systemImage: "arrow.up.left.and.arrow.down.right")
                     .font(InkFont.caption)
@@ -484,15 +355,9 @@ struct EditorView: View {
         addSticker(PhotoStickerAssetStore.shared.register(image))
     }
 
-    /// 지금 보고 있는 위치에 넣는다. Right 하단을 보고 있으면 Right 하단에 생긴다.
+    /// 지금 보고 있는 화면 한가운데에 넣는다.
     private func addSticker(_ source: StickerSource) {
-        guard let side = mode.side else { return }
-        let sticker = StickerPlacement.insert(
-            source,
-            in: design,
-            visibleRect: detailViewport,
-            side: side
-        )
+        let sticker = StickerPlacement.insert(source, in: design, visibleRect: visibleRect)
         history.apply(.addSticker(sticker), to: &design.snapshot)
         selectedStickerID = sticker.id
     }
@@ -604,16 +469,9 @@ struct EditorView: View {
             width: sticker.frame.width,
             height: sticker.frame.height
         )
-        copy = copy.constrained(to: design.insets)
+        copy = copy.constrained()
         history.apply(.addSticker(copy), to: &design.snapshot)
         selectedStickerID = copy.id
-    }
-
-    private func viewportBinding(for side: EditorSide) -> Binding<EditorViewportState> {
-        Binding(
-            get: { viewports[side] ?? EditorViewportState() },
-            set: { viewports[side] = $0 }
-        )
     }
 
     // MARK: - Primary tools
@@ -621,12 +479,10 @@ struct EditorView: View {
     /// 자주 바꾸는 큰 기능만. Undo/Redo와 색·굵기는 여기 넣지 않는다.
     private var primaryToolBar: some View {
         HStack(spacing: 10) {
-            if mode.side != nil {
-                ForEach(EditorTool.allCases) { item in
-                    primaryButton(item.title, icon: item.icon, isActive: tool == item) {
-                        tool = item
-                        if item == .sticker, selectedStickerID == nil { isPickingSticker = true }
-                    }
+            ForEach(EditorTool.allCases) { item in
+                primaryButton(item.title, icon: item.icon, isActive: tool == item) {
+                    tool = item
+                    if item == .sticker, selectedStickerID == nil { isPickingSticker = true }
                 }
             }
             primaryButton("배경", icon: "paintpalette") { isChoosingBackground = true }

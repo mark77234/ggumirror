@@ -237,27 +237,9 @@ struct StickerObject: Identifiable, Hashable {
         return copy
     }
 
-    /// 스티커는 프레임 장식이다. **중심**이 프레임 밴드 안에 남도록만 제한한다.
-    /// bounding box 전체를 가두지 않으므로 모서리를 걸치거나 살짝 넘어가는 디자인은 허용된다.
-    /// 회전과 무관하게 중심만 보므로 회전했다고 위치가 튀지 않는다.
-    func constrained(to insets: MirrorFrameInsets) -> StickerObject {
-        let middle = center
-        guard insets.isInsideMirrorArea(middle) else { return clampedToCanvas() }
-
-        // 중앙에 들어갔다면 가장 가까운 밴드로 밀어낸다.
-        let area = insets.mirrorArea
-        let distances: [(Double, NormalizedPoint)] = [
-            (middle.y - area.y, NormalizedPoint(x: middle.x, y: insets.top / 2)),
-            (area.y + area.height - middle.y, NormalizedPoint(x: middle.x, y: 1 - insets.bottom / 2)),
-            (middle.x - area.x, NormalizedPoint(x: insets.left / 2, y: middle.y)),
-            (area.x + area.width - middle.x, NormalizedPoint(x: 1 - insets.right / 2, y: middle.y))
-        ]
-        let nearest = distances.min { $0.0 < $1.0 }?.1 ?? NormalizedPoint(x: insets.left / 2, y: middle.y)
-        return moved(to: nearest).clampedToCanvas()
-    }
-
-    /// 중심이 캔버스 밖으로 나가지 않게 한다.
-    private func clampedToCanvas() -> StickerObject {
+    /// 스티커는 캔버스 어디에나 놓을 수 있다 — 카메라 영역도 포함이다.
+    /// 화면 밖으로 완전히 사라지지 않도록 **중심**만 Master Canvas 안에 붙잡는다.
+    func constrained() -> StickerObject {
         let middle = center
         return moved(to: NormalizedPoint(
             x: min(max(middle.x, 0), 1),
@@ -291,13 +273,12 @@ struct StickerObject: Identifiable, Hashable {
 // MARK: - 배치
 
 enum StickerPlacement {
-    /// 지금 보고 있는 화면 중앙 근처의 프레임 영역에 넣는다.
-    /// Right 하단을 보고 있으면 Right 하단에 생긴다.
+    /// 지금 보고 있는 화면 한가운데에 넣는다.
+    /// 프레임이든 카메라 영역이든 사용자가 보고 있는 자리에 그대로 생긴다.
     static func insert(
         _ source: StickerSource,
         in design: MirrorDesign,
-        visibleRect: NormalizedRect,
-        side: EditorSide
+        visibleRect: NormalizedRect
     ) -> StickerObject {
         let width = 0.16
         let height = StickerObject.height(for: width, aspectRatio: source.aspectRatio)
@@ -306,29 +287,16 @@ enum StickerPlacement {
             y: visibleRect.y + visibleRect.height / 2
         )
 
-        // 화면 중앙이 거울 영역이면 현재 편집 중인 밴드 쪽으로 당긴다.
-        let insets = design.insets
-        let placed: NormalizedPoint = if insets.isInsideMirrorArea(viewportCenter) {
-            switch side {
-            case .left: NormalizedPoint(x: insets.left / 2, y: viewportCenter.y)
-            case .right: NormalizedPoint(x: 1 - insets.right / 2, y: viewportCenter.y)
-            case .top: NormalizedPoint(x: viewportCenter.x, y: insets.top / 2)
-            case .bottom: NormalizedPoint(x: viewportCenter.x, y: 1 - insets.bottom / 2)
-            }
-        } else {
-            viewportCenter
-        }
-
         let sticker = StickerObject(
             source: source,
             frame: NormalizedRect(
-                x: placed.x - width / 2,
-                y: placed.y - height / 2,
+                x: viewportCenter.x - width / 2,
+                y: viewportCenter.y - height / 2,
                 width: width,
                 height: height
             ),
             zIndex: (design.stickers.map(\.zIndex).max() ?? 0) + 1
         )
-        return sticker.constrained(to: insets)
+        return sticker.constrained()
     }
 }

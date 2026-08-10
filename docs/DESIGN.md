@@ -48,18 +48,19 @@ Prototype의 Gaegu는 visual reference.
 초기 내 거울에 들어 있지 않고, 상점 "기본" 카테고리에서 무료로 받는다.
 
 ## Mirror Inner Corner
-중앙 Mirror Area의 안쪽 네 모서리는 같은 값으로 살짝 둥글다.
+중앙 Camera Area의 안쪽 네 모서리는 같은 값으로 살짝 둥글다.
 Master 1080 × 2340 기준 30px 하나만 정의하고 화면 크기로 환산한다.
 실제 세로 거울처럼 부드럽게 — capsule 느낌은 금지.
 
-## Editor
-기존 Prototype interaction 유지.
-Overview / 4-side detail / corner continuity / minimap.
+## Editor (Free Canvas)
+거울 한 장(1080 × 2340)이 통째로 보이는 하나의 캔버스.
 밝은 paper chrome + ink controls.
 
-Side Detail에서 Left / Right 밴드는 화면 가로 중앙 근처에 놓인다.
-바깥에 생기는 Editor Workspace Gutter는 종이 배경 그대로 — 별도 장식 없음.
-손가락과 스티커 handle이 화면 가장자리에 걸리지 않게 하는 편집 전용 공간이다.
+- 상/하/좌/우 선택 UI 없음
+- Camera Area는 아주 옅은 dashed rounded line 하나로만 표시 (secondaryInk, 낮은 opacity)
+- Editor에서는 Camera Area도 배경색으로 채워 연속된 한 장처럼 보인다
+- 안내선은 "여기가 카메라"라는 정보일 뿐, 금지 구역처럼 보이면 안 된다
+- 첫 진입 1회만 짧은 안내 문구
 
 ## My Mirrors Empty State
 Clean pen sketch. 거울 아이콘 + 안내 문구 + [상점 둘러보기] 하나.

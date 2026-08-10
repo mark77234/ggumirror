@@ -58,8 +58,15 @@ enum MirrorRenderer {
     /// 거울 면. 그라디언트 없이 평평한 톤으로만 표현한다.
     static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 
-    /// - Parameter mirrorAreaFill: 중앙 Mirror Area를 채울 색.
+    /// 레이어 순서 (실제 Mirror 기준):
+    ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커
+    ///
+    /// 배경만 카메라 영역을 비운다. **장식은 전체 캔버스 어디든 그려진다** —
+    /// 카메라 영역 위의 콧수염 / 하트 / 사진 스티커가 그대로 얼굴 위에 얹힌다.
+    ///
+    /// - Parameter mirrorAreaFill: 중앙 카메라 영역을 채울 색.
     ///   실제 카메라 위에 얹을 때는 nil을 줘서 완전히 투명하게 남긴다.
+    ///   Editor는 배경색을 넘겨 한 장의 연속된 캔버스처럼 보이게 한다.
     static func draw(
         style: MirrorStyle,
         strokes: [DrawingStroke],
@@ -89,10 +96,10 @@ enum MirrorRenderer {
             )
         }
 
-        // 3. 사용자 획 — FrameMask 안에서만 보인다.
-        //    데이터를 자르지 않고 clip으로만 가린다.
+        // 3. 사용자 획 — Master Canvas 안에서만 자른다.
+        //    카메라 영역에서 잘리지 않는다. 프레임과 카메라를 가로지르는 획도 그대로 이어진다.
         var inked = context
-        inked.clip(to: frame, style: FrameMaskShape.fillStyle)
+        inked.clip(to: Path(transform.canvasRect))
         for stroke in strokes.filter({ !hiddenStrokeIDs.contains($0.id) }).sorted(by: { $0.zIndex < $1.zIndex }) {
             drawStroke(stroke, in: inked, transform: transform, visible: visible)
         }

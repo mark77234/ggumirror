@@ -1,23 +1,23 @@
 //
-//  SideDetailCanvas.swift
+//  MirrorEditorCanvas.swift
 //  ggumirror
 //
-//  Side Detail은 같은 Master Canvas를 uniform scale + translation으로 확대해서 볼 뿐이다.
+//  거울 한 장(1080 × 2340) 전체를 그대로 꾸미는 편집 캔버스.
+//  상/하/좌/우를 고르지 않는다 — 카메라 영역을 포함한 캔버스 전체가 편집 대상이다.
 //  그리기 / 지우기는 화면 좌표를 역변환해 Master normalized 좌표로만 다룬다.
 //  Pan / Zoom은 viewport state만 바꾸고 디자인 데이터는 건드리지 않는다.
 //
 
 import SwiftUI
 
-struct SideDetailCanvas: View {
+struct MirrorEditorCanvas: View {
     let design: MirrorDesign
-    let side: EditorSide
     let tool: EditorTool
     let brush: EditorBrush
     let brushWidth: Double
     let brushColor: Color
 
-    /// 이 side의 보기 상태. Editor session UI state이고 디자인 데이터가 아니다.
+    /// 보기 상태. Editor session UI state이고 디자인 데이터가 아니다.
     @Binding var viewport: EditorViewportState
     @Binding var visibleRect: NormalizedRect
     /// 제스처가 끝났을 때만 확정한다. 그리는 동안에는 design을 건드리지 않는다.
@@ -52,14 +52,14 @@ struct SideDetailCanvas: View {
     /// 이 개수 이상이면 제스처가 취소돼도 살릴 가치가 있는 획으로 본다.
     private let minimumCommittablePoints = 2
 
+    /// Master Canvas 안인지. 프레임 / 카메라 구분은 하지 않는다.
+    static func isInsideCanvas(_ point: NormalizedPoint) -> Bool {
+        (0...1).contains(point.x) && (0...1).contains(point.y)
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            let transform = SideDetailTransform(
-                side: side,
-                insets: design.insets,
-                viewport: proxy.size,
-                state: viewport
-            )
+            let transform = EditorCanvasTransform(viewport: proxy.size, state: viewport)
 
             ZStack {
                 // 뷰는 항상 viewport 크기다. 확대/이동은 그리는 좌표에만 반영한다.
@@ -71,7 +71,10 @@ struct SideDetailCanvas: View {
                     ),
                     hiddenStrokeIDs: pendingErase,
                     activeStroke: activeStroke,
-                    showsBandGuides: true
+                    // Editor에서는 카메라 영역도 배경색으로 채워 한 장의 캔버스처럼 보인다.
+                    // 저장되는 배경이 카메라를 덮는다는 뜻이 아니다 — 실제 거울에서는 그대로 비워진다.
+                    mirrorAreaFill: design.backgroundColor,
+                    showsCameraGuide: true
                 )
                 .allowsHitTesting(false)
 
@@ -96,12 +99,6 @@ struct SideDetailCanvas: View {
                     )
                 }
 
-                ScrollHandle(
-                    side: side,
-                    progress: transform.verticalProgress,
-                    visibleFraction: transform.visibleRect.height,
-                    onScrub: { progress in scrub(to: progress, transform: transform, viewportSize: proxy.size) }
-                )
 
                 if showsGestureHint {
                     GestureHint()
@@ -114,14 +111,13 @@ struct SideDetailCanvas: View {
                 // 도구가 바뀌어도 이미 그린 획은 버리지 않는다.
                 commitActiveWork()
             }
-            .onChange(of: side) { _, _ in commitActiveWork() }
         }
         .padding(.vertical, 8)
     }
 
     // MARK: - 한 손가락
 
-    private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform, viewportSize: CGSize) {
+    private func handleTouch(_ phase: CanvasTouchPhase, transform: EditorCanvasTransform, viewportSize: CGSize) {
         switch phase {
         case .tapped(let location):
             // 제자리 tap은 스티커 도구에서만 의미가 있다. 그리기 / 지우개 동작은 그대로 둔다.
@@ -159,9 +155,8 @@ struct SideDetailCanvas: View {
     }
 
     private func extendStroke(to point: NormalizedPoint) {
-        // 프레임 밴드 위에서만 그린다.
-        // 중앙 Mirror Area(둥근 모서리 포함)와 캔버스 바깥 Workspace Gutter는 모두 제외된다.
-        guard design.insets.isInsideFrameBand(point) else { return }
+        // 캔버스 안이면 어디든 그린다 — 카메라 영역도 포함이다.
+        guard Self.isInsideCanvas(point) else { return }
 
         if var stroke = activeStroke {
             guard let last = stroke.points.last,
@@ -182,8 +177,8 @@ struct SideDetailCanvas: View {
         }
     }
 
-    private func erase(at point: NormalizedPoint, transform: SideDetailTransform) {
-        guard design.insets.isInsideFrameBand(point) else { return }
+    private func erase(at point: NormalizedPoint, transform: EditorCanvasTransform) {
+        guard Self.isInsideCanvas(point) else { return }
         // 화면 반경을 Master 반경으로 환산하므로 확대해도 체감 반경이 같다.
         let radius = transform.masterLength(fromScreen: eraserScreenRadius)
         let hits = design.strokes
@@ -228,7 +223,7 @@ struct SideDetailCanvas: View {
 
     /// 눌린 지점의 스티커. 화면에서 위에 보이는 것이 먼저다.
     /// 렌더 순서(zIndex → 배열 순서)와 똑같은 기준을 뒤집어 쓰므로 배열 순서가 우연히 결과를 바꾸지 않는다.
-    private func sticker(at location: CGPoint, transform: SideDetailTransform) -> StickerObject? {
+    private func sticker(at location: CGPoint, transform: EditorCanvasTransform) -> StickerObject? {
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         return design.stickers.enumerated()
             .filter { $0.element.contains(location, in: placement) }
@@ -237,7 +232,7 @@ struct SideDetailCanvas: View {
     }
 
     /// 제자리 tap — 선택만 바꾼다. 화면을 움직이거나 스티커를 잡지 않는다.
-    private func selectSticker(at location: CGPoint, transform: SideDetailTransform, viewportSize: CGSize) {
+    private func selectSticker(at location: CGPoint, transform: EditorCanvasTransform, viewportSize: CGSize) {
         guard let hit = sticker(at: location, transform: transform) else {
             selectedStickerID = nil          // 빈 곳 tap = 선택 해제
             return
@@ -255,7 +250,7 @@ struct SideDetailCanvas: View {
     private func beginStickerTouch(
         at location: CGPoint,
         point: NormalizedPoint,
-        transform: SideDetailTransform,
+        transform: EditorCanvasTransform,
         viewportSize: CGSize
     ) {
         let hit = sticker(at: location, transform: transform)
@@ -288,18 +283,13 @@ struct SideDetailCanvas: View {
     /// 스티커 데이터는 절대 건드리지 않는다 — viewport state만 바뀐다.
     private func focus(
         on sticker: StickerObject,
-        transform: SideDetailTransform,
+        transform: EditorCanvasTransform,
         viewportSize: CGSize
     ) -> NormalizedPoint {
         guard let focused = transform.focusState(on: sticker.frame, from: viewport) else {
             return NormalizedPoint(x: 0, y: 0)
         }
-        let next = SideDetailTransform(
-            side: side,
-            insets: design.insets,
-            viewport: viewportSize,
-            state: focused
-        )
+        let next = EditorCanvasTransform(viewport: viewportSize, state: focused)
         viewport = EditorViewportState(zoom: next.appliedZoom, pan: next.appliedPan)
         return NormalizedPoint(
             x: Double((next.offset.x - transform.offset.x) / next.canvasSize.width),
@@ -317,12 +307,7 @@ struct SideDetailCanvas: View {
         next.pan.width += location.x - anchor.x
         next.pan.height += location.y - anchor.y
 
-        let clamped = SideDetailTransform(
-            side: side,
-            insets: design.insets,
-            viewport: viewportSize,
-            state: next
-        )
+        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next)
         viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 
@@ -332,23 +317,23 @@ struct SideDetailCanvas: View {
             x: point.x - stickerGrabOffset.x,
             y: point.y - stickerGrabOffset.y
         )
-        let updated = current.moved(to: target).constrained(to: design.insets)
+        let updated = current.moved(to: target).constrained()
         if hapticLimiter.shouldFire(at: updated.center, time: ProcessInfo.processInfo.systemUptime) {
             EditorHaptics.movementTick()
         }
         draggingSticker = updated
     }
 
-    private func resizeSelected(by delta: CGFloat, transform: SideDetailTransform, isEnded: Bool) {
+    private func resizeSelected(by delta: CGFloat, transform: EditorCanvasTransform, isEnded: Bool) {
         guard let base = stickerAtGestureStart ?? selectedSticker, !base.isLocked else { return }
         if stickerAtGestureStart == nil { stickerAtGestureStart = base }
         let widthDelta = Double(delta * 2 / transform.canvasSize.width)
-        let resized = base.resized(width: base.frame.width + widthDelta).constrained(to: design.insets)
+        let resized = base.resized(width: base.frame.width + widthDelta).constrained()
         draggingSticker = resized
         if isEnded { commitSticker() }
     }
 
-    private func rotateSelected(towards location: CGPoint, transform: SideDetailTransform, isEnded: Bool) {
+    private func rotateSelected(towards location: CGPoint, transform: EditorCanvasTransform, isEnded: Bool) {
         guard let base = stickerAtGestureStart ?? selectedSticker, !base.isLocked else { return }
         if stickerAtGestureStart == nil { stickerAtGestureStart = base }
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
@@ -372,32 +357,16 @@ struct SideDetailCanvas: View {
         onEdit(.replaceSticker(final))
     }
 
-    // MARK: - Scroll Handle
-
     private func dismissGestureHint() {
         guard !didInteract else { return }
         didInteract = true
         hasSeenGestureHint = true
     }
 
-    /// track 위치를 그대로 viewport 위치로 바꾼다. 두 손가락 Pan과 같은 state를 쓴다.
-    private func scrub(to progress: Double, transform: SideDetailTransform, viewportSize: CGSize) {
-        let next = EditorViewportState(
-            zoom: viewport.zoom,
-            pan: transform.pan(forVerticalProgress: progress, viewport: viewportSize)
-        )
-        let clamped = SideDetailTransform(
-            side: side,
-            insets: design.insets,
-            viewport: viewportSize,
-            state: next
-        )
-        viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
-    }
 
     // MARK: - 두 손가락
 
-    private func navigate(_ navigation: CanvasNavigation, transform: SideDetailTransform, viewportSize: CGSize) {
+    private func navigate(_ navigation: CanvasNavigation, transform: EditorCanvasTransform, viewportSize: CGSize) {
         guard !navigation.isEnded else {
             viewportAtGestureStart = nil
             return
@@ -420,25 +389,46 @@ struct SideDetailCanvas: View {
                 max(viewport.zoom * navigation.scaleDelta, EditorViewportState.zoomRange.lowerBound),
                 EditorViewportState.zoomRange.upperBound
             )
-            let zoomed = SideDetailTransform(
-                side: side,
-                insets: design.insets,
-                viewport: viewportSize,
-                state: next
-            )
+            let zoomed = EditorCanvasTransform(viewport: viewportSize, state: next)
             let moved = zoomed.screenPoint(from: anchor)
             next.pan.width += navigation.center.x - moved.x
             next.pan.height += navigation.center.y - moved.y
         }
 
         // 배율이 바뀌면 pan 범위도 달라지므로 항상 다시 clamp된 값을 저장한다.
-        let clamped = SideDetailTransform(
-            side: side,
-            insets: design.insets,
-            viewport: viewportSize,
-            state: next
-        )
+        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next)
         viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
+    }
+}
+
+/// Editor에 처음 들어온 사용자에게 한 번만 보여주는 안내.
+/// 점선이 "꾸미면 안 되는 곳"으로 보이지 않도록 그 자리에서 설명한다.
+struct GestureHint: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("점선 안쪽은 실제 거울에서 카메라가 보여요")
+            Text("이 영역도 자유롭게 꾸밀 수 있어요")
+                .foregroundStyle(PaperTheme.secondaryInk)
+        }
+        .font(InkFont.caption)
+        .foregroundStyle(PaperTheme.ink)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                .fill(PaperTheme.subtleSurface)
+                .overlay(
+                    UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                        .stroke(PaperTheme.ink, lineWidth: 1.5)
+                )
+        }
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 12)
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel("점선 안쪽은 실제 거울에서 카메라가 보여요. 이 영역도 자유롭게 꾸밀 수 있어요")
     }
 }
 
