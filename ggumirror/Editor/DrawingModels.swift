@@ -206,15 +206,20 @@ enum EditorEdit {
     /// 이동 / 크기 / 회전 / 뒤집기 / 잠금 / 투명도 — 모두 최종값 1회 반영.
     case replaceSticker(StickerObject)
     case deleteSticker(UUID)
+    case addText(TextObject)
+    /// 내용 / 이동 / 크기 / 회전 / 색 / 글꼴 / 정렬 / 잠금 / 투명도 — 최종값 1회 반영.
+    case replaceText(TextObject)
+    case deleteText(UUID)
 }
 
 /// Undo / Redo가 되돌리는 편집 대상 전체.
 struct EditorSnapshot: Equatable {
     var strokes: [DrawingStroke] = []
     var stickers: [StickerObject] = []
+    var texts: [TextObject] = []
 }
 
-/// Drawing과 Sticker를 하나의 시간순 history로 관리한다.
+/// Drawing / Sticker / Text를 하나의 시간순 history로 관리한다.
 /// Pan / Zoom / Scroll Handle / Fit 같은 viewport 조작은 여기 들어오지 않는다.
 struct EditorHistory {
     private var undoStack: [EditorSnapshot] = []
@@ -248,6 +253,14 @@ struct EditorHistory {
             updated.stickers[index] = sticker
         case .deleteSticker(let id):
             updated.stickers.removeAll { $0.id == id }
+        case .addText(let text):
+            guard !updated.texts.contains(where: { $0.id == text.id }) else { return }
+            updated.texts.append(text)
+        case .replaceText(let text):
+            guard let index = updated.texts.firstIndex(where: { $0.id == text.id }) else { return }
+            updated.texts[index] = text
+        case .deleteText(let id):
+            updated.texts.removeAll { $0.id == id }
         }
         commit(updated, to: &snapshot)
     }
@@ -268,10 +281,11 @@ struct EditorHistory {
 extension MirrorDesign {
     /// history가 다루는 편집 대상만 떼어내고 되돌려 받는다.
     var snapshot: EditorSnapshot {
-        get { EditorSnapshot(strokes: strokes, stickers: stickers) }
+        get { EditorSnapshot(strokes: strokes, stickers: stickers, texts: texts) }
         set {
             strokes = newValue.strokes
             stickers = newValue.stickers
+            texts = newValue.texts
         }
     }
 }

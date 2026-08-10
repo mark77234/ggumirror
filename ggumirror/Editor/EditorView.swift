@@ -30,6 +30,13 @@ struct EditorView: View {
     @State private var isPickingSticker = false
     @State private var selectedStickerID: UUID?
     @State private var isChoosingStickerColor = false
+    @State private var selectedTextID: UUID?
+    @State private var isEditingText = false
+    @State private var isChoosingTextColor = false
+    @State private var isChoosingTextFont = false
+    @State private var draftText = ""
+    /// 시트가 새 텍스트를 만드는 중인지, 기존 내용을 고치는 중인지.
+    @State private var isAddingText = false
     @State private var isNamingMirror = false
     @State private var draftName = ""
     @State private var showsSlotFull = false
@@ -120,6 +127,29 @@ struct EditorView: View {
             photoTask?.cancel()
             photoTask = nil
         }
+        .sheet(isPresented: $isEditingText) {
+            TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
+                .presentationDetents([.height(320)])
+                .presentationBackground { PaperBackground() }
+        }
+        .sheet(isPresented: $isChoosingTextColor) {
+            if let text = selectedText {
+                StickerColorSheet(color: text.color) { color in
+                    apply(text) { $0.color = color }
+                }
+                .presentationDetents([.height(300)])
+                .presentationBackground { PaperBackground() }
+            }
+        }
+        .sheet(isPresented: $isChoosingTextFont) {
+            if let text = selectedText {
+                TextFontSheet(style: text.style) { style in
+                    apply(text) { $0.style = style }
+                }
+                .presentationDetents([.height(340)])
+                .presentationBackground { PaperBackground() }
+            }
+        }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
                 .presentationDetents([.medium, .large])
@@ -169,6 +199,7 @@ struct EditorView: View {
             viewport: $viewport,
             visibleRect: $visibleRect,
             selectedStickerID: $selectedStickerID,
+            selectedTextID: $selectedTextID,
             onEdit: { history.apply($0, to: &design.snapshot) }
         )
         .overlay(alignment: .topTrailing) { historyControls }
@@ -176,12 +207,15 @@ struct EditorView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if tool == .sticker, let sticker = selectedSticker {
                 stickerContextBar(sticker)
+            } else if tool == .text, let text = selectedText {
+                textContextBar(text)
             } else if tool == .draw {
                 drawContextBar
             }
         }
         .onChange(of: tool) { _, newValue in
             if newValue != .sticker { selectedStickerID = nil }
+            if newValue != .text { selectedTextID = nil }
         }
     }
 
@@ -441,6 +475,137 @@ struct EditorView: View {
         .overlay(alignment: .top) { InkSeparator() }
     }
 
+    // MARK: - Text
+
+    private var selectedText: TextObject? {
+        guard let selectedTextID else { return nil }
+        return design.texts.first { $0.id == selectedTextID }
+    }
+
+    private func beginAddingText() {
+        isAddingText = true
+        draftText = ""
+        isEditingText = true
+    }
+
+    /// 시트의 "추가" / "저장". 빈 문자열은 정책 단계에서 걸러진다.
+    private func commitText() {
+        defer { isEditingText = false }
+        guard let value = TextPolicy.normalized(draftText) else { return }
+
+        if isAddingText {
+            let object = TextPlacement.insert(value, in: design, visibleRect: visibleRect)
+            history.apply(.addText(object), to: &design.snapshot)
+            selectedTextID = object.id
+            selectedStickerID = nil
+        } else if let text = selectedText {
+            // 같은 id를 유지해야 Undo가 이전 내용으로 되돌아간다.
+            apply(text) { $0.text = value }
+        }
+    }
+
+    /// 텍스트를 선택했을 때만 보이는 전용 컨트롤. 스티커 바와 같은 구성이다.
+    private func textContextBar(_ text: TextObject) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Text("투명도")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Slider(
+                    value: Binding(
+                        get: { text.opacity },
+                        set: { value in apply(text) { $0.opacity = value } }
+                    ),
+                    in: 0.1...1
+                )
+                .tint(PaperTheme.ink)
+                .disabled(text.isLocked)
+                .accessibilityLabel("텍스트 투명도")
+            }
+
+            HStack(spacing: 8) {
+                // 컨트롤이 많아 좁은 화면에서는 가로로 넘긴다. 완료는 항상 보인다.
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                Button {
+                    isChoosingTextColor = true
+                } label: {
+                    Circle()
+                        .fill(text.color)
+                        .frame(width: 22, height: 22)
+                        .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
+                        .frame(width: 44, height: 44)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(InkPressStyle())
+                .disabled(text.isLocked)
+                .accessibilityLabel("텍스트 색상")
+
+                iconButton("내용 수정", icon: "square.and.pencil", isEnabled: !text.isLocked) {
+                    isAddingText = false
+                    draftText = text.text
+                    isEditingText = true
+                }
+                iconButton("글꼴", icon: "textformat", isEnabled: !text.isLocked) {
+                    isChoosingTextFont = true
+                }
+                iconButton("정렬", icon: text.alignment.icon, isEnabled: !text.isLocked) {
+                    // 왼쪽 → 가운데 → 오른쪽 순으로 한 단계씩 돈다.
+                    let all = TextAlignmentOption.allCases
+                    let next = all[(all.firstIndex(of: text.alignment).map { $0 + 1 } ?? 0) % all.count]
+                    apply(text) { $0.alignment = next }
+                }
+                iconButton("복제", icon: "plus.square.on.square") { duplicate(text) }
+                iconButton(text.isLocked ? "잠금 해제" : "잠금",
+                           icon: text.isLocked ? "lock" : "lock.open") {
+                    apply(text) { $0.isLocked.toggle() }
+                }
+                iconButton("삭제", icon: "trash") {
+                    history.apply(.deleteText(text.id), to: &design.snapshot)
+                    selectedTextID = nil
+                }
+                    }
+                    .padding(.trailing, 4)
+                }
+                .scrollIndicators(.hidden)
+
+                Button("완료") {
+                    EditorHaptics.placementConfirmed()
+                    selectedTextID = nil
+                }
+                .font(InkFont.body.weight(.semibold))
+                .foregroundStyle(PaperTheme.subtleSurface)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background {
+                    UnevenRoundedRectangle.ink(15, 12, 16, 13).fill(PaperTheme.ink)
+                }
+                .buttonStyle(InkPressStyle())
+                .accessibilityLabel("텍스트 배치 완료")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(PaperTheme.subtleSurface)
+        .overlay(alignment: .top) { InkSeparator() }
+    }
+
+    private func apply(_ text: TextObject, _ change: (inout TextObject) -> Void) {
+        var updated = text
+        change(&updated)
+        history.apply(.replaceText(updated), to: &design.snapshot)
+    }
+
+    private func duplicate(_ text: TextObject) {
+        var copy = text
+        copy.id = UUID()
+        copy.zIndex = design.topDecorationZIndex + 1
+        copy.center = NormalizedPoint(x: text.center.x + 0.03, y: text.center.y + 0.03)
+        copy = copy.constrained()
+        history.apply(.addText(copy), to: &design.snapshot)
+        selectedTextID = copy.id
+    }
+
     private func apply(_ sticker: StickerObject, _ change: (inout StickerObject) -> Void) {
         var updated = sticker
         change(&updated)
@@ -483,6 +648,7 @@ struct EditorView: View {
                 primaryButton(item.title, icon: item.icon, isActive: tool == item) {
                     tool = item
                     if item == .sticker, selectedStickerID == nil { isPickingSticker = true }
+                    if item == .text, selectedTextID == nil { beginAddingText() }
                 }
             }
             primaryButton("배경", icon: "paintpalette") { isChoosingBackground = true }

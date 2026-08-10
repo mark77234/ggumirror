@@ -21,8 +21,10 @@ struct MirrorEditorCanvas: View {
     @Binding var viewport: EditorViewportState
     @Binding var visibleRect: NormalizedRect
     /// 제스처가 끝났을 때만 확정한다. 그리는 동안에는 design을 건드리지 않는다.
-    /// 현재 선택된 스티커.
+    /// 현재 선택된 스티커. 텍스트와 동시에 선택되지 않는다.
     @Binding var selectedStickerID: UUID?
+    /// 현재 선택된 텍스트.
+    @Binding var selectedTextID: UUID?
     let onEdit: (EditorEdit) -> Void
 
     /// 손가락을 떼기 전의 진행 중인 획. 여기만 자주 갱신된다.
@@ -35,6 +37,10 @@ struct MirrorEditorCanvas: View {
     @State private var draggingSticker: StickerObject?
     @State private var stickerAtGestureStart: StickerObject?
     @State private var stickerGrabOffset = NormalizedPoint(x: 0, y: 0)
+    /// 텍스트 조작 중인 임시 상태. 스티커와 같은 규칙으로 제스처 끝에 1회 커밋한다.
+    @State private var draggingText: TextObject?
+    @State private var textAtGestureStart: TextObject?
+    @State private var textGrabOffset = NormalizedPoint(x: 0, y: 0)
     /// 스티커 도구에서 빈 곳을 한 손가락으로 끌 때의 직전 위치.
     @State private var oneFingerPanAnchor: CGPoint?
     /// 이동 중 촉각 피드백. 프레임마다 울리지 않도록 시간 + 거리로 제한한다.
@@ -51,6 +57,9 @@ struct MirrorEditorCanvas: View {
     private let minimumPointSpacing: Double = 6
     /// 이 개수 이상이면 제스처가 취소돼도 살릴 가치가 있는 획으로 본다.
     private let minimumCommittablePoints = 2
+
+    /// 오브젝트를 잡아 옮기는 도구인지. 빈 곳 한 손가락 드래그가 화면 이동이 된다.
+    private var isObjectTool: Bool { tool == .sticker || tool == .text }
 
     /// Master Canvas 안인지. 프레임 / 카메라 구분은 하지 않는다.
     static func isInsideCanvas(_ point: NormalizedPoint) -> Bool {
@@ -84,8 +93,10 @@ struct MirrorEditorCanvas: View {
                 )
 
                 if let selected = selectedSticker {
-                    StickerSelectionOverlay(
-                        sticker: selected,
+                    ObjectSelectionOverlay(
+                        frame: selected.frame,
+                        rotation: selected.rotation,
+                        isLocked: selected.isLocked,
                         transform: MirrorViewTransform(
                             canvasSize: transform.canvasSize,
                             offset: transform.offset
@@ -95,6 +106,24 @@ struct MirrorEditorCanvas: View {
                         },
                         onRotate: { location, ended in
                             rotateSelected(towards: location, transform: transform, isEnded: ended)
+                        }
+                    )
+                }
+
+                if let selected = selectedText {
+                    ObjectSelectionOverlay(
+                        frame: selected.frame,
+                        rotation: selected.rotation,
+                        isLocked: selected.isLocked,
+                        transform: MirrorViewTransform(
+                            canvasSize: transform.canvasSize,
+                            offset: transform.offset
+                        ),
+                        onResize: { delta, ended in
+                            resizeSelectedText(by: delta, transform: transform, isEnded: ended)
+                        },
+                        onRotate: { location, ended in
+                            rotateSelectedText(towards: location, transform: transform, isEnded: ended)
                         }
                     )
                 }
@@ -120,10 +149,10 @@ struct MirrorEditorCanvas: View {
     private func handleTouch(_ phase: CanvasTouchPhase, transform: EditorCanvasTransform, viewportSize: CGSize) {
         switch phase {
         case .tapped(let location):
-            // 제자리 tap은 스티커 도구에서만 의미가 있다. 그리기 / 지우개 동작은 그대로 둔다.
+            // 제자리 tap은 오브젝트 도구에서만 의미가 있다. 그리기 / 지우개 동작은 그대로 둔다.
             dismissGestureHint()
-            guard tool == .sticker else { return }
-            selectSticker(at: location, transform: transform, viewportSize: viewportSize)
+            guard isObjectTool else { return }
+            selectObject(at: location, transform: transform, viewportSize: viewportSize)
 
         case .began(let location):
             dismissGestureHint()
@@ -131,18 +160,20 @@ struct MirrorEditorCanvas: View {
             switch tool {
             case .draw: extendStroke(to: point)
             case .erase: erase(at: point, transform: transform)
-            case .sticker:
-                beginStickerTouch(at: location, point: point, transform: transform, viewportSize: viewportSize)
+            case .sticker, .text:
+                beginObjectTouch(at: location, point: point, transform: transform, viewportSize: viewportSize)
             }
         case .moved(let location):
             let point = transform.masterPoint(from: location)
             switch tool {
             case .draw: extendStroke(to: point)
             case .erase: erase(at: point, transform: transform)
-            case .sticker:
-                // 스티커를 잡았으면 이동, 빈 곳에서 시작했으면 화면을 민다.
+            case .sticker, .text:
+                // 오브젝트를 잡았으면 이동, 빈 곳에서 시작했으면 화면을 민다.
                 if draggingSticker != nil {
                     moveSticker(to: point)
+                } else if draggingText != nil {
+                    moveText(to: point)
                 } else {
                     panWithOneFinger(to: location, viewportSize: viewportSize)
                 }
@@ -191,6 +222,7 @@ struct MirrorEditorCanvas: View {
     /// 진행 중이던 작업을 확정한다. 아직 아무것도 안 그린 제스처만 조용히 버린다.
     private func commitActiveWork() {
         commitSticker()
+        commitText()
         if let stroke = activeStroke {
             if stroke.points.count >= minimumCommittablePoints || tool == .draw {
                 onEdit(.addStroke(stroke))
@@ -207,12 +239,22 @@ struct MirrorEditorCanvas: View {
 
     /// 조작 중에는 임시 스티커를 얹어 보여주고 design은 건드리지 않는다.
     private var previewDesign: MirrorDesign {
-        guard let draggingSticker,
-              let index = design.stickers.firstIndex(where: { $0.id == draggingSticker.id })
-        else { return design }
         var copy = design
-        copy.stickers[index] = draggingSticker
+        if let draggingSticker,
+           let index = copy.stickers.firstIndex(where: { $0.id == draggingSticker.id }) {
+            copy.stickers[index] = draggingSticker
+        }
+        if let draggingText,
+           let index = copy.texts.firstIndex(where: { $0.id == draggingText.id }) {
+            copy.texts[index] = draggingText
+        }
         return copy
+    }
+
+    private var selectedText: TextObject? {
+        guard let selectedTextID else { return nil }
+        if let draggingText, draggingText.id == selectedTextID { return draggingText }
+        return design.texts.first { $0.id == selectedTextID }
     }
 
     private var selectedSticker: StickerObject? {
@@ -231,62 +273,99 @@ struct MirrorEditorCanvas: View {
             .element
     }
 
-    /// 제자리 tap — 선택만 바꾼다. 화면을 움직이거나 스티커를 잡지 않는다.
-    private func selectSticker(at location: CGPoint, transform: EditorCanvasTransform, viewportSize: CGSize) {
-        guard let hit = sticker(at: location, transform: transform) else {
-            selectedStickerID = nil          // 빈 곳 tap = 선택 해제
-            return
-        }
-        // 선택은 항상 하나만. 잠긴 스티커도 선택은 된다(변형만 막힌다).
-        if selectedStickerID != hit.id {
-            selectedStickerID = hit.id
-            EditorHaptics.placementConfirmed()
-        }
-        // focus는 선택 이후에만. 선택 자체를 취소하지 않는다.
-        _ = focus(on: hit, transform: transform, viewportSize: viewportSize)
+    /// 눌린 지점의 텍스트. 스티커와 같은 규칙이다.
+    private func text(at location: CGPoint, transform: EditorCanvasTransform) -> TextObject? {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        return design.texts.enumerated()
+            .filter { $0.element.contains(location, in: placement) }
+            .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
+            .element
     }
 
-    /// 끌기 시작. 스티커를 잡으면 이동, 빈 곳이면 그 자리에서 한 손가락 Pan이 시작된다.
-    private func beginStickerTouch(
+    /// 눌린 지점에서 화면상 가장 위에 있는 장식.
+    /// 렌더 순서와 같은 기준(zIndex → 텍스트가 위 → 배열 순서)을 뒤집어 쓴다.
+    private func topObject(
+        at location: CGPoint,
+        transform: EditorCanvasTransform
+    ) -> (sticker: StickerObject?, text: TextObject?) {
+        let sticker = sticker(at: location, transform: transform)
+        let text = text(at: location, transform: transform)
+        guard let sticker else { return (nil, text) }
+        guard let text else { return (sticker, nil) }
+        // zIndex가 같으면 텍스트가 위다.
+        return text.zIndex >= sticker.zIndex ? (nil, text) : (sticker, nil)
+    }
+
+    /// 제자리 tap — 선택만 바꾼다. 화면을 움직이거나 오브젝트를 잡지 않는다.
+    private func selectObject(at location: CGPoint, transform: EditorCanvasTransform, viewportSize: CGSize) {
+        let hit = topObject(at: location, transform: transform)
+
+        if let sticker = hit.sticker {
+            if selectedStickerID != sticker.id { EditorHaptics.placementConfirmed() }
+            selectedStickerID = sticker.id
+            selectedTextID = nil                 // 한 번에 하나만 선택된다
+            _ = focus(on: sticker.frame, transform: transform, viewportSize: viewportSize)
+        } else if let text = hit.text {
+            if selectedTextID != text.id { EditorHaptics.placementConfirmed() }
+            selectedTextID = text.id
+            selectedStickerID = nil
+            _ = focus(on: text.frame, transform: transform, viewportSize: viewportSize)
+        } else {
+            selectedStickerID = nil              // 빈 곳 tap = 선택 해제
+            selectedTextID = nil
+        }
+    }
+
+    /// 끌기 시작. 오브젝트를 잡으면 이동, 빈 곳이면 그 자리에서 한 손가락 Pan이 시작된다.
+    private func beginObjectTouch(
         at location: CGPoint,
         point: NormalizedPoint,
         transform: EditorCanvasTransform,
         viewportSize: CGSize
     ) {
-        let hit = sticker(at: location, transform: transform)
+        let hit = topObject(at: location, transform: transform)
+        selectedStickerID = hit.sticker?.id
+        selectedTextID = hit.text?.id
 
-        // 선택은 항상 하나만. 다른 스티커를 고르면 이전 선택은 자동으로 풀린다.
-        selectedStickerID = hit?.id
-
-        guard let hit else {
+        if let sticker = hit.sticker {
+            oneFingerPanAnchor = nil
+            // 일부만 보이는 오브젝트는 zoom을 유지한 채 최소한만 끌어온다.
+            let shift = focus(on: sticker.frame, transform: transform, viewportSize: viewportSize)
+            guard !sticker.isLocked else { return }
+            stickerAtGestureStart = sticker
+            draggingSticker = sticker
+            hapticLimiter.reset()
+            EditorHaptics.prepare()
+            // focus로 화면이 움직인 만큼 잡은 지점을 보정한다. 손가락 아래에서 튀지 않게.
+            stickerGrabOffset = NormalizedPoint(
+                x: point.x - sticker.center.x - shift.x,
+                y: point.y - sticker.center.y - shift.y
+            )
+        } else if let text = hit.text {
+            oneFingerPanAnchor = nil
+            let shift = focus(on: text.frame, transform: transform, viewportSize: viewportSize)
+            guard !text.isLocked else { return }
+            textAtGestureStart = text
+            draggingText = text
+            hapticLimiter.reset()
+            EditorHaptics.prepare()
+            textGrabOffset = NormalizedPoint(
+                x: point.x - text.center.x - shift.x,
+                y: point.y - text.center.y - shift.y
+            )
+        } else {
             oneFingerPanAnchor = location
-            return
         }
-        oneFingerPanAnchor = nil
-
-        // 일부만 보이는 스티커는 zoom을 유지한 채 최소한만 끌어온다.
-        let shift = focus(on: hit, transform: transform, viewportSize: viewportSize)
-
-        guard !hit.isLocked else { return }
-        stickerAtGestureStart = hit
-        draggingSticker = hit
-        hapticLimiter.reset()
-        EditorHaptics.prepare()
-        // focus로 화면이 움직인 만큼 잡은 지점을 보정한다. 손가락 아래에서 스티커가 튀지 않게.
-        stickerGrabOffset = NormalizedPoint(
-            x: point.x - hit.center.x - shift.x,
-            y: point.y - hit.center.y - shift.y
-        )
     }
 
     /// 이미 충분히 보이면 아무것도 하지 않는다. 움직였다면 Master 기준 이동량을 돌려준다.
     /// 스티커 데이터는 절대 건드리지 않는다 — viewport state만 바뀐다.
     private func focus(
-        on sticker: StickerObject,
+        on frame: NormalizedRect,
         transform: EditorCanvasTransform,
         viewportSize: CGSize
     ) -> NormalizedPoint {
-        guard let focused = transform.focusState(on: sticker.frame, from: viewport) else {
+        guard let focused = transform.focusState(on: frame, from: viewport) else {
             return NormalizedPoint(x: 0, y: 0)
         }
         let next = EditorCanvasTransform(viewport: viewportSize, state: focused)
@@ -322,6 +401,51 @@ struct MirrorEditorCanvas: View {
             EditorHaptics.movementTick()
         }
         draggingSticker = updated
+    }
+
+    private func moveText(to point: NormalizedPoint) {
+        guard let current = draggingText, !current.isLocked else { return }
+        let target = NormalizedPoint(
+            x: point.x - textGrabOffset.x,
+            y: point.y - textGrabOffset.y
+        )
+        let updated = current.moved(to: target).constrained()
+        if hapticLimiter.shouldFire(at: updated.center, time: ProcessInfo.processInfo.systemUptime) {
+            EditorHaptics.movementTick()
+        }
+        draggingText = updated
+    }
+
+    /// 텍스트 크기는 글자 크기 하나로만 바뀐다 — 가로 / 세로를 따로 늘리지 않는다.
+    private func resizeSelectedText(by delta: CGFloat, transform: EditorCanvasTransform, isEnded: Bool) {
+        guard let base = textAtGestureStart ?? selectedText, !base.isLocked else { return }
+        if textAtGestureStart == nil { textAtGestureStart = base }
+        let sizeDelta = Double(delta * 2 / transform.canvasSize.width)
+        draggingText = base.resized(fontSize: base.fontSize + sizeDelta).constrained()
+        if isEnded { commitText() }
+    }
+
+    private func rotateSelectedText(towards location: CGPoint, transform: EditorCanvasTransform, isEnded: Bool) {
+        guard let base = textAtGestureStart ?? selectedText, !base.isLocked else { return }
+        if textAtGestureStart == nil { textAtGestureStart = base }
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let rect = placement.rect(base.frame)
+        let angle = atan2(location.y - rect.midY, location.x - rect.midX)
+        var rotated = base
+        rotated.rotation = angle * 180 / .pi + 45
+        draggingText = rotated
+        if isEnded { commitText() }
+    }
+
+    /// 제스처가 끝났을 때만 history에 1회 남긴다.
+    private func commitText() {
+        defer {
+            draggingText = nil
+            textAtGestureStart = nil
+        }
+        guard let final = draggingText, final != textAtGestureStart else { return }
+        EditorHaptics.placementConfirmed()
+        onEdit(.replaceText(final))
     }
 
     private func resizeSelected(by delta: CGFloat, transform: EditorCanvasTransform, isEnded: Bool) {
@@ -433,7 +557,7 @@ struct GestureHint: View {
 }
 
 enum EditorTool: String, CaseIterable, Identifiable {
-    case draw, erase, sticker
+    case draw, erase, sticker, text
 
     var id: String { rawValue }
 
@@ -442,6 +566,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .draw: "그리기"
         case .erase: "지우개"
         case .sticker: "스티커"
+        case .text: "텍스트"
         }
     }
 
@@ -450,6 +575,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .draw: "scribble"
         case .erase: "eraser"
         case .sticker: "heart"
+        case .text: "textformat"
         }
     }
 }

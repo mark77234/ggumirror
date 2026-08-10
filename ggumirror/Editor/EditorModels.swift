@@ -97,6 +97,14 @@ struct MirrorDesign: Identifiable, Hashable {
     var strokes: [DrawingStroke] = []
     /// 사용자가 얹은 스티커. Drawing과 같은 Master normalized 좌표를 쓴다.
     var stickers: [StickerObject] = []
+    /// 사용자가 얹은 텍스트. 같은 Master normalized 좌표를 쓴다.
+    var texts: [TextObject] = []
+
+    /// 스티커와 텍스트를 함께 본 가장 위 zIndex.
+    /// 새 장식은 항상 이 위에 올라간다.
+    var topDecorationZIndex: Int {
+        max(stickers.map(\.zIndex).max() ?? 0, texts.map(\.zIndex).max() ?? 0)
+    }
 
     var insets: MirrorFrameInsets {
         get { style.insets }
@@ -114,6 +122,7 @@ struct MirrorDesign: Identifiable, Hashable {
         style = mirror.style
         strokes = mirror.strokes
         stickers = mirror.stickers
+        texts = mirror.texts
     }
 }
 

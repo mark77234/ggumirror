@@ -289,6 +289,28 @@ Editor Save Context
 - 거울을 복제해도 `StickerSource.photo(assetID:)`를 그대로 참조한다. binary는 하나.
 - 디스크 persistence는 여전히 후속 Persistence Phase.
 
+## Phase 3-4A — Text Objects (확정)
+
+Free Canvas 위에 텍스트를 얹는다. Sticker interaction 구조를 그대로 재사용했다.
+
+- `TextObject`: id / text / center(normalized) / fontSize(normalized) / style / alignment /
+  color / rotation / opacity / zIndex / isLocked. **화면 pt를 저장하지 않는다.**
+- `MirrorDesign.texts`, `EditorSnapshot.texts`, `EditorEdit.addText / replaceText / deleteText`.
+- 줄 나눔 / 크기는 `TextLayout`이 Master 픽셀에서 한 번만 계산한다 —
+  렌더러 / hit test / selection overlay가 같은 결과를 공유한다.
+- 크기 변경은 `fontSize` 하나만 바꾼다. 가로 / 세로를 따로 늘려 찌그러뜨리지 않는다.
+- 글꼴은 system font design(default / bold / serif / rounded)만 쓴다. 폰트 파일을 추가하지 않는다.
+  한글이 안정적으로 나오는 조합만 남겨 "손글씨" 대신 "명조"를 넣었다.
+- 선택 오버레이는 `StickerSelectionOverlay` → `ObjectSelectionOverlay`로 일반화해 공용으로 쓴다.
+- 스티커 / 텍스트는 하나의 zIndex 순서로 렌더되고, hit test도 같은 기준을 뒤집어 쓴다.
+- 제스처 중에는 임시 상태만 바꾸고 끝날 때 1회만 history에 남긴다.
+- 사진 스티커 binary는 여전히 AssetStore에만 있다 — 텍스트 추가로도 snapshot에 들어가지 않는다.
+
+이 Phase에서 하지 않은 것
+
+- 테두리 / 그림자 / glow / 그라디언트 / 텍스트 배경 박스 / 말풍선
+- Shapes, Layers UI, Sticker Creator / Marketplace, Persistence, Store Publish
+
 ## Sticker Creator (후속 Phase)
 
 별도의 "스티커 만들기" 페이지. Mirror Editor 기술을 최대한 재사용한다.

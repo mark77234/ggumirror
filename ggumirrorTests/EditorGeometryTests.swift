@@ -2268,6 +2268,469 @@ struct EditorGeometryTests {
         #expect(design.stickers[0].constrained().frame == item.frame)
     }
 
+    // MARK: - Text Object
+
+    private func makeText(
+        _ value: String = "오늘도\n예쁘게",
+        at point: NormalizedPoint = NormalizedPoint(x: 0.5, y: 0.5)
+    ) -> TextObject {
+        TextObject(text: value, center: point)
+    }
+
+    @Test("TextObject 기본값과 여러 줄이 유지된다")
+    func textDefaults() {
+        let object = makeText()
+        #expect(object.text == "오늘도\n예쁘게")
+        #expect(TextLayout.of(object).lines == ["오늘도", "예쁘게"])
+        #expect(object.fontSize == TextPolicy.defaultFontSize)
+        #expect(object.style == .basic)
+        #expect(object.alignment == .center)          // 기본 정렬은 가운데
+        #expect(object.opacity == 1)
+        #expect(!object.isLocked)
+        #expect(object.rotation == 0)
+        #expect(object.color == PaperTheme.ink)
+        // 화면 pt가 아니라 normalized 좌표만 담는다.
+        #expect((0...1).contains(object.center.x))
+        #expect((0...1).contains(object.center.y))
+    }
+
+    @Test("빈 문자열과 공백만은 텍스트가 되지 않는다")
+    func blankTextIsRejected() {
+        #expect(TextPolicy.normalized("") == nil)
+        #expect(TextPolicy.normalized("   \n  ") == nil)
+        #expect(TextPolicy.normalized("  안녕  ") == "안녕")
+        // 여러 줄은 그대로 남는다.
+        #expect(TextPolicy.normalized("오늘도\n예쁘게") == "오늘도\n예쁘게")
+    }
+
+    @Test("텍스트 길이는 정책 상수로 제한된다")
+    func textMaxLength() {
+        let long = String(repeating: "가", count: 400)
+        #expect(TextPolicy.normalized(long)?.count == TextPolicy.maxLength)
+        #expect(TextPolicy.maxLength == 100)
+    }
+
+    @Test("글꼴 / 정렬 preset이 모두 유효하다")
+    func textStylePresets() {
+        #expect(TextFontStyle.allCases.count == 4)
+        for style in TextFontStyle.allCases {
+            #expect(!style.title.isEmpty)
+            #expect(style.font(ofSize: 40).pointSize == 40)
+        }
+        #expect(TextAlignmentOption.allCases.count == 3)
+        for alignment in TextAlignmentOption.allCases {
+            #expect(!alignment.title.isEmpty)
+            #expect(!alignment.icon.isEmpty)
+        }
+    }
+
+    @Test("크기 변경은 글자 크기만 바꾸고 줄 비율을 유지한다")
+    func textResizeKeepsProportions() {
+        let object = makeText()
+        let before = TextLayout.of(object).size
+        let bigger = object.resized(fontSize: object.fontSize * 1.5)
+
+        #expect(bigger.center == object.center)                   // 중심 유지
+        let after = TextLayout.of(bigger).size
+        let widthRatio = after.width / before.width
+        let heightRatio = after.height / before.height
+        #expect(abs(widthRatio - heightRatio) < 0.02)              // 찌그러지지 않는다
+
+        // 범위를 벗어나지 않는다.
+        #expect(object.resized(fontSize: 10).fontSize == TextPolicy.fontSizeRange.upperBound)
+        #expect(object.resized(fontSize: 0).fontSize == TextPolicy.fontSizeRange.lowerBound)
+    }
+
+    @Test("정렬에 따라 줄 시작 위치가 달라진다")
+    func textAlignmentMovesLines() {
+        let object = makeText("가나다라마바사\n가")
+        let layout = TextLayout.of(object)
+        let short = layout.lines.count - 1
+
+        let leading = layout.lineOrigin(short, alignment: .leading).x
+        let center = layout.lineOrigin(short, alignment: .center).x
+        let trailing = layout.lineOrigin(short, alignment: .trailing).x
+        #expect(leading == 0)
+        #expect(center > leading)
+        #expect(trailing > center)
+        // 줄은 위에서 아래로 쌓인다.
+        #expect(layout.lineOrigin(1, alignment: .center).y > layout.lineOrigin(0, alignment: .center).y)
+    }
+
+    @Test("텍스트 복제는 새 id와 약간의 offset을 가진다")
+    func textDuplicateGetsNewIdentity() {
+        let object = makeText()
+        var copy = object
+        copy.id = UUID()
+        copy.center = NormalizedPoint(x: object.center.x + 0.03, y: object.center.y + 0.03)
+
+        #expect(copy.id != object.id)
+        #expect(copy.text == object.text)
+        #expect(copy.style == object.style)
+        #expect(copy.center.x > object.center.x)
+    }
+
+    // MARK: - Text History
+
+    @Test("텍스트 추가 / 삭제가 되돌려진다")
+    func textAddAndDeleteAreUndoable() {
+        let object = makeText()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
+
+        history.apply(.addText(object), to: &snapshot)
+        #expect(snapshot.texts.count == 1)
+        history.undo(&snapshot)
+        #expect(snapshot.texts.isEmpty)
+        history.redo(&snapshot)
+        #expect(snapshot.texts.count == 1)
+
+        history.apply(.deleteText(object.id), to: &snapshot)
+        #expect(snapshot.texts.isEmpty)
+        history.undo(&snapshot)
+        #expect(snapshot.texts.first?.id == object.id)
+    }
+
+    @Test("내용 / 이동 / 크기 / 회전 / 색 / 글꼴 / 정렬 / 투명도 / 잠금이 모두 되돌려진다")
+    func textPropertyEditsAreUndoable() {
+        let object = makeText()
+        var snapshot = EditorSnapshot(texts: [object])
+        var history = EditorHistory()
+
+        let changes: [(String, (inout TextObject) -> Void)] = [
+            ("내용", { $0.text = "안녕" }),
+            ("이동", { $0.center = NormalizedPoint(x: 0.2, y: 0.8) }),
+            ("크기", { $0 = $0.resized(fontSize: TextPolicy.fontSizeRange.upperBound) }),
+            ("회전", { $0.rotation = 24 }),
+            ("색", { $0.color = .red }),
+            ("글꼴", { $0.style = .rounded }),
+            ("정렬", { $0.alignment = .leading }),
+            ("투명도", { $0.opacity = 0.4 }),
+            ("잠금", { $0.isLocked = true })
+        ]
+
+        for (label, change) in changes {
+            let before = snapshot.texts[0]
+            var updated = before
+            change(&updated)
+            history.apply(.replaceText(updated), to: &snapshot)
+            #expect(snapshot.texts[0] != before, "\(label) 변경이 반영되지 않음")
+            history.undo(&snapshot)
+            #expect(snapshot.texts[0] == before, "\(label) Undo가 되돌리지 못함")
+            history.redo(&snapshot)
+            #expect(snapshot.texts[0] == updated, "\(label) Redo가 다시 적용하지 못함")
+        }
+    }
+
+    @Test("내용 수정은 같은 id를 유지한다")
+    func textContentEditKeepsIdentity() {
+        let object = makeText()
+        var snapshot = EditorSnapshot(texts: [object])
+        var history = EditorHistory()
+
+        var updated = object
+        updated.text = "새 내용"
+        history.apply(.replaceText(updated), to: &snapshot)
+
+        #expect(snapshot.texts.count == 1)
+        #expect(snapshot.texts[0].id == object.id)
+        #expect(snapshot.texts[0].text == "새 내용")
+        history.undo(&snapshot)
+        #expect(snapshot.texts[0].text == object.text)
+    }
+
+    @Test("텍스트가 들어가도 history에 이미지 binary가 생기지 않는다")
+    func textHistoryKeepsNoImageBinary() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 200, height: 200))
+        var snapshot = EditorSnapshot(stickers: [sticker(source, at: NormalizedPoint(x: 0.2, y: 0.2))])
+        var history = EditorHistory()
+
+        for index in 0..<5 {
+            history.apply(.addText(makeText("텍스트 \(index)", at: NormalizedPoint(x: 0.5, y: 0.3))), to: &snapshot)
+        }
+        for _ in 0..<3 { history.undo(&snapshot) }
+        #expect(store.count == 1)
+    }
+
+    // MARK: - Text Interaction
+
+    @Test("텍스트를 탭하면 선택되고 완료 후 다시 선택된다")
+    func textTapSelectAndReselect() {
+        let transform = EditorCanvasTransform(viewport: viewport)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let object = makeText()
+        let rect = placement.rect(object.frame)
+        let point = CGPoint(x: rect.midX, y: rect.midY)
+
+        var selection: UUID?
+        for _ in 0..<3 {
+            selection = object.contains(point, in: placement) ? object.id : nil
+            #expect(selection == object.id)
+            selection = nil                                   // 완료
+            #expect(selection == nil)
+        }
+        // 멀리 떨어진 곳은 잡히지 않는다.
+        #expect(!object.contains(CGPoint(x: rect.midX, y: rect.midY - 400), in: placement))
+    }
+
+    @Test("회전한 텍스트와 아주 작은 텍스트도 잡힌다")
+    func rotatedAndSmallTextStayTappable() {
+        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
+
+        var rotated = makeText()
+        rotated.rotation = 40
+        let rect = placement.rect(rotated.frame)
+        #expect(rotated.contains(CGPoint(x: rect.midX, y: rect.midY), in: placement))
+
+        var tiny = makeText("가")
+        tiny = tiny.resized(fontSize: TextPolicy.fontSizeRange.lowerBound)
+        let tinyRect = placement.rect(tiny.frame)
+        let edge = TextObject.minimumTapTarget / 2 - 1
+        #expect(tiny.contains(CGPoint(x: tinyRect.midX + edge, y: tinyRect.midY), in: placement))
+        #expect(!tiny.contains(
+            CGPoint(x: tinyRect.midX + TextObject.minimumTapTarget * 1.5, y: tinyRect.midY),
+            in: placement
+        ))
+    }
+
+    @Test("잠긴 텍스트도 선택은 된다")
+    func lockedTextIsSelectable() {
+        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
+        var locked = makeText()
+        locked.isLocked = true
+        let rect = placement.rect(locked.frame)
+
+        #expect(locked.contains(CGPoint(x: rect.midX, y: rect.midY), in: placement))
+        #expect(locked.isLocked)
+    }
+
+    @Test("겹친 텍스트는 화면에서 위에 보이는 것이 선택된다")
+    func overlappingTextSelectsTopmost() {
+        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
+        var bottom = makeText()
+        var top = makeText()
+        bottom.zIndex = 1
+        top.zIndex = 2
+        let rect = placement.rect(top.frame)
+        let point = CGPoint(x: rect.midX, y: rect.midY)
+
+        func hit(_ objects: [TextObject]) -> UUID? {
+            objects.enumerated()
+                .filter { $0.element.contains(point, in: placement) }
+                .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
+                .element.id
+        }
+        #expect(hit([bottom, top]) == top.id)
+        #expect(hit([top, bottom]) == top.id)
+    }
+
+    @Test("텍스트와 스티커는 동시에 선택되지 않는다")
+    func textAndStickerSelectionAreExclusive() {
+        var selectedStickerID: UUID? = UUID()
+        var selectedTextID: UUID?
+
+        // 텍스트를 고르면 스티커 선택이 풀린다.
+        let text = makeText()
+        selectedTextID = text.id
+        selectedStickerID = nil
+        #expect(selectedTextID == text.id)
+        #expect(selectedStickerID == nil)
+
+        // 스티커를 고르면 텍스트 선택이 풀린다.
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        selectedStickerID = item.id
+        selectedTextID = nil
+        #expect(selectedStickerID == item.id)
+        #expect(selectedTextID == nil)
+    }
+
+    @Test("텍스트를 끌면 텍스트가 움직인다")
+    func textDragMovesText() {
+        let object = makeText()
+        let moved = object.moved(to: NormalizedPoint(x: 0.3, y: 0.7)).constrained()
+        #expect(moved.center.x == 0.3)
+        #expect(moved.center.y == 0.7)
+        #expect(moved.id == object.id)
+        #expect(moved.text == object.text)
+    }
+
+    // MARK: - Text Free Canvas
+
+    @Test("텍스트는 프레임 / 카메라 / 경계 어디든 놓을 수 있다")
+    func textCanGoAnywhereOnCanvas() {
+        let insets = MirrorFrameInsets.standard
+        let places = [
+            NormalizedPoint(x: 0.5, y: 0.03),      // 위 프레임
+            cameraCenter,                           // 카메라 한가운데
+            NormalizedPoint(x: 0.11, y: 0.5),      // 프레임 ↔ 카메라 경계
+            NormalizedPoint(x: 0.5, y: 0.96)       // 아래 프레임
+        ]
+        for place in places {
+            let placed = makeText(at: place).constrained()
+            #expect(abs(placed.center.x - place.x) < 0.0001)
+            #expect(abs(placed.center.y - place.y) < 0.0001)
+        }
+        #expect(insets.isInsideMirrorArea(makeText(at: cameraCenter).constrained().center))
+    }
+
+    @Test("텍스트는 Master Canvas 밖으로만 나가지 못한다")
+    func textConstrainedOnlyByCanvas() {
+        for point in [NormalizedPoint(x: 1.8, y: 0.5), NormalizedPoint(x: -0.5, y: 1.4)] {
+            let placed = makeText(at: point).constrained()
+            #expect((0...1).contains(placed.center.x))
+            #expect((0...1).contains(placed.center.y))
+        }
+    }
+
+    @Test("새 텍스트는 보고 있는 화면 한가운데에 생긴다")
+    func textInsertsAtViewportCenter() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [sticker(at: NormalizedPoint(x: 0.05, y: 0.2))]
+        let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2))
+        let placed = TextPlacement.insert("HELLO", in: design, visibleRect: transform.visibleRect)
+
+        let center = NormalizedPoint(
+            x: transform.visibleRect.x + transform.visibleRect.width / 2,
+            y: transform.visibleRect.y + transform.visibleRect.height / 2
+        )
+        #expect(abs(placed.center.x - center.x) < 0.001)
+        #expect(abs(placed.center.y - center.y) < 0.001)
+        // 스티커와 텍스트를 함께 본 가장 위에 올라간다.
+        #expect(placed.zIndex > design.stickers[0].zIndex)
+    }
+
+    // MARK: - Text Render
+
+    /// 텍스트가 실제로 몇 픽셀이나 그려졌는지.
+    private func textInkCount(
+        _ design: MirrorDesign,
+        size: CGSize = CGSize(width: 300, height: 650)
+    ) -> Int {
+        let canvas = Canvas { context, canvasSize in
+            MirrorRenderer.draw(
+                style: design.style,
+                strokes: design.strokes,
+                stickers: design.stickers,
+                texts: design.texts,
+                transform: .fitted(in: canvasSize),
+                mirrorAreaFill: design.style.frame,
+                in: context,
+                viewport: canvasSize
+            )
+        }
+        .frame(width: size.width, height: size.height)
+
+        let renderer = ImageRenderer(content: canvas)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { return 0 }
+
+        let width = image.width, height = image.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var dark = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                if data[i] < 120 && data[i + 1] < 120 && data[i + 2] < 120 { dark += 1 }
+            }
+        }
+        return dark
+    }
+
+    @Test("텍스트가 Editor / 미리보기에서 실제로 그려진다")
+    func textRendersInPreview() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        #expect(textInkCount(design) == 0)
+
+        design.texts = [makeText(at: cameraCenter)]
+        #expect(textInkCount(design) > 0)
+
+        // 내 거울 / 홈 미리보기도 같은 pipeline을 쓴다.
+        var mirror = MirrorLibrary.defaultMirror
+        mirror.texts = design.texts
+        let pixel = previewPixel(mirror, at: cameraCenter)
+        #expect(pixel != nil)
+    }
+
+    @Test("투명도와 회전이 렌더에 반영된다")
+    func textOpacityAndRotationAffectRender() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.texts = [makeText(at: cameraCenter)]
+        let solid = textInkCount(design)
+
+        design.texts[0].opacity = 0.15
+        #expect(textInkCount(design) < solid)
+
+        design.texts[0].opacity = 1
+        design.texts[0].rotation = 45
+        let rotated = textInkCount(design)
+        #expect(rotated > 0)
+    }
+
+    @Test("정렬을 바꾸면 렌더 결과가 달라진다")
+    func textAlignmentChangesRender() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.texts = [makeText("가나다라마\n가", at: cameraCenter)]
+        let layout = TextLayout.of(design.texts[0])
+
+        // 짧은 줄의 시작 x가 정렬마다 달라진다.
+        let leading = layout.lineOrigin(1, alignment: .leading).x
+        let trailing = layout.lineOrigin(1, alignment: .trailing).x
+        #expect(trailing > leading)
+        #expect(textInkCount(design) > 0)
+    }
+
+    @Test("카메라 영역 위의 텍스트가 실제 Mirror와 Capture에 나온다")
+    func textOverCameraReachesRuntimeAndCapture() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.texts = [makeText("HELLO", at: cameraCenter)]
+
+        // 실제 거울: 글자가 놓인 줄을 훑으면 불투명한 픽셀이 나온다.
+        // (글자 사이 여백이 있어 한 점만 찍으면 불안정하다.)
+        let frame = design.texts[0].frame
+        let opaque = stride(from: 0.0, through: 1.0, by: 0.02).contains { ratio in
+            let point = NormalizedPoint(x: frame.x + frame.width * ratio, y: cameraCenter.y)
+            return (runtimePixel(design: design, at: point)?.alpha ?? 0) > 100
+        }
+        #expect(opaque)
+        // 글자에서 떨어진 곳은 여전히 카메라가 비친다.
+        #expect((runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.78))?.alpha ?? 255) < 20)
+
+        let size = CGSize(width: 300, height: 650)
+        #expect(MirrorCapture.compose(frame: nil, design: design, size: size) != nil)
+    }
+
+    @Test("텍스트가 있어도 저장 정책은 그대로다")
+    func textDoesNotChangeSaveContext() {
+        let library = MirrorLibrary()
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.texts = [makeText("HELLO", at: cameraCenter)]
+
+        let created = library.save(design, name: "글자 거울", context: .editCurrent)
+        #expect(created.name == "글자 거울")
+        #expect(library.mirrors.count == 1)
+        #expect(library.mirrors[0].texts.count == 1)
+        #expect(library.createdCount == 1)
+
+        // 같은 Editor에서 다시 저장하면 갱신된다.
+        design.id = created.mirrorID ?? design.id
+        let updated = library.save(design, name: "무시", context: .editCurrent)
+        #expect(updated.mirrorID == created.mirrorID)
+        #expect(library.mirrors.count == 1)
+
+        // 내 거울에서 꾸미면 복제된다.
+        let copy = library.save(design, name: "글자 거울 복사본", context: .duplicate)
+        #expect(copy.mirrorID != created.mirrorID)
+        #expect(library.mirrors.last?.texts.count == 1)
+    }
+
     @Test("프레임 두께는 108 / 108 / 180 / 220으로 고정이다")
     func frameThicknessUnchanged() {
         let standard = MirrorFrameInsets.standard

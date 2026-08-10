@@ -59,7 +59,7 @@ enum MirrorRenderer {
     static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 
     /// 레이어 순서 (실제 Mirror 기준):
-    ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커
+    ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커 / 텍스트(zIndex 순)
     ///
     /// 배경만 카메라 영역을 비운다. **장식은 전체 캔버스 어디든 그려진다** —
     /// 카메라 영역 위의 콧수염 / 하트 / 사진 스티커가 그대로 얼굴 위에 얹힌다.
@@ -71,6 +71,7 @@ enum MirrorRenderer {
         style: MirrorStyle,
         strokes: [DrawingStroke],
         stickers: [StickerObject] = [],
+        texts: [TextObject] = [],
         activeStroke: DrawingStroke? = nil,
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
@@ -112,10 +113,54 @@ enum MirrorRenderer {
             drawDoodle(doodle, in: context, transform: transform, visible: visible)
         }
 
-        // 5. 사용자 스티커 — Drawing 위에 얹힌다. zIndex 순서를 지킨다.
-        //    프레임 장식이므로 mask로 자르지 않고, 배치 제약(중심)이 위치를 책임진다.
-        for sticker in stickers.sorted(by: { $0.zIndex < $1.zIndex }) {
-            drawSticker(sticker, in: context, transform: transform, visible: visible)
+        // 5. 사용자 오브젝트 — Drawing 위에 얹힌다.
+        //    스티커와 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
+        //    동률이면 텍스트가 위 — 선택 hit test도 같은 규칙을 쓴다.
+        // rank: 같은 zIndex면 텍스트(1)가 스티커(0) 위.
+        let objects: [(order: (Int, Int), draw: () -> Void)] =
+            stickers.map { sticker in
+                ((sticker.zIndex, 0), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
+            } + texts.map { text in
+                ((text.zIndex, 1), { drawText(text, in: context, transform: transform, visible: visible) })
+            }
+        for object in objects.sorted(by: { $0.order < $1.order }) {
+            object.draw()
+        }
+    }
+
+    // MARK: - Text
+
+    /// 텍스트 한 덩이. 줄 배치 / 크기는 TextLayout 한 곳에서만 계산하므로
+    /// Editor / 미리보기 / 실제 Mirror / Capture가 항상 같은 결과를 낸다.
+    static func drawText(
+        _ object: TextObject,
+        in context: GraphicsContext,
+        transform: MirrorViewTransform,
+        visible: CGRect
+    ) {
+        guard !object.text.isEmpty else { return }
+        let rect = transform.rect(object.frame)
+        // 회전까지 고려해 넉넉히 잡고, 완전히 화면 밖일 때만 건너뛴다.
+        let reach = max(rect.width, rect.height)
+        guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
+
+        let layout = TextLayout.of(object)
+        // Master 픽셀 → 화면 픽셀 배율. 한 번만 구해 모든 줄에 같이 쓴다.
+        let scale = transform.canvasSize.width / MirrorCanvas.size.width
+        let font = Font(object.style.font(ofSize: CGFloat(object.fontSize) * transform.canvasSize.width))
+
+        var layer = context
+        layer.opacity = object.opacity
+        layer.translateBy(x: rect.midX, y: rect.midY)
+        layer.rotate(by: .degrees(object.rotation))
+
+        for index in layout.lines.indices where !layout.lines[index].isEmpty {
+            let origin = layout.lineOrigin(index, alignment: object.alignment)
+            let resolved = layer.resolve(Text(layout.lines[index]).font(font).foregroundStyle(object.color))
+            layer.draw(resolved, at: CGPoint(
+                x: (origin.x - layout.size.width / 2) * scale,
+                y: (origin.y - layout.size.height / 2) * scale
+            ), anchor: .topLeading)
         }
     }
 
