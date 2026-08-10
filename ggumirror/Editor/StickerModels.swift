@@ -221,26 +221,23 @@ struct StickerObject: Identifiable, Hashable {
         ))
     }
 
-    /// 화면 좌표 hit test용 사각형.
-    /// 회전은 정확한 polygon 대신 회전 bounding box로 근사한다 — 눈에 보이는 크기와 크게 어긋나지 않게.
-    /// 작은 스티커도 손가락으로 다시 고를 수 있도록 최소 tap target을 보장한다.
-    func hitRect(in transform: MirrorViewTransform) -> CGRect {
-        var rect = transform.rect(frame)
-        if rotation != 0 {
-            let radians = CGFloat(rotation) * .pi / 180
-            let c = abs(cos(radians))
-            let s = abs(sin(radians))
-            let width = rect.width * c + rect.height * s
-            let height = rect.width * s + rect.height * c
-            rect = CGRect(
-                x: rect.midX - width / 2, y: rect.midY - height / 2,
-                width: width, height: height
-            )
-        }
-        return rect.insetBy(
-            dx: -max(6, (Self.minimumTapTarget - rect.width) / 2),
-            dy: -max(6, (Self.minimumTapTarget - rect.height) / 2)
-        )
+    /// 이 화면 좌표가 스티커 위인지.
+    /// 회전 bounding box로 넓게 잡으면 눈에 보이는 모양과 어긋나므로,
+    /// 중심 기준으로 역회전시켜 실제 스티커 사각형 안인지 본다.
+    /// (좌우 뒤집기는 이 사각형에 대해 대칭이라 판정에 영향이 없다.)
+    func contains(_ location: CGPoint, in transform: MirrorViewTransform) -> Bool {
+        let rect = transform.rect(frame)
+        let dx = location.x - rect.midX
+        let dy = location.y - rect.midY
+        let radians = -CGFloat(rotation) * .pi / 180
+        let localX = dx * cos(radians) - dy * sin(radians)
+        let localY = dx * sin(radians) + dy * cos(radians)
+
+        // 작게 줄인 스티커만 최소 tap target까지 넓힌다.
+        // 큰 스티커는 보이는 크기 그대로라 옆 스티커를 덮지 않는다.
+        let width = max(rect.width, Self.minimumTapTarget)
+        let height = max(rect.height, Self.minimumTapTarget)
+        return abs(localX) <= width / 2 && abs(localY) <= height / 2
     }
 
     /// 손가락으로 다시 고를 수 있는 최소 크기(pt).

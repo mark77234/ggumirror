@@ -1429,16 +1429,25 @@ struct EditorGeometryTests {
 
     // MARK: - Sticker 재선택 / Focus
 
-    /// 화면 좌표 hit test. Editor의 beginStickerTouch와 같은 규칙이다.
+    /// 화면 좌표 hit test. SideDetailCanvas.sticker(at:transform:)와 같은 규칙이다.
+    /// 화면에서 위에 보이는 것(zIndex → 배열 순서)이 먼저 잡힌다.
     private func hitSticker(
         _ stickers: [StickerObject],
         at location: CGPoint,
         transform: SideDetailTransform
     ) -> StickerObject? {
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        return stickers
-            .sorted { $0.zIndex > $1.zIndex }
-            .first { $0.hitRect(in: placement).contains(location) }
+        return stickers.enumerated()
+            .filter { $0.element.contains(location, in: placement) }
+            .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
+            .element
+    }
+
+    /// 스티커의 화면상 중심.
+    private func screenCenter(_ object: StickerObject, _ transform: SideDetailTransform) -> CGPoint {
+        let rect = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+            .rect(object.frame)
+        return CGPoint(x: rect.midX, y: rect.midY)
     }
 
     @Test("스티커를 탭하면 그 스티커가 선택된다")
@@ -1566,14 +1575,24 @@ struct EditorGeometryTests {
 
         var rotated = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
         rotated.rotation = 45
-        let plain = rotated.frame
-        // 회전하면 시각적 bounds가 커지므로 tap target도 커져야 한다.
-        #expect(rotated.hitRect(in: placement).width > placement.rect(plain).width)
+        let rect = placement.rect(rotated.frame)
+        // 회전해도 눈에 보이는 자리(중심, 회전된 변 위)는 잡힌다.
+        #expect(rotated.contains(CGPoint(x: rect.midX, y: rect.midY), in: placement))
+        #expect(rotated.contains(CGPoint(x: rect.midX, y: rect.midY - rect.height * 0.35), in: placement))
+        // 회전 bounding box의 빈 모서리는 잡히지 않는다 — 보이는 모양과 어긋나지 않게.
+        let diagonal = max(rect.width, rect.height)
+        #expect(!rotated.contains(CGPoint(x: rect.midX + diagonal * 0.6, y: rect.midY + diagonal * 0.6), in: placement))
 
-        let tiny = sticker(at: NormalizedPoint(x: 0.95, y: 0.5), width: StickerObject.sizeRange.lowerBound)
-        let target = tiny.hitRect(in: placement)
-        #expect(target.width >= StickerObject.minimumTapTarget - 0.001)
-        #expect(target.height >= StickerObject.minimumTapTarget - 0.001)
+        // 축소해서 화면상 아주 작아진 스티커
+        let small = MirrorViewTransform(canvasSize: CGSize(width: 200, height: 433), offset: .zero)
+        let tiny = sticker(at: NormalizedPoint(x: 0.5, y: 0.5), width: StickerObject.sizeRange.lowerBound)
+        let tinyRect = small.rect(tiny.frame)
+        #expect(tinyRect.width < StickerObject.minimumTapTarget)
+        let edge = StickerObject.minimumTapTarget / 2 - 1
+        #expect(tiny.contains(CGPoint(x: tinyRect.midX + edge, y: tinyRect.midY), in: small))
+        #expect(tiny.contains(CGPoint(x: tinyRect.midX, y: tinyRect.midY + edge), in: small))
+        // 최소 target 밖은 여전히 잡히지 않는다 — 옆 스티커를 덮지 않는다.
+        #expect(!tiny.contains(CGPoint(x: tinyRect.midX + StickerObject.minimumTapTarget, y: tinyRect.midY), in: small))
     }
 
     @Test("스티커 도구의 한 손가락 Pan은 같은 viewport state를 쓴다")
@@ -1765,6 +1784,158 @@ struct EditorGeometryTests {
         // 곡선 안쪽(= 카메라)에 있는 중심은 밴드로 밀려난다.
         let inside = sticker(at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: insets)
         #expect(!insets.isInsideMirrorArea(inside.center))
+    }
+
+    // MARK: - Sticker 재선택 (Tap)
+
+    /// Editor의 선택 상태 전이를 그대로 옮긴 것.
+    /// 실제 tap 판정은 UITapGestureRecognizer가, hit test는 StickerObject.contains가 담당한다.
+    private func tap(
+        _ stickers: [StickerObject],
+        at location: CGPoint,
+        transform: SideDetailTransform,
+        selection: UUID?
+    ) -> UUID? {
+        hitSticker(stickers, at: location, transform: transform)?.id
+    }
+
+    @Test("완료를 누르면 선택이 풀린다")
+    func doneClearsSelection() {
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        var selection: UUID? = target.id
+        selection = nil                                   // "완료"
+        #expect(selection == nil)
+    }
+
+    @Test("완료 → 재탭 → 완료를 반복해도 계속 선택된다")
+    func doneAndReselectRepeats() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        let point = screenCenter(target, transform)
+
+        var selection: UUID?
+        for _ in 0..<5 {
+            selection = tap([target], at: point, transform: transform, selection: selection)
+            #expect(selection == target.id)               // 재선택
+            selection = nil                               // 완료
+            #expect(selection == nil)
+        }
+    }
+
+    @Test("회전 / 뒤집기한 스티커도 재탭으로 선택된다")
+    func rotatedAndFlippedStickerIsReselectable() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        for rotation in [0.0, 24.0, 45.0, 137.0, -60.0] {
+            var target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+            target.rotation = rotation
+            target.isFlippedHorizontally = true
+            let point = screenCenter(target, transform)
+            #expect(tap([target], at: point, transform: transform, selection: nil) == target.id)
+        }
+    }
+
+    @Test("확대 / 이동 / 중앙 배치 상태에서도 재탭으로 선택된다")
+    func reselectWorksUnderZoomAndPan() {
+        let states = [
+            EditorViewportState(),                                            // 중앙 배치 기본
+            EditorViewportState(zoom: 3),                                      // 최대 확대
+            EditorViewportState(zoom: 1.4, pan: CGSize(width: -60, height: -240))
+        ]
+        for state in states {
+            let transform = SideDetailTransform(
+                side: .right, insets: .standard, viewport: viewport, state: state
+            )
+            // 화면 중앙이 가리키는 Master 지점에 스티커를 둔다 — 어떤 viewport에서도 보이는 자리다.
+            let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
+            let target = sticker(at: master, width: 0.1)
+            let point = screenCenter(target, transform)
+            #expect(tap([target], at: point, transform: transform, selection: nil) == target.id)
+        }
+    }
+
+    @Test("겹친 스티커는 화면에서 위에 보이는 것이 선택된다")
+    func overlappingStickersSelectTopmost() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        var bottom = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        var top = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        bottom.zIndex = 1
+        top.zIndex = 2
+        let point = screenCenter(top, transform)
+
+        // 배열 순서를 뒤집어도 결과가 같아야 한다.
+        #expect(tap([bottom, top], at: point, transform: transform, selection: nil) == top.id)
+        #expect(tap([top, bottom], at: point, transform: transform, selection: nil) == top.id)
+
+        // zIndex가 같으면 나중에 그려지는(= 배열 뒤쪽) 것이 위다.
+        var a = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        var b = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        a.zIndex = 5
+        b.zIndex = 5
+        #expect(tap([a, b], at: point, transform: transform, selection: nil) == b.id)
+    }
+
+    @Test("잠긴 스티커도 재탭으로 선택된다")
+    func lockedStickerIsReselectable() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        var locked = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        locked.isLocked = true
+        let point = screenCenter(locked, transform)
+
+        let selection = tap([locked], at: point, transform: transform, selection: nil)
+        #expect(selection == locked.id)
+        // 잠금 상태는 그대로 — 선택만 됐다.
+        #expect(locked.isLocked)
+    }
+
+    @Test("스티커 tap은 화면을 밀지 않고, 빈 곳 tap만 선택을 푼다")
+    func tapDoesNotPanAndEmptyTapDeselects() {
+        let state = EditorViewportState()
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
+        let target = sticker(at: master, width: 0.1)
+
+        // 보이는 스티커를 눌렀으니 viewport는 그대로다.
+        #expect(transform.focusState(on: target.frame, from: state) == nil)
+
+        // 빈 곳(= gutter 쪽)을 누르면 선택이 풀린다.
+        let empty = CGPoint(x: viewport.width - 4, y: 40)
+        #expect(tap([target], at: empty, transform: transform, selection: target.id) == nil)
+    }
+
+    @Test("재선택은 스티커 / 디자인 / history를 바꾸지 않는다")
+    func reselectDoesNotMutateState() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        var target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        target.rotation = 30
+        target.opacity = 0.7
+
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [target]
+        let before = design
+        let history = EditorHistory()
+
+        let selection = tap(design.stickers, at: screenCenter(target, transform), transform: transform, selection: nil)
+        #expect(selection == target.id)
+        #expect(design == before)               // 디자인 불변
+        #expect(!history.canUndo)               // history에 아무것도 쌓이지 않는다
+        #expect(!history.canRedo)
+    }
+
+    @Test("실제로 끌면 스티커가 움직인다")
+    func actualDragMovesSticker() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        let start = transform.masterPoint(from: screenCenter(target, transform))
+        let moved = transform.masterPoint(
+            from: CGPoint(x: screenCenter(target, transform).x, y: screenCenter(target, transform).y + 80)
+        )
+        let grab = NormalizedPoint(x: start.x - target.center.x, y: start.y - target.center.y)
+        let dragged = target
+            .moved(to: NormalizedPoint(x: moved.x - grab.x, y: moved.y - grab.y))
+            .constrained(to: .standard)
+
+        #expect(dragged.center.y > target.center.y)
+        #expect(abs(dragged.center.x - target.center.x) < 0.0001)
     }
 
     @Test("프레임 두께는 여전히 108 / 180으로 고정이다")

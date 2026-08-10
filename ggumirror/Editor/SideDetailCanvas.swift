@@ -123,6 +123,12 @@ struct SideDetailCanvas: View {
 
     private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform, viewportSize: CGSize) {
         switch phase {
+        case .tapped(let location):
+            // 제자리 tap은 스티커 도구에서만 의미가 있다. 그리기 / 지우개 동작은 그대로 둔다.
+            dismissGestureHint()
+            guard tool == .sticker else { return }
+            selectSticker(at: location, transform: transform, viewportSize: viewportSize)
+
         case .began(let location):
             dismissGestureHint()
             let point = transform.masterPoint(from: location)
@@ -220,19 +226,39 @@ struct SideDetailCanvas: View {
         return design.stickers.first { $0.id == selectedStickerID }
     }
 
-    /// 위에 있는 스티커부터 hit test 한다.
-    /// 스티커를 누르면 선택(잠겨 있어도 선택은 된다) + 필요할 때만 최소 focus.
-    /// 빈 곳을 누르면 선택이 풀리고 그 자리에서 한 손가락 Pan이 시작된다.
+    /// 눌린 지점의 스티커. 화면에서 위에 보이는 것이 먼저다.
+    /// 렌더 순서(zIndex → 배열 순서)와 똑같은 기준을 뒤집어 쓰므로 배열 순서가 우연히 결과를 바꾸지 않는다.
+    private func sticker(at location: CGPoint, transform: SideDetailTransform) -> StickerObject? {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        return design.stickers.enumerated()
+            .filter { $0.element.contains(location, in: placement) }
+            .max { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }?
+            .element
+    }
+
+    /// 제자리 tap — 선택만 바꾼다. 화면을 움직이거나 스티커를 잡지 않는다.
+    private func selectSticker(at location: CGPoint, transform: SideDetailTransform, viewportSize: CGSize) {
+        guard let hit = sticker(at: location, transform: transform) else {
+            selectedStickerID = nil          // 빈 곳 tap = 선택 해제
+            return
+        }
+        // 선택은 항상 하나만. 잠긴 스티커도 선택은 된다(변형만 막힌다).
+        if selectedStickerID != hit.id {
+            selectedStickerID = hit.id
+            EditorHaptics.placementConfirmed()
+        }
+        // focus는 선택 이후에만. 선택 자체를 취소하지 않는다.
+        _ = focus(on: hit, transform: transform, viewportSize: viewportSize)
+    }
+
+    /// 끌기 시작. 스티커를 잡으면 이동, 빈 곳이면 그 자리에서 한 손가락 Pan이 시작된다.
     private func beginStickerTouch(
         at location: CGPoint,
         point: NormalizedPoint,
         transform: SideDetailTransform,
         viewportSize: CGSize
     ) {
-        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        let hit = design.stickers
-            .sorted { $0.zIndex > $1.zIndex }
-            .first { $0.hitRect(in: placement).contains(location) }
+        let hit = sticker(at: location, transform: transform)
 
         // 선택은 항상 하나만. 다른 스티커를 고르면 이전 선택은 자동으로 풀린다.
         selectedStickerID = hit?.id

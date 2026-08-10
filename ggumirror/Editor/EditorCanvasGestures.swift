@@ -12,6 +12,9 @@ import UIKit
 
 /// 한 손가락 입력의 생애주기. cancelled에서도 이미 그린 획은 살릴 수 있어야 한다.
 enum CanvasTouchPhase {
+    /// 움직이지 않고 떼는 짧은 터치. Pan recognizer는 이동 임계값을 넘어야 began이 되므로
+    /// 제자리 tap은 여기로만 들어온다.
+    case tapped(CGPoint)
     case began(CGPoint)
     case moved(CGPoint)
     case ended
@@ -49,6 +52,19 @@ struct EditorCanvasGestureOverlay: UIViewRepresentable {
         draw.cancelsTouchesInView = false
         draw.delegate = context.coordinator
 
+        // Pan recognizer는 손가락이 일정 거리 움직여야 began이 된다.
+        // 제자리 tap(= 스티커 재선택)은 절대 오지 않으므로 별도 tap recognizer가 필요하다.
+        // 임계값은 UITapGestureRecognizer의 기본 allowableMovement를 그대로 쓴다 —
+        // 손이 1~2pt 흔들려도 tap으로 남고, 진짜로 끌면 pan이 이긴다.
+        let tap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap(_:))
+        )
+        tap.numberOfTapsRequired = 1
+        tap.numberOfTouchesRequired = 1
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+
         let navigate = UIPanGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleNavigate(_:))
@@ -63,10 +79,12 @@ struct EditorCanvasGestureOverlay: UIViewRepresentable {
         )
         pinch.delegate = context.coordinator
 
+        view.addGestureRecognizer(tap)
         view.addGestureRecognizer(draw)
         view.addGestureRecognizer(navigate)
         view.addGestureRecognizer(pinch)
         context.coordinator.drawRecognizer = draw
+        context.coordinator.tapRecognizer = tap
         return view
     }
 
@@ -83,6 +101,7 @@ struct EditorCanvasGestureOverlay: UIViewRepresentable {
         var onTouch: (CanvasTouchPhase) -> Void
         var onNavigate: (CanvasNavigation) -> Void
         weak var drawRecognizer: UIPanGestureRecognizer?
+        weak var tapRecognizer: UITapGestureRecognizer?
 
         private var lastTranslation: CGPoint = .zero
 
@@ -92,6 +111,11 @@ struct EditorCanvasGestureOverlay: UIViewRepresentable {
         }
 
         // MARK: 한 손가락
+
+        @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            onTouch(.tapped(recognizer.location(in: recognizer.view)))
+        }
 
         @objc func handleDraw(_ recognizer: UIPanGestureRecognizer) {
             let point = recognizer.location(in: recognizer.view)
@@ -158,12 +182,15 @@ struct EditorCanvasGestureOverlay: UIViewRepresentable {
             drawRecognizer.isEnabled = true
         }
 
-        // 두 손가락 pan과 pinch는 함께 인식한다. 한 손가락 그리기와는 섞이지 않는다.
+        // 두 손가락 pan과 pinch는 함께 인식한다. 한 손가락 그리기 / tap과는 섞이지 않는다.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
         ) -> Bool {
-            gestureRecognizer !== drawRecognizer && other !== drawRecognizer
+            for recognizer in [gestureRecognizer, other] {
+                if recognizer === drawRecognizer || recognizer === tapRecognizer { return false }
+            }
+            return true
         }
     }
 }
