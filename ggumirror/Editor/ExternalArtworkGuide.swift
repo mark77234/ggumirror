@@ -72,10 +72,11 @@ enum MirrorArtworkImporter {
     /// 9 : 19.5. 소수점 반올림을 감안해 아주 좁은 허용치만 둔다.
     static let aspectTolerance = 0.005
 
-    /// 가져온 PNG를 Master Canvas 크기로 정규화한다.
-    /// - 정확히 1080 × 2340이면 그대로 쓴다.
-    /// - 비율이 같고 더 크면 고품질로 줄인다.
+    /// 가져온 PNG를 Master Canvas 크기로 정규화하고 **카메라 영역을 지운다.**
+    /// - 정확히 1080 × 2340이면 그대로, 비율이 같고 더 크면 고품질로 줄인다.
     /// - 비율이 다르면 던진다. 조용히 늘려 왜곡시키지 않는다.
+    /// - 점선 안쪽(카메라가 보이는 영역)은 alpha 0으로 만든다.
+    ///   외부 디자인은 **프레임용 overlay**이지 카메라 위에 그리는 도구가 아니다.
     static func normalize(_ data: Data) throws -> CGImage {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw ArtworkImportError.unreadable
@@ -97,46 +98,14 @@ enum MirrorArtworkImporter {
             throw ArtworkImportError.wrongAspectRatio(width: decoded.width, height: decoded.height)
         }
 
-        let target = MirrorCanvas.size
-        guard decoded.width != Int(target.width) || decoded.height != Int(target.height) else {
-            return decoded          // 정확히 맞으면 다시 그리지 않는다
-        }
-        return resized(decoded, to: target) ?? decoded
+        return framedArtwork(decoded) ?? decoded
     }
 
-    /// 카메라 영역이 거의 다 불투명한지. 막지는 않고 경고만 하기 위한 판단이다.
-    /// 사용자가 일부러 카메라를 가리는 디자인을 만들 수도 있다.
-    static func coversCamera(_ image: CGImage) -> Bool {
-        // 작게 줄여 세어도 "대부분 불투명한가"를 판단하는 데는 충분하다.
-        let width = 54, height = 117
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        guard let context = CGContext(
-            data: &pixels, width: width, height: height,
-            bitsPerComponent: 8, bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return false }
-        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        let area = MirrorFrameInsets.standard.mirrorArea
-        var total = 0, opaque = 0
-        for row in 0..<height {
-            // CGContext는 아래가 0이라 뒤집어 본다.
-            let y = Double(height - 1 - row) / Double(height)
-            guard y >= area.y, y <= area.y + area.height else { continue }
-            for column in 0..<width {
-                let x = Double(column) / Double(width)
-                guard x >= area.x, x <= area.x + area.width else { continue }
-                total += 1
-                if pixels[(row * width + column) * 4 + 3] > 200 { opaque += 1 }
-            }
-        }
-        guard total > 0 else { return false }
-        return Double(opaque) / Double(total) > 0.9
-    }
-
-    private static func resized(_ image: CGImage, to size: CGSize) -> CGImage? {
+    /// Master Canvas 크기로 다시 그리면서 카메라 영역을 뚫는다.
+    /// 지우는 모양은 실제 거울과 같은 `mirrorAreaPath` 하나를 쓴다 — 여기서 좌표를 다시 계산하지 않는다.
+    static func framedArtwork(_ image: CGImage) -> CGImage? {
+        let size = MirrorCanvas.size
+        let bounds = CGRect(origin: .zero, size: size)
         guard let context = CGContext(
             data: nil, width: Int(size.width), height: Int(size.height),
             bitsPerComponent: 8, bytesPerRow: 0,
@@ -144,8 +113,16 @@ enum MirrorArtworkImporter {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         context.interpolationQuality = .high
-        context.clear(CGRect(origin: .zero, size: size))
-        context.draw(image, in: CGRect(origin: .zero, size: size))
+        context.clear(bounds)
+        context.draw(image, in: bounds)
+
+        // `mirrorAreaPath`는 위가 0인 좌표계로 그려져 있고 bitmap context는 아래가 0이다.
+        // 위 180 / 아래 220으로 두께가 다르므로 뒤집지 않으면 40px 어긋난다.
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        context.setBlendMode(.clear)
+        context.addPath(MirrorFrameInsets.standard.mirrorAreaPath(in: bounds).cgPath)
+        context.fillPath()
         return context.makeImage()
     }
 }

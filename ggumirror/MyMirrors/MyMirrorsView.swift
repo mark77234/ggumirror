@@ -22,6 +22,8 @@ struct MyMirrorsView: View {
     @State private var showsSlotFull = false
     @State private var isChoosingCreateStyle = false
     @State private var isImportingArtwork = false
+    /// 상점 등록 준비 중인 거울. 실제 등록이 아니라 판매 정보 작성이다.
+    @State private var publishTarget: MyMirror?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var mirrors: [MyMirror] {
@@ -65,7 +67,10 @@ struct MyMirrorsView: View {
             Button("적용") { library.apply(mirror) }
             Button("꾸미기") { onEditMirror(mirror) }
             Button("복제") { library.duplicate(mirror) }
-            Button("상점에 올리기") { notice = "상점 등록은 다음 업데이트에서 열려요." }
+            // 상점에서 받은 거울을 그대로 되파는 흐름은 만들지 않는다.
+            if MirrorPublishPolicy.isEligible(mirror) {
+                Button("상점에 올리기") { publishTarget = mirror }
+            }
             if mirror.origin != .basic {
                 Button("삭제", role: .destructive) { library.delete(mirror) }
             }
@@ -83,6 +88,11 @@ struct MyMirrorsView: View {
         } message: {
             Text("빈 거울에서 시작하거나, 그림 앱에서 만든 디자인을 가져올 수 있어요.")
         }
+        .sheet(item: $publishTarget) { mirror in
+            PublishMirrorView(mirror: mirror, library: library)
+                .presentationDetents([.large])
+                .paperSheet()
+        }
         .sheet(isPresented: $isImportingArtwork) {
             ExternalArtworkView { artwork in
                 var design = MirrorDesign.blank
@@ -90,7 +100,7 @@ struct MyMirrorsView: View {
                 onCreateMirror(design)
             }
             .presentationDetents([.large])
-            .presentationBackground { PaperBackground() }
+            .paperSheet()
         }
         .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
             Button("보관 공간 늘리기") { showsSlotFull = false }

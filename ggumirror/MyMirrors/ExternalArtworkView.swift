@@ -27,7 +27,6 @@ struct ExternalArtworkView: View {
     /// 승인 전 상태. 여기서 "다시 선택"하면 그냥 버린다.
     @State private var candidate: ImportedArtworkObject?
     @State private var problem: ImportProblem?
-    @State private var opaqueWarning: ImportedArtworkObject?
 
     private struct ImportProblem: Identifiable {
         let id = UUID()
@@ -65,19 +64,6 @@ struct ExternalArtworkView: View {
         } message: { problem in
             Text(problem.message)
         }
-        .alert(
-            "배경이 불투명한 이미지예요",
-            isPresented: Binding(get: { opaqueWarning != nil }, set: { if !$0 { opaqueWarning = nil } }),
-            presenting: opaqueWarning
-        ) { artwork in
-            Button("그래도 사용") {
-                candidate = artwork
-                opaqueWarning = nil
-            }
-            Button("다시 선택", role: .cancel) { opaqueWarning = nil }
-        } message: { _ in
-            Text("실제 거울에서 카메라 화면을 가릴 수 있어요.")
-        }
     }
 
     // MARK: - 안내
@@ -98,15 +84,15 @@ struct ExternalArtworkView: View {
                     step(1, "작업 가이드 저장", "1080 × 2340 크기의 투명 PNG예요.")
                     guideShare
                     step(2, "외부 그림 앱에서 작업", "프로크리에이트, 아이비스페인트, 포토샵 등 어떤 앱이든 좋아요.")
-                    step(3, "투명 PNG로 내보내기", "배경을 비우고 내보내야 실제 거울이 자연스러워요.")
+                    step(3, "투명 PNG로 내보내기", "프레임 부분만 그리고 배경은 비운 채로 내보내 주세요.")
                     step(4, "완성 파일 가져오기", "아래에서 완성한 PNG를 골라주세요.")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("점선 안쪽은 실제 거울에서 카메라가 보여요")
+                    Text("점선 바깥 프레임만 사용해요")
                         .font(InkFont.secondary)
                         .foregroundStyle(PaperTheme.ink)
-                    Text("점선 안쪽에도 자유롭게 그릴 수 있어요. 그린 부분은 얼굴 위에 그대로 얹혀요.")
+                    Text("점선 안쪽은 실제 거울에서 카메라가 보이는 자리예요. 그 안쪽을 그려도 가져올 때 자동으로 지워지니, 프레임 부분을 꾸며주세요.")
                         .font(InkFont.caption)
                         .foregroundStyle(PaperTheme.secondaryInk)
                 }
@@ -218,7 +204,7 @@ struct ExternalArtworkView: View {
                 .foregroundStyle(PaperTheme.ink)
                 .padding(.top, 20)
 
-            Text("점선 없이 실제 거울처럼 보여드려요. 가운데 어두운 부분이 카메라예요.")
+            Text("점선 없이 실제 거울처럼 보여드려요. 가운데 어두운 부분은 실제로는 카메라가 보여요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
                 .multilineTextAlignment(.center)
@@ -314,18 +300,13 @@ struct ExternalArtworkView: View {
     }
 
     /// 비율이 다르면 늘려서 왜곡시키지 않고 되묻는다.
-    /// 배경이 불투명하면 막지 않고 알려만 준다 — 일부러 카메라를 가리는 디자인도 있다.
+    /// 카메라 영역은 `normalize`가 이미 지워서 온다 — 여기서 따로 검사하지 않는다.
     private func accept(_ data: Data) {
         do {
             let image = try MirrorArtworkImporter.normalize(data)
-            let artwork = ImportedArtworkObject(
+            candidate = ImportedArtworkObject(
                 assetID: ImportedArtworkAssetStore.shared.register(image)
             )
-            if MirrorArtworkImporter.coversCamera(image) {
-                opaqueWarning = artwork
-            } else {
-                candidate = artwork
-            }
         } catch ArtworkImportError.wrongAspectRatio(let width, let height) {
             problem = ImportProblem(
                 title: "작업 가이드와 비율이 달라요",

@@ -407,6 +407,7 @@ Caches가 아니라 Application Support를 쓴다 — 사용자가 만든 콘텐
 이 Phase에서 하지 않은 것
 
 - 클라우드 동기화 / 백엔드, Profile · 조각 잔액 이전(각각 AppStorage / 임시값 그대로).
+- 상점 실제 등록 / 구매 / 정산 (Phase 4-1은 준비 단계까지)
 
 ## Phase 3-6 — External Mirror Artwork Import (확정)
 
@@ -424,8 +425,11 @@ Caches가 아니라 Application Support를 쓴다 — 사용자가 만든 콘텐
 
 - 사진(PhotosPicker) / 파일(fileImporter) 두 경로. 넓은 사진 라이브러리 권한을 요구하지 않는다.
 - `MirrorArtworkImporter.normalize` — ImageIO thumbnail로 EXIF 회전 정규화 + 큰 원본 축소.
-  정확히 1080 × 2340이면 그대로, 같은 비율이면 downsample, 다른 비율이면 `wrongAspectRatio`.
-- `coversCamera`는 막지 않고 경고만 한다. 일부러 카메라를 가리는 디자인도 허용한다.
+  정확히 1080 × 2340이면 크기 유지, 같은 비율이면 downsample, 다른 비율이면 `wrongAspectRatio`.
+- **카메라 영역은 import 단계에서 지운다**(`framedArtwork`). 외부 디자인은 프레임용 overlay다.
+  지우는 모양은 `mirrorAreaPath` 하나를 쓰고, bitmap context는 아래가 0이라 뒤집어서 채운다
+  (위 180 / 아래 220으로 두께가 달라 뒤집지 않으면 40px 어긋난다).
+  덕분에 "카메라를 가릴 수 있다"는 경고 자체가 필요 없어져 제거했다.
 - 승인 전 Preview 단계를 반드시 거친다 — 실제 거울 geometry 위에 얹어 정렬과 투명도를 확인시킨다.
 
 모델
@@ -453,7 +457,37 @@ Persistence
 이 Phase에서 하지 않은 것
 
 - 비율이 다를 때의 자동 crop/fit, PSD / SVG import, Imported Artwork transform,
-  레이어 숨기기 / 그룹 / blend mode, Store Publish.
+  레이어 숨기기 / 그룹 / blend mode.
+
+## 시트 배경 (수정)
+
+`presentationBackground { PaperBackground() }`가 화면마다 흩어져 있었고,
+배경 뷰가 safe area 안쪽에만 그려져 시트 아래 모서리에 종이가 닿지 않았다.
+
+- `paperSheet()` 하나로 모았다. 그 안에서만 `ignoresSafeArea()`를 건다.
+- 모든 시트(그리기 설정 / 텍스트 / 색 / 글꼴 / 레이어 / 외부 디자인 / 이름 / 등록 준비)가 같은 modifier를 쓴다.
+- 시트마다 padding을 덧대는 임시방편은 쓰지 않는다.
+
+## Phase 4-1 — Store Publish Foundation (확정)
+
+여기까지가 **등록 준비**다. 실제 등록 / 조각 차감 / listing / 판매는 없다.
+로그인도 ledger도 없는 상태에서 "등록 완료"처럼 보이는 가짜 상태를 만들지 않는다.
+
+- 진입: 내 거울 → 거울 → `상점에 올리기`. `MirrorPublishPolicy.isEligible`(= origin이 `.made`)일 때만 보인다.
+- `MirrorPublishDraft { id, mirrorID, title, description, priceInShards, didAcknowledgePhotoPrivacy, updatedAt }`.
+  디자인 스냅샷을 복사하지 않는다 — mirrorID만 참조하므로 거울을 고치면 미리보기도 같이 바뀐다.
+- `MirrorPublishManifest`는 사진 / 외부 디자인 assetID만 모은다. 중복 제거 + 정렬, binary 없음.
+- `MirrorPublishValidator` — 거울 존재 / 자격 / 제목 / 설명 / 가격 / asset 해석 / 사진 공개 확인.
+  이미지가 하나라도 사라졌으면 준비 완료로 넘기지 않는다.
+- 저장: `publish-drafts.json` (거울 목록과 파일 분리, 자체 schemaVersion 1).
+  거울 목록 형식을 건드리지 않으므로 mirror-library schema는 그대로 2다.
+- 거울을 지우면 그 준비 정보도 지운다. 앱을 켤 때 없는 거울의 준비 정보는 버린다.
+- 저장해도 origin / 슬롯 / 조각 / 상점 목록은 바뀌지 않는다. 테스트로 고정했다.
+
+아직 하지 않은 것
+
+- 실제 등록(listing 생성), Apple 로그인, 서버 업로드, 조각 ledger와 20조각 차감,
+  구매 / 판매자 정산, 상점 노출.
 
 ## Sticker Creator (후속 Phase)
 

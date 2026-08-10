@@ -461,7 +461,40 @@ final class MirrorLibrary {
         }
 
         guard !isReadOnly else { return }
+        // 사라진 거울의 준비 정보는 들고 있을 이유가 없다.
+        publishDrafts = store.loadDrafts().filter { draft in
+            mirrors.contains { $0.id == draft.mirrorID }
+        }
         collectAssetGarbage()
+    }
+
+    // MARK: - 상점 등록 준비
+
+    /// 상점에 올리기 전에 채워 둔 판매 정보. 거울 디자인과 별개다.
+    /// 저장한다고 origin / 슬롯 / 조각 / 상점 목록이 바뀌지 않는다.
+    private(set) var publishDrafts: [MirrorPublishDraft] = []
+
+    func publishDraft(for mirrorID: String) -> MirrorPublishDraft? {
+        publishDrafts.first { $0.mirrorID == mirrorID }
+    }
+
+    /// 거울 하나에 준비 정보 하나. 같은 거울이면 덮어쓴다.
+    func savePublishDraft(_ draft: MirrorPublishDraft) {
+        var updated = draft
+        updated.updatedAt = Date()
+        if let index = publishDrafts.firstIndex(where: { $0.mirrorID == draft.mirrorID }) {
+            updated.id = publishDrafts[index].id
+            publishDrafts[index] = updated
+        } else {
+            publishDrafts.append(updated)
+        }
+        store?.saveDrafts(publishDrafts)
+    }
+
+    func deletePublishDraft(for mirrorID: String) {
+        guard publishDrafts.contains(where: { $0.mirrorID == mirrorID }) else { return }
+        publishDrafts.removeAll { $0.mirrorID == mirrorID }
+        store?.saveDrafts(publishDrafts)
     }
 
     /// 지금 어떤 거울이든 참조하는 asset. 종류별로 따로 센다.
@@ -615,6 +648,7 @@ final class MirrorLibrary {
     func delete(_ mirror: MyMirror) {
         mirrors.removeAll { $0.id == mirror.id }
         if currentID == mirror.id { currentID = Self.defaultMirror.id }
+        deletePublishDraft(for: mirror.id)
         persist()
         // 다른 거울이 같은 사진 / 디자인을 쓰고 있으면 남는다. 아무도 안 쓰는 파일만 지운다.
         collectAssetGarbage()

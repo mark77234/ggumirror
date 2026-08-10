@@ -6,6 +6,7 @@
 //
 //  Application Support/ggumirror/
 //    mirror-library.json             — 거울 목록 + 현재 거울 (JSON 한 장)
+//    publish-drafts.json             — 상점 등록 준비 중인 판매 정보
 //    PhotoStickerAssets/<id>.png     — 배경 지운 사진 (투명도 유지)
 //    ImportedArtworkAssets/<id>.png  — 외부 그림 앱에서 가져온 전체 캔버스 디자인
 //
@@ -68,6 +69,12 @@ enum MirrorStoreLoad: Equatable {
     }
 }
 
+/// 등록 준비 중인 판매 정보. 거울 목록과 파일을 나눠서 서로의 형식을 건드리지 않는다.
+struct PersistedDrafts: Codable {
+    var schemaVersion = 1
+    var drafts: [MirrorPublishDraft] = []
+}
+
 // MARK: - 저장소
 
 final class MirrorStore: Sendable {
@@ -88,6 +95,7 @@ final class MirrorStore: Sendable {
     }
 
     var libraryURL: URL { root.appending(path: "mirror-library.json") }
+    var draftsURL: URL { root.appending(path: "publish-drafts.json") }
     var damagedLibraryURL: URL { root.appending(path: "mirror-library-damaged.json") }
 
     func assetsDirectory(_ kind: MirrorAssetKind) -> URL {
@@ -157,6 +165,32 @@ final class MirrorStore: Sendable {
                 print("[MirrorStore] 저장 실패: \(error)")
                 #endif
             }
+        }
+    }
+
+    // MARK: 등록 준비
+
+    /// 못 읽으면 빈 목록으로 시작한다. 거울 데이터와 달리 다시 쓸 수 있는 정보라 격리까지 하지 않는다.
+    func loadDrafts() -> [MirrorPublishDraft] {
+        guard let data = try? Data(contentsOf: draftsURL) else { return [] }
+        do {
+            return try JSONDecoder().decode(PersistedDrafts.self, from: data).drafts
+        } catch {
+            #if DEBUG
+            print("[MirrorStore] 등록 준비 정보를 읽지 못했다: \(error)")
+            #endif
+            return []
+        }
+    }
+
+    func saveDrafts(_ drafts: [MirrorPublishDraft]) {
+        guard let data = try? JSONEncoder().encode(PersistedDrafts(drafts: drafts)) else { return }
+        let url = draftsURL
+        let directory = root
+        queue.async {
+            let fileManager = FileManager()
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
         }
     }
 

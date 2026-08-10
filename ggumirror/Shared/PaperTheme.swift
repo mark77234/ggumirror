@@ -103,4 +103,15 @@ extension View {
             PaperBackground(color: color).ignoresSafeArea()
         }
     }
+
+    /// 시트 배경. **표시 표면 전체**를 덮는다 — 좌·우·아래 safe area까지.
+    ///
+    /// 배경 뷰가 safe area 안쪽에만 그려지면 홈 인디케이터 쪽에 종이가 닿지 않아
+    /// 아래 모서리에 빈 자리가 생긴다. 그래서 여기서 한 번만 `ignoresSafeArea`를 건다 —
+    /// 시트마다 따로 padding을 덧대지 않는다.
+    func paperSheet() -> some View {
+        presentationBackground {
+            PaperBackground().ignoresSafeArea()
+        }
+    }
 }

@@ -75,7 +75,7 @@ struct EditorView: View {
                 onSave: { saveMirror() }
             )
             .presentationDetents([.height(260)])
-            .presentationBackground { PaperBackground() }
+            .paperSheet()
         }
         .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
             Button("보관 공간 늘리기") { showsSlotFull = false }
@@ -92,7 +92,7 @@ struct EditorView: View {
                     }
                 )
                 .presentationDetents([.height(300)])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
             }
         }
         .sheet(isPresented: $isPickingSticker) {
@@ -107,7 +107,7 @@ struct EditorView: View {
                 }
             )
             .presentationDetents([.medium])
-            .presentationBackground { PaperBackground() }
+            .paperSheet()
         }
         .overlay {
             if isMakingPhotoSticker { photoProgress }
@@ -134,7 +134,7 @@ struct EditorView: View {
         .sheet(isPresented: $isReplacingArtwork) {
             ExternalArtworkView(showsGuide: false, onUse: { replaceArtwork($0) })
                 .presentationDetents([.large])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
         }
         .sheet(isPresented: $isShowingLayers) {
             LayersSheet(
@@ -143,12 +143,12 @@ struct EditorView: View {
                 onSelect: { select($0) }
             )
             .presentationDetents([.medium, .large])
-            .presentationBackground { PaperBackground() }
+            .paperSheet()
         }
         .sheet(isPresented: $isEditingText) {
             TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
                 .presentationDetents([.height(320)])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
         }
         .sheet(isPresented: $isChoosingTextColor) {
             if let text = selectedText {
@@ -156,7 +156,7 @@ struct EditorView: View {
                     apply(text) { $0.color = color }
                 }
                 .presentationDetents([.height(300)])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
             }
         }
         .sheet(isPresented: $isChoosingTextFont) {
@@ -165,18 +165,18 @@ struct EditorView: View {
                     apply(text) { $0.style = style }
                 }
                 .presentationDetents([.height(340)])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
             }
         }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
                 .presentationDetents([.medium, .large])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
         }
         .sheet(isPresented: $isChoosingBackground) {
             BackgroundColorSheet(color: $design.backgroundColor)
                 .presentationDetents([.height(320), .medium])
-                .presentationBackground { PaperBackground() }
+                .paperSheet()
         }
     }
 

@@ -55,7 +55,21 @@ struct ExternalArtworkTests {
         )!
         context.clear(CGRect(x: 0, y: 0, width: width, height: height))
 
-        // CG 좌표는 아래가 0이라 위쪽 표식은 맨 위 행에 그린다.
+        // 프레임 밴드 전체를 먼저 채운다 — 어디가 지워지는지 경계를 볼 수 있다.
+        let area = MirrorFrameInsets.standard.mirrorArea
+        context.setFillColor(CGColor(red: 0.9, green: 0.4, blue: 0.5, alpha: 1))
+        let band = CGMutablePath()
+        band.addRect(CGRect(x: 0, y: 0, width: Double(width), height: Double(height)))
+        band.addRect(CGRect(
+            x: area.x * Double(width),
+            y: Double(height) - (area.y + area.height) * Double(height),
+            width: area.width * Double(width),
+            height: area.height * Double(height)
+        ))
+        context.addPath(band)
+        context.fillPath(using: .evenOdd)
+
+        // CG 좌표는 아래가 0이라 위쪽 표식은 맨 위 행에 그린다. 밴드 위에 얹는다.
         let mark = Double(width) * 0.14
         context.setFillColor(markColor)
         context.fill(CGRect(x: 0, y: Double(height) - mark, width: mark, height: mark))
@@ -167,6 +181,11 @@ struct ExternalArtworkTests {
         )
     }
 
+    /// 실제 가져오기를 거친 디자인. 카메라 영역은 이 단계에서 지워진다.
+    private func importedArtworkImage(cameraOpaque: Bool = true) throws -> CGImage {
+        try MirrorArtworkImporter.normalize(pngData(artworkImage(cameraOpaque: cameraOpaque)))
+    }
+
     /// 캔버스 tap 판정에 쓰는 것과 같은 변환.
     private let fitted = MirrorViewTransform.fitted(in: CGSize(width: 360, height: 780))
 
@@ -267,11 +286,13 @@ struct ExternalArtworkTests {
 
     // MARK: - 가져오기 검사
 
-    @Test("정확히 1080 × 2340이면 그대로 쓴다")
-    func exactSizeIsAcceptedAsIs() throws {
+    @Test("정확히 1080 × 2340이면 크기를 바꾸지 않는다")
+    func exactSizeKeepsItsSize() throws {
         let result = try MirrorArtworkImporter.normalize(pngData(artworkImage()))
         #expect(result.width == 1080)
         #expect(result.height == 2340)
+        // 프레임에 그린 표식은 그대로 남는다.
+        #expect(pixel(result, at: NormalizedPoint(x: 0.05, y: 0.02)).red > 200)
     }
 
     @Test("비율이 같고 더 크면 1080 × 2340으로 줄인다")
@@ -308,14 +329,44 @@ struct ExternalArtworkTests {
         #expect(pixel(result, at: NormalizedPoint(x: 0.05, y: 0.02)).alpha > 200)
     }
 
-    @Test("카메라를 덮는 이미지는 막지 않고 경고만 한다")
-    func opaqueArtworkOnlyWarns() throws {
-        let opaque = try MirrorArtworkImporter.normalize(pngData(artworkImage(cameraOpaque: true)))
-        #expect(MirrorArtworkImporter.coversCamera(opaque))     // 경고 대상
-        let transparent = try MirrorArtworkImporter.normalize(pngData(artworkImage()))
-        #expect(!MirrorArtworkImporter.coversCamera(transparent))
-        // 경고일 뿐 가져오기 자체는 성공한다.
-        #expect(opaque.width == 1080)
+    @Test("카메라 영역은 가져올 때 지워진다 — 프레임만 남는다")
+    func cameraAreaIsClearedOnImport() throws {
+        // 캔버스 전체를 칠해서 가져와도
+        let imported = try importedArtworkImage(cameraOpaque: true)
+        let area = MirrorFrameInsets.standard.mirrorArea
+
+        // 점선 안쪽은 전부 비어 있다.
+        for point in [
+            NormalizedPoint(x: 0.5, y: 0.5),
+            NormalizedPoint(x: area.x + 0.02, y: area.y + 0.02),
+            NormalizedPoint(x: area.x + area.width - 0.02, y: area.y + area.height - 0.02)
+        ] {
+            #expect(pixel(imported, at: point).alpha == 0)
+        }
+        // 프레임에 그린 것은 그대로 남는다.
+        #expect(pixel(imported, at: NormalizedPoint(x: 0.05, y: 0.02)).alpha > 200)
+    }
+
+    @Test("지워지는 경계가 실제 카메라 영역과 정확히 같다")
+    func clearedAreaMatchesCameraGeometry() throws {
+        let imported = try importedArtworkImage()
+        let area = MirrorFrameInsets.standard.mirrorArea
+        let insets = MirrorFrameInsets.standard
+
+        // 위(180)와 아래(220)는 두께가 다르다. 뒤집혀 지워졌다면 여기서 걸린다.
+        let justAbove = NormalizedPoint(x: 0.5, y: area.y - 6 / MirrorCanvas.size.height)
+        let justInsideTop = NormalizedPoint(x: 0.5, y: area.y + 6 / MirrorCanvas.size.height)
+        let justBelow = NormalizedPoint(x: 0.5, y: 1 - insets.bottom + 6 / MirrorCanvas.size.height)
+        let justInsideBottom = NormalizedPoint(x: 0.5, y: 1 - insets.bottom - 6 / MirrorCanvas.size.height)
+
+        #expect(pixel(imported, at: justAbove).alpha > 200)          // 위 프레임은 남는다
+        #expect(pixel(imported, at: justInsideTop).alpha == 0)
+        #expect(pixel(imported, at: justBelow).alpha > 200)          // 아래 프레임도 남는다
+        #expect(pixel(imported, at: justInsideBottom).alpha == 0)
+
+        // 좌우도 같은 규격.
+        #expect(pixel(imported, at: NormalizedPoint(x: insets.left / 2, y: 0.5)).alpha > 200)
+        #expect(pixel(imported, at: NormalizedPoint(x: 1 - insets.right / 2, y: 0.5)).alpha > 200)
     }
 
     @Test("EXIF 회전이 있는 이미지는 실제 방향으로 펴서 받는다")
@@ -548,15 +599,18 @@ struct ExternalArtworkTests {
         #expect((center?.alpha ?? 255) < 20)
     }
 
-    @Test("불투명한 부분은 카메라 위에 그려진다")
-    func opaqueArtworkCoversCamera() {
-        let assetID = ImportedArtworkAssetStore.shared.register(artworkImage(cameraOpaque: true))
+    @Test("가져온 디자인은 프레임에만 보이고 카메라는 비운다")
+    func importedArtworkOnlyCoversFrame() throws {
+        let assetID = ImportedArtworkAssetStore.shared.register(try importedArtworkImage())
         var design = MirrorDesign.blank
         design.importedArtworks = [ImportedArtworkObject(assetID: assetID)]
 
+        // 프레임에는 그려지고
+        let frame = runtimePixel(design, at: NormalizedPoint(x: 0.05, y: 0.5))
+        #expect((frame?.alpha ?? 0) > 200)
+        // 카메라 영역은 비어 있다 — 얼굴이 그대로 보인다.
         let center = runtimePixel(design, at: NormalizedPoint(x: 0.5, y: 0.5))
-        #expect((center?.alpha ?? 0) > 200)
-        #expect((center?.green ?? 0) > (center?.red ?? 255))    // 초록으로 채운 카메라 영역
+        #expect((center?.alpha ?? 255) < 20)
     }
 
     @Test("전체 캔버스에 어긋남 없이 정렬된다")
@@ -570,25 +624,25 @@ struct ExternalArtworkTests {
         #expect((inside?.red ?? 0) > 150)
         #expect((inside?.green ?? 255) < 120)
 
-        // 경계 바로 바깥은 표식이 아니라 프레임 배경(크림색)이다.
+        // 경계 바로 바깥은 표식이 아니라 디자인의 프레임 밴드(분홍)다.
         let outside = runtimePixel(design, at: NormalizedPoint(x: 0.17, y: 0.02))
-        #expect((outside?.green ?? 0) > 150)
+        #expect((outside?.green ?? 0) > 90)
+        #expect((outside?.alpha ?? 0) > 200)
     }
 
     @Test("홈 / 내 거울 미리보기에도 나온다")
-    func artworkAppearsInPreviews() {
-        let assetID = ImportedArtworkAssetStore.shared.register(artworkImage(cameraOpaque: true))
+    func artworkAppearsInPreviews() throws {
+        let assetID = ImportedArtworkAssetStore.shared.register(try importedArtworkImage())
         let saved = mirror(with: ImportedArtworkObject(assetID: assetID))
 
-        let center = previewPixel(saved, at: NormalizedPoint(x: 0.5, y: 0.5))
-        #expect((center?.green ?? 0) > (center?.red ?? 255))
         let mark = previewPixel(saved, at: NormalizedPoint(x: 0.04, y: 0.02))
         #expect((mark?.red ?? 0) > 150)
+        #expect((mark?.green ?? 255) < 120)
     }
 
     @Test("Capture에도 포함된다")
     func artworkReachesCapture() throws {
-        let assetID = ImportedArtworkAssetStore.shared.register(artworkImage(cameraOpaque: true))
+        let assetID = ImportedArtworkAssetStore.shared.register(try importedArtworkImage())
         var design = MirrorDesign.blank
         design.importedArtworks = [ImportedArtworkObject(assetID: assetID)]
 
@@ -597,51 +651,53 @@ struct ExternalArtworkTests {
         )
         let image = try #require(captured.cgImage)
         let transform = MirrorViewTransform.aspectFilled(in: CGSize(width: image.width, height: image.height))
-        let screen = transform.point(NormalizedPoint(x: 0.5, y: 0.5))
-        let center = pixel(image, x: Int(screen.x), y: Int(screen.y))
-        #expect(center.green > center.red)
+        let screen = transform.point(NormalizedPoint(x: 0.04, y: 0.02))
+        let mark = pixel(image, x: Int(screen.x), y: Int(screen.y))
+        #expect(mark.red > mark.green)
     }
 
     @Test("투명도가 렌더에 반영된다")
-    func opacityChangesRender() {
-        let assetID = ImportedArtworkAssetStore.shared.register(artworkImage(cameraOpaque: true))
+    func opacityChangesRender() throws {
+        let assetID = ImportedArtworkAssetStore.shared.register(try importedArtworkImage())
         var design = MirrorDesign.blank
         design.importedArtworks = [ImportedArtworkObject(assetID: assetID, opacity: 1)]
-        let full = runtimePixel(design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha ?? 0
-
+        // 표식은 순수 빨강이라 초록이 0에 가깝다. 옅어질수록 아래 크림색 초록이 올라온다.
+        let spot = NormalizedPoint(x: 0.04, y: 0.02)
+        let full = runtimePixel(design, at: spot)?.green ?? 255
         design.importedArtworks[0].opacity = 0.3
-        let faded = runtimePixel(design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha ?? 0
+        let faded = runtimePixel(design, at: spot)?.green ?? 0
 
-        #expect(full > 200)
-        #expect(faded < full)
-        #expect(faded > 20)
+        #expect(full < 60)
+        #expect(faded > full + 60)
     }
 
     @Test("순서를 바꾸면 그림이 실제로 위아래로 바뀐다")
-    func reorderChangesRenderedResult() {
-        let assetID = ImportedArtworkAssetStore.shared.register(artworkImage(cameraOpaque: true))
+    func reorderChangesRenderedResult() throws {
+        let assetID = ImportedArtworkAssetStore.shared.register(try importedArtworkImage())
         let photo = PhotoStickerAssetStore.shared.register(solidImage())
 
+        // 프레임 위에서 겹쳐 본다 — 이제 외부 디자인은 카메라 영역에 그려지지 않는다.
+        let spot = NormalizedPoint(x: 0.04, y: 0.02)
         var design = MirrorDesign.blank
         design.importedArtworks = [ImportedArtworkObject(assetID: assetID, zIndex: 0)]
-        let width = 0.3
+        let width = 0.12
         design.stickers = [StickerObject(
             source: photo,
-            frame: NormalizedRect(x: 0.5 - width / 2, y: 0.5 - width / 2, width: width, height: width),
+            frame: NormalizedRect(x: spot.x - width / 2, y: spot.y - width / 8, width: width, height: width / 4),
             zIndex: 1
         )]
 
         // 스티커가 위 → 파란 스티커가 보인다.
-        let stickerOnTop = runtimePixel(design, at: NormalizedPoint(x: 0.5, y: 0.5))
-        #expect((stickerOnTop?.blue ?? 0) > (stickerOnTop?.green ?? 255))
+        let stickerOnTop = runtimePixel(design, at: spot)
+        #expect((stickerOnTop?.blue ?? 0) > (stickerOnTop?.red ?? 255))
 
         var snapshot = design.snapshot
         snapshot.reorderDecorations(frontToBack: [design.importedArtworks[0].id, design.stickers[0].id])
         design.snapshot = snapshot
 
-        // 외부 디자인이 위 → 초록 배경이 덮는다.
-        let artworkOnTop = runtimePixel(design, at: NormalizedPoint(x: 0.5, y: 0.5))
-        #expect((artworkOnTop?.green ?? 0) > (artworkOnTop?.blue ?? 255))
+        // 외부 디자인이 위 → 빨간 표식이 덮는다.
+        let artworkOnTop = runtimePixel(design, at: spot)
+        #expect((artworkOnTop?.red ?? 0) > (artworkOnTop?.blue ?? 255))
     }
 
     private func solidImage() -> CGImage {
