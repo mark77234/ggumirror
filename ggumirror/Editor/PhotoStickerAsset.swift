@@ -19,32 +19,68 @@ import Vision
 
 // MARK: - 보관소
 
-/// 사진 스티커 이미지 1회 보관.
-/// ponytail: 앱이 사는 동안만 유지되는 메모리 캐시. 앱 전체에 persistence가 생길 때 같이 디스크로 옮긴다.
+/// 사진 스티커 이미지 1회 보관. 메모리 캐시 + 디스크(PNG) 뒷받침.
+///
+/// 렌더러는 준비된 CGImage만 본다 — 그리는 도중에 파일을 읽지 않도록
+/// 앱이 시작할 때 `preload`로 필요한 사진을 미리 올려둔다.
+///
+/// 관찰 대상으로 두지 않는다. 캐시에 채워 넣는 일이 화면 갱신을 다시 부르면 안 된다.
 @MainActor
-@Observable
 final class PhotoStickerAssetStore {
     /// 렌더러(MirrorRenderer)가 화면마다 store를 넘겨받지 않고 바로 볼 수 있도록 하나만 둔다.
     static let shared = PhotoStickerAssetStore()
 
     private var assets: [UUID: CGImage] = [:]
+    /// 디스크에도 없던 것. 매 프레임 같은 파일을 다시 찾지 않게 한다.
+    private var missing: Set<UUID> = []
+    /// 디스크 저장소. 앱이 시작할 때 MirrorLibrary가 연결한다.
+    /// 연결 전에는 메모리만 쓴다 — 단위 테스트가 실제 앱 폴더를 건드리지 않는다.
+    private var storage: MirrorStore?
+
+    init(storage: MirrorStore? = nil) {
+        self.storage = storage
+    }
+
+    func attach(_ store: MirrorStore) {
+        storage = store
+        missing.removeAll()
+    }
 
     /// 보관하고 참조용 source를 돌려준다. 비율은 잘라낸 결과 그대로다.
     func register(_ image: CGImage) -> StickerSource {
         let id = UUID()
         assets[id] = image
+        missing.remove(id)
+        // 사진 1장당 1회. 배경 제거(수 초) 직후라 여기서 PNG 한 장 굽는 비용은 묻힌다.
+        if let storage, let data = storage.encodePNG(image) {
+            storage.writeAsset(data, id: id)
+        }
         return .photo(assetID: id, aspectRatio: Double(image.width) / Double(max(image.height, 1)))
     }
 
     /// 없으면 nil. 렌더러는 조용히 건너뛴다 — 사진이 사라져도 앱이 깨지지 않는다.
-    func image(for id: UUID) -> CGImage? { assets[id] }
+    func image(for id: UUID) -> CGImage? {
+        if let cached = assets[id] { return cached }
+        guard let storage, !missing.contains(id) else { return nil }
+        guard let loaded = storage.readAsset(id) else {
+            missing.insert(id)
+            return nil
+        }
+        assets[id] = loaded
+        return loaded
+    }
+
+    /// 저장된 거울이 쓰는 사진을 미리 메모리에 올린다. 앱 시작 때 한 번.
+    func preload(_ ids: Set<UUID>) {
+        for id in ids { _ = image(for: id) }
+    }
 
     var count: Int { assets.count }
 
     /// 복제는 같은 asset을 참조하므로 이미지가 늘지 않는다.
     func isRegistered(_ source: StickerSource) -> Bool {
         guard let id = source.photoAssetID else { return false }
-        return assets[id] != nil
+        return image(for: id) != nil
     }
 }
 

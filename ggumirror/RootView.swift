@@ -10,8 +10,8 @@ import SwiftUI
 
 struct RootView: View {
     @State private var screen: Screen = .mirror
-    /// 아직 persistence가 없어 앱이 살아 있는 동안만 유지되는 로컬 데이터.
-    @State private var library = MirrorLibrary()
+    /// 앱 전체가 쓰는 단 하나의 거울 목록. 시작할 때 기기에서 읽어 온다.
+    @State private var library = MirrorLibrary.live
     @State private var editing: EditorRequest?
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.

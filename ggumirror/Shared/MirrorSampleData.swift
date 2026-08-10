@@ -287,7 +287,7 @@ enum StoreCatalog {
 
 // MARK: - 내 거울
 
-enum MirrorOrigin: String, CaseIterable, Identifiable {
+enum MirrorOrigin: String, CaseIterable, Identifiable, Codable {
     case basic = "기본 제공"
     case made = "내가 만든"
     case purchased = "구매한"
@@ -383,12 +383,22 @@ enum MirrorSaveOutcome: Equatable {
     }
 }
 
-/// 내 거울 목록과 현재 사용 중인 거울. 아직 메모리에만 있다.
+/// 내 거울 목록과 현재 사용 중인 거울. 앱 전체에서 이것 하나가 진실이다.
+///
+/// 화면은 각자 저장하지 않는다 — 여기서 바뀐 것만 디스크로 나간다.
+/// 앱 시작: 파일 읽기 → 이 객체 채우기 → 화면.
+/// 저장 / 만들기 / 복제 / 삭제 / 적용: 이 객체 수정 → 파일 쓰기.
 @Observable
 @MainActor
 final class MirrorLibrary {
     private(set) var mirrors: [MyMirror]
-    var currentID: String
+    private(set) var currentID: String
+
+    /// 디스크 저장소. nil이면 메모리에만 산다(미리보기 / 단위 테스트).
+    private let store: MirrorStore?
+    private let assets: PhotoStickerAssetStore
+    /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
+    private let isReadOnly: Bool
 
     /// 앱을 처음 설치한 사용자가 바로 거울을 쓸 수 있게 하는 기본값.
     /// My Mirrors 목록에 들어가지 않고, 슬롯도 쓰지 않으며, 구매 이력으로도 치지 않는다.
@@ -399,10 +409,63 @@ final class MirrorLibrary {
         style: BasicMirror.cream.style
     )
 
-    init() {
+    /// 앱이 쓰는 하나뿐인 목록. SwiftUI가 View를 다시 만들어도 파일은 한 번만 읽고,
+    /// 안 쓰는 사진 정리도 실행당 한 번만 돈다.
+    static let live = MirrorLibrary(store: .live)
+
+    init(store: MirrorStore? = nil, assets: PhotoStickerAssetStore? = nil) {
+        let assets = assets ?? .shared
+        self.store = store
+        self.assets = assets
         // 최초 실행 시 내 거울은 비어 있다. 상점에서 받거나 직접 만들면 그때 채워진다.
         mirrors = []
         currentID = Self.defaultMirror.id
+
+        guard let store else {
+            isReadOnly = false
+            return
+        }
+        assets.attach(store)
+
+        switch store.load() {
+        case .empty, .damaged:
+            // 최초 실행이거나 파일이 깨졌다. 깨진 파일은 지우지 않고 옆에 치워둔 상태다.
+            isReadOnly = false
+        case .tooNew(let version):
+            // 더 새 버전이 적어둔 데이터를 지금 형식으로 덮어쓰면 사용자 거울이 사라진다.
+            isReadOnly = true
+            #if DEBUG
+            print("[MirrorLibrary] 저장 파일 버전 \(version)이 앱(\(MirrorSchema.current))보다 새롭다. 읽기 전용으로 시작한다.")
+            #endif
+        case .loaded(let saved):
+            isReadOnly = false
+            mirrors = saved.mirrors
+            purchasedCreatedSlots = saved.purchasedCreatedSlots
+            // 지워진 거울을 가리키고 있으면 기본 거울로 돌아간다.
+            currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
+                ? saved.currentMirrorID
+                : Self.defaultMirror.id
+            // 렌더러가 그리다가 파일을 읽지 않도록 미리 올린다.
+            assets.preload(saved.referencedAssetIDs)
+        }
+
+        guard !isReadOnly else { return }
+        store.collectAssetGarbage(keeping: referencedAssetIDs)
+    }
+
+    /// 지금 어떤 거울이든 참조하는 사진 asset.
+    var referencedAssetIDs: Set<UUID> {
+        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.photoAssetIDs) }
+    }
+
+    /// 의미 있는 변경 1회 = 파일 쓰기 1회. Editor의 드래그 중간 상태는 여기 오지 않는다.
+    private func persist() {
+        guard let store, !isReadOnly else { return }
+        store.save(PersistedLibrary(
+            currentMirrorID: currentID,
+            mirrors: mirrors,
+            purchasedCreatedSlots: purchasedCreatedSlots
+        ))
     }
 
     var currentMirror: MyMirror {
@@ -421,6 +484,7 @@ final class MirrorLibrary {
     /// 향후 조각 결제가 붙을 자리. 지금은 호출되지 않는다.
     func grantSlotPack() {
         purchasedCreatedSlots += MirrorStoragePolicy.slotPackSize
+        persist()
     }
 
     /// Editor 저장. 무엇이 될지는 **어디서 들어왔는가**(context)가 정한다.
@@ -441,6 +505,7 @@ final class MirrorLibrary {
             mirrors[index].texts = design.texts
             // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
             currentID = mirrors[index].id
+            persist()
             return .updated(id: mirrors[index].id, name: mirrors[index].name)
         }
 
@@ -467,6 +532,7 @@ final class MirrorLibrary {
         )
         mirrors.append(copy)
         currentID = copy.id
+        persist()
         return .created(id: copy.id, name: copy.name)
     }
 
@@ -496,11 +562,13 @@ final class MirrorLibrary {
             style: template.style
         )
         mirrors.append(mirror)
+        persist()
         return mirror
     }
 
     func apply(_ mirror: MyMirror) {
         currentID = mirror.id
+        persist()
     }
 
     func duplicate(_ mirror: MyMirror) {
@@ -516,6 +584,7 @@ final class MirrorLibrary {
             texts: mirror.texts
         )
         mirrors.insert(copy, at: index + 1)
+        persist()
     }
 
     /// 받은 기본 템플릿도 지울 수 있다 — 상점에서 다시 무료로 받으면 된다.
@@ -523,5 +592,8 @@ final class MirrorLibrary {
     func delete(_ mirror: MyMirror) {
         mirrors.removeAll { $0.id == mirror.id }
         if currentID == mirror.id { currentID = Self.defaultMirror.id }
+        persist()
+        // 다른 거울이 같은 사진을 쓰고 있으면 남는다. 아무도 안 쓰는 파일만 지운다.
+        store?.collectAssetGarbage(keeping: referencedAssetIDs)
     }
 }

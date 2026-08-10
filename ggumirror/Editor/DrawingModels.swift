@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - Point
 
 /// Master Canvas 기준 0...1 좌표.
-struct NormalizedPoint: Hashable {
+struct NormalizedPoint: Hashable, Codable {
     var x: Double
     var y: Double
 
@@ -30,7 +30,7 @@ struct NormalizedPoint: Hashable {
 // MARK: - Brush
 
 /// Clean Pen Sketch에 맞는 최소 preset. 굵기는 Master Canvas 폭 기준 normalized 값이다.
-enum EditorBrush: String, CaseIterable, Identifiable {
+enum EditorBrush: String, CaseIterable, Identifiable, Codable {
     case fine, pen, pencil, marker, highlighter
 
     var id: String { rawValue }

@@ -32,7 +32,7 @@ enum StickerRenderMode: Hashable {
 /// 기본 제공 스티커. 지금은 개발용 placeholder이고
 /// 최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
 /// rawValue는 저장 식별자이므로 asset을 바꿔도 유지한다.
-enum BuiltInSticker: String, CaseIterable, Identifiable, Hashable {
+enum BuiltInSticker: String, CaseIterable, Identifiable, Hashable, Codable {
     // 하트 / 러브
     case heart, heartSmall, heartDouble, heartArrow
     // 리본 / 패션

@@ -1,0 +1,199 @@
+//
+//  MirrorStore.swift
+//  ggumirror
+//
+//  내 거울을 기기에 적어두는 곳. 서버도 클라우드 동기화도 없다.
+//
+//  Application Support/ggumirror/
+//    mirror-library.json          — 거울 목록 + 현재 거울 (JSON 한 장)
+//    PhotoStickerAssets/<id>.png  — 배경 지운 사진 (투명도 유지)
+//
+//  사진 binary는 JSON에 넣지 않는다. 거울은 assetID만 참조하므로
+//  거울을 복제해도 같은 파일 하나를 같이 본다.
+//
+//  Caches가 아니라 Application Support를 쓴다 — 사용자가 만든 콘텐츠라
+//  시스템이 마음대로 지우면 안 된다.
+//
+
+import CoreGraphics
+import Foundation
+import ImageIO
+import UniformTypeIdentifiers
+
+// MARK: - 저장 형식
+
+enum MirrorSchema {
+    /// 저장 파일 버전. 형식을 바꾸면 올리고 migrate에 case를 추가한다.
+    static let current = 1
+}
+
+struct PersistedLibrary: Codable {
+    var schemaVersion: Int = MirrorSchema.current
+    var currentMirrorID: String
+    var mirrors: [MyMirror]
+    /// 조각으로 산 추가 보관 슬롯. 거울 목록에서 다시 계산할 수 없는 유일한 값이라 같이 적는다.
+    var purchasedCreatedSlots: Int = 0
+
+    /// 지금 어떤 거울이든 참조하고 있는 사진 asset 전부.
+    var referencedAssetIDs: Set<UUID> {
+        mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.photoAssetIDs) }
+    }
+}
+
+/// 읽기 결과. 실패했다고 사용자 데이터를 조용히 덮어쓰지 않는다.
+enum MirrorStoreLoad: Equatable {
+    /// 저장 파일이 없다 — 정상적인 최초 실행.
+    case empty
+    case loaded(PersistedLibrary)
+    /// 파일이 깨졌다. 원본은 옆으로 치워두고 새로 시작한다.
+    case damaged
+    /// 이 앱보다 새 버전이 적어둔 파일. 읽지도 덮어쓰지도 않는다.
+    case tooNew(Int)
+
+    static func == (lhs: MirrorStoreLoad, rhs: MirrorStoreLoad) -> Bool {
+        switch (lhs, rhs) {
+        case (.empty, .empty), (.damaged, .damaged): true
+        case (.tooNew(let a), .tooNew(let b)): a == b
+        case (.loaded(let a), .loaded(let b)): a.mirrors == b.mirrors && a.currentMirrorID == b.currentMirrorID
+        default: false
+        }
+    }
+}
+
+// MARK: - 저장소
+
+final class MirrorStore: Sendable {
+    /// 앱이 실제로 쓰는 저장소. 테스트는 임시 폴더로 자기 것을 만든다.
+    static let live = MirrorStore(root: defaultRoot)
+
+    let root: URL
+    /// 쓰기는 전부 이 줄 하나를 지난다 — 나중 저장이 먼저 저장을 앞지르지 않는다.
+    private let queue = DispatchQueue(label: "com.ggumirror.persistence")
+
+    init(root: URL) {
+        self.root = root
+    }
+
+    static var defaultRoot: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appending(path: "ggumirror", directoryHint: .isDirectory)
+    }
+
+    var libraryURL: URL { root.appending(path: "mirror-library.json") }
+    var damagedLibraryURL: URL { root.appending(path: "mirror-library-damaged.json") }
+    var assetsURL: URL { root.appending(path: "PhotoStickerAssets", directoryHint: .isDirectory) }
+
+    /// 테스트에서 쓰기가 끝날 때까지 기다린다.
+    func flush() { queue.sync {} }
+
+    // MARK: 거울 목록
+
+    func load() -> MirrorStoreLoad {
+        guard let data = try? Data(contentsOf: libraryURL) else { return .empty }
+
+        // 버전을 먼저 본다 — 미래 버전 파일을 억지로 읽어서 망가뜨리지 않는다.
+        struct VersionProbe: Decodable { let schemaVersion: Int }
+        guard let probe = try? JSONDecoder().decode(VersionProbe.self, from: data) else {
+            return quarantine(reason: "schemaVersion을 읽지 못했다")
+        }
+        guard probe.schemaVersion <= MirrorSchema.current else { return .tooNew(probe.schemaVersion) }
+
+        do {
+            return .loaded(try migrate(data, from: probe.schemaVersion))
+        } catch {
+            return quarantine(reason: "\(error)")
+        }
+    }
+
+    /// 지금은 v1 하나뿐이다. v2가 생기면 여기 case를 늘린다.
+    private func migrate(_ data: Data, from version: Int) throws -> PersistedLibrary {
+        switch version {
+        case 1: try JSONDecoder().decode(PersistedLibrary.self, from: data)
+        default: throw CocoaError(.fileReadCorruptFile)
+        }
+    }
+
+    /// 못 읽는 파일을 지우지 않고 옆으로 치운다. 앱은 빈 상태로 계속 쓸 수 있다.
+    private func quarantine(reason: String) -> MirrorStoreLoad {
+        #if DEBUG
+        print("[MirrorStore] 저장 파일을 읽지 못했다: \(reason)")
+        #endif
+        let fileManager = FileManager()
+        try? fileManager.removeItem(at: damagedLibraryURL)
+        try? fileManager.moveItem(at: libraryURL, to: damagedLibraryURL)
+        return .damaged
+    }
+
+    /// encode는 호출한 쪽(MainActor)에서, 디스크 쓰기는 뒤에서. 쓰기 중 종료돼도 파일이 반쪽 나지 않는다.
+    func save(_ library: PersistedLibrary) {
+        var payload = library
+        payload.schemaVersion = MirrorSchema.current
+        guard let data = try? JSONEncoder().encode(payload) else {
+            assertionFailure("거울 목록을 encode하지 못했다")
+            return
+        }
+        let url = libraryURL
+        let directory = root
+        queue.async {
+            let fileManager = FileManager()
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                #if DEBUG
+                print("[MirrorStore] 저장 실패: \(error)")
+                #endif
+            }
+        }
+    }
+
+    // MARK: 사진 asset
+
+    func assetURL(_ id: UUID) -> URL {
+        assetsURL.appending(path: "\(id.uuidString).png")
+    }
+
+    /// 투명도를 유지해야 하므로 항상 PNG다. JPEG는 쓰지 않는다.
+    func encodePNG(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data, UTType.png.identifier as CFString, 1, nil
+        ) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
+    func writeAsset(_ data: Data, id: UUID) {
+        let url = assetURL(id)
+        let directory = assetsURL
+        queue.async {
+            let fileManager = FileManager()
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    func readAsset(_ id: UUID) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(assetURL(id) as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    /// 어떤 거울도 참조하지 않는 사진 파일을 지운다.
+    /// Editor 작업 중에는 부르지 않는다 — Undo로 되살릴 스티커의 사진을 미리 지우면 안 된다.
+    func collectAssetGarbage(keeping ids: Set<UUID>) {
+        let directory = assetsURL
+        queue.async {
+            let fileManager = FileManager()
+            guard let files = try? fileManager.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil
+            ) else { return }
+            for file in files where file.pathExtension == "png" {
+                guard let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent),
+                      !ids.contains(id)
+                else { continue }
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+}

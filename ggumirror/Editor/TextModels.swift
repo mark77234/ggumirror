@@ -34,7 +34,7 @@ enum TextPolicy {
 
 /// 장식용 글꼴 preset. 새 폰트 파일을 넣지 않고 system font design만 쓴다.
 /// 한글이 안정적으로 나오는 조합만 남겼다.
-enum TextFontStyle: String, CaseIterable, Identifiable, Hashable {
+enum TextFontStyle: String, CaseIterable, Identifiable, Hashable, Codable {
     case basic, bold, serif, rounded
 
     var id: String { rawValue }
@@ -71,7 +71,7 @@ enum TextFontStyle: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-enum TextAlignmentOption: String, CaseIterable, Identifiable, Hashable {
+enum TextAlignmentOption: String, CaseIterable, Identifiable, Hashable, Codable {
     case leading, center, trailing
 
     var id: String { rawValue }

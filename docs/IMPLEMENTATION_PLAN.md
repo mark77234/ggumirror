@@ -287,7 +287,7 @@ Editor Save Context
 사진 asset
 
 - 거울을 복제해도 `StickerSource.photo(assetID:)`를 그대로 참조한다. binary는 하나.
-- 디스크 persistence는 여전히 후속 Persistence Phase.
+- 디스크 저장은 Phase 3-5에서 붙였다 (`PhotoStickerAssets/<assetID>.png`).
 
 ## Phase 3-4A — Text Objects (확정)
 
@@ -354,17 +354,68 @@ B. Decoration Font 확장
 - 한글을 지원하는 손글씨 / 귀여운 글씨 / 굵은 포스터 / 얇은 감성 / 레트로 계열로 넓힌다.
 - 실제 폰트 licensing과 bundle 전략을 함께 정한 뒤 Visual·Text Polish에서 진행한다.
 
-## 다음 우선순위 — Persistence (후속)
+## Phase 3-5 — Local Persistence (확정)
 
-- `MirrorDesign`(획 / 스티커 / 텍스트 / 순서)과 **사진 스티커 asset**이 앱 재실행 후에도 남아야 한다.
-- 지금 `PhotoStickerAssetStore`는 메모리 캐시라 앱을 끄면 사진이 사라진다.
-- 모델은 assetID 참조를 유지한 채 이미지를 파일로 저장하는 방향.
+내 거울과 사진 스티커를 기기에 적어둔다. 서버 / 클라우드 동기화는 없다.
+
+저장 위치
+
+```
+Application Support/ggumirror/
+  mirror-library.json            거울 목록 + 현재 거울 (JSON 한 장)
+  mirror-library-damaged.json    읽지 못한 파일을 치워두는 자리
+  PhotoStickerAssets/<id>.png    배경 지운 사진 (투명도 유지, JPEG 금지)
+```
+
+Caches가 아니라 Application Support를 쓴다 — 사용자가 만든 콘텐츠라 시스템이 지우면 안 된다.
+
+형식
+
+- `PersistedLibrary { schemaVersion, currentMirrorID, mirrors, purchasedCreatedSlots }`, 현재 버전 **1**.
+- 읽을 때 `schemaVersion`을 먼저 보고 `migrate(_:from:)` 한 곳에서 분기한다. 지금은 v1 하나뿐이다.
+- `Color`만 직접 적을 수 없어 `RGBAColor`(sRGB 4값)로 바꾼다. UIImage / CGImage는 애초에 모델에 없다.
+- Codable 정의는 `MirrorCodable.swift` 한 곳에 모았다 — 저장 때문에 Editor 모델을 갈아엎지 않는다.
+- 모르는 enum 값(예전/나중 빌드)은 파일 전체를 버리지 않고 기본값으로 되돌린다.
+
+진실은 하나
+
+- `MirrorLibrary.live`가 앱 전체의 단 하나뿐인 목록이다. 화면은 각자 저장하지 않는다.
+- 시작: 파일 읽기 → hydrate → 사진 preload → 안 쓰는 사진 정리 → UI.
+- 변경: 저장 / 만들기 / 복제 / 삭제 / 적용 / 슬롯 추가 **1회 = 파일 쓰기 1회.**
+- Editor의 드래그 / 확대 같은 중간 상태는 저장하지 않는다.
+- 쓰기는 직렬 큐 하나를 지나며 atomic write다 — 쓰다 종료돼도 파일이 반쪽 나지 않는다.
+
+사진
+
+- 이미지 binary는 JSON에 넣지 않는다. 거울은 `assetID`만 참조하므로 복제해도 파일이 늘지 않는다.
+- `PhotoStickerAssetStore` = 메모리 캐시 + 디스크. 시작할 때 참조된 사진을 미리 올려
+  **렌더러가 그리는 도중 파일을 읽지 않는다.** 못 찾은 것은 한 번만 찾고 기억한다.
+- 참조가 하나도 없는 사진은 거울 삭제 후 / 앱 시작 때 정리한다. Editor 작업 중에는 지우지 않는다.
+
+실패 정책
+
+- 파일 없음 = 최초 설치. 내 거울 0개 + 기본 거울.
+- 못 읽는 파일은 **지우지 않고** `-damaged.json`으로 치운 뒤 빈 상태로 계속 쓸 수 있게 한다.
+- `schemaVersion`이 앱보다 높으면 읽지도 덮어쓰지도 않는다(읽기 전용 세션). DEBUG에서 로그.
+- 없는 거울을 가리키는 `currentMirrorID`는 기본 거울로 되돌린다. 어느 쪽도 crash하지 않는다.
+
+크기 (측정값)
+
+- 거울 50장 × (획 100 · 스티커 50 · 텍스트 20) → **3.7 MB / encode 0.20s / decode 0.15s**.
+- 실제 MVP 상한(제작 3장 + 받은 거울)에서는 훨씬 작다. SQLite 같은 DB로 미리 옮기지 않는다.
+
+이 Phase에서 하지 않은 것
+
+- 클라우드 동기화 / 백엔드, Profile · 조각 잔액 이전(각각 AppStorage / 임시값 그대로), External Artwork Import.
 
 ## External Mirror Artwork Import (Persistence 이후)
 
 - 1080 × 2340 작업 가이드 export → Procreate / ibisPaint / Photoshop 등에서 작업
 - transparent PNG를 꾸미러로 가져와 전체 Canvas `ImportedArtwork` 레이어로 추가
 - Layers 목록에 레이어 한 줄로 들어간다.
+- 저장 구조는 이미 준비돼 있다: asset 폴더를 하나 더 두고(`ImportedArtworkAssets/`),
+  `StickerSource`처럼 참조 case를 늘린 뒤 `referencedAssetIDs`에 합치면 GC까지 그대로 따라온다.
+  지금 이것 때문에 `PhotoStickerAssetStore`를 범용 시스템으로 갈아엎지 않는다.
 
 ## Sticker Creator (후속 Phase)
 

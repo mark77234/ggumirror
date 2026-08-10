@@ -29,7 +29,7 @@ enum MirrorGeometry {
 }
 
 /// Master Canvas 기준 0...1 사각형. 화면 크기가 달라도 같은 자리에 렌더링된다.
-struct NormalizedRect: Hashable {
+struct NormalizedRect: Hashable, Codable {
     var x: Double
     var y: Double
     var width: Double
@@ -48,7 +48,7 @@ struct NormalizedRect: Hashable {
 // MARK: - Frame insets
 
 /// 프레임 밴드 두께. 216px 같은 고정값을 쓰지 않고 거울마다 다르게 가질 수 있다.
-struct MirrorFrameInsets: Hashable {
+struct MirrorFrameInsets: Hashable, Codable {
     var top: Double
     var right: Double
     var bottom: Double

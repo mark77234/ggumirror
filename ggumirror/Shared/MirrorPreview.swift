@@ -16,7 +16,7 @@ struct MirrorStyle: Hashable {
     /// 프레임 위에 얹히는 잉크 낙서. 기본 거울은 항상 비어 있다.
     var doodles: [Doodle] = []
 
-    struct Doodle: Hashable {
+    struct Doodle: Hashable, Codable {
         let symbol: String
         /// 미리보기 전체 기준 0...1 좌표.
         let x: Double
