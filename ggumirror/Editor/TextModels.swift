@@ -24,6 +24,14 @@ enum TextPolicy {
     /// 줄 간격 배수.
     static let lineSpacing: Double = 1.18
 
+    /// 크기 조절 감도.
+    ///
+    /// 스티커는 폭 0.06...0.45(폭 0.39), 글자는 0.026...0.204(폭 0.178)로
+    /// 값의 범위가 절반도 안 된다. 같은 계수를 쓰면 같은 거리를 끌어도
+    /// 글자만 두 배 넘게 변해서 원하는 크기를 맞추기 어렵다.
+    /// 범위 비율만큼 낮춰 스티커와 체감을 맞춘다.
+    static let resizeSensitivity: Double = 0.45
+
     /// 앞뒤 공백을 정리하고 길이를 제한한다. 내용이 없으면 nil.
     static func normalized(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -32,12 +40,28 @@ enum TextPolicy {
     }
 }
 
-/// 장식용 글꼴 preset. 새 폰트 파일을 넣지 않고 system font design만 쓴다.
-/// 한글이 안정적으로 나오는 조합만 남겼다.
+/// 거울에 넣는 글씨의 서체. **앱 UI 서체(`InkFont`)와는 별개**다.
+///
+/// rawValue가 그대로 저장되므로 **기존 case를 지우거나 이름을 바꾸지 않는다.**
+/// basic / bold / serif / rounded는 예전에 저장된 텍스트가 쓰고 있어 계속 남긴다.
+/// case가 늘어난 것뿐이라 저장 형식은 그대로다 — schemaVersion을 올리지 않는다.
 enum TextFontStyle: String, CaseIterable, Identifiable, Hashable, Codable {
+    // 예전 값 (지우지 말 것)
     case basic, bold, serif, rounded
+    // 손글씨 라이브러리
+    case gaeguLight, gaegu, gaeguBold
+    case gamjaFlower, hiMelody, jua
+    case nanumBrush, nanumPen, poorStory, singleDay
 
     var id: String { rawValue }
+
+    /// 새로 고를 수 있는 목록. 예전 값(굵게 / 명조 / 둥근)은 계속 렌더되지만 새로 권하지 않는다.
+    static let selectable: [TextFontStyle] = [
+        .basic,
+        .gaegu, .gaeguBold, .gaeguLight,
+        .gamjaFlower, .hiMelody, .jua,
+        .nanumBrush, .nanumPen, .poorStory, .singleDay,
+    ]
 
     var title: String {
         switch self {
@@ -45,6 +69,33 @@ enum TextFontStyle: String, CaseIterable, Identifiable, Hashable, Codable {
         case .bold: "굵게"
         case .serif: "명조"
         case .rounded: "둥근"
+        case .gaeguLight: "개구 가늘게"
+        case .gaegu: "개구"
+        case .gaeguBold: "개구 굵게"
+        case .gamjaFlower: "감자꽃"
+        case .hiMelody: "하이멜로디"
+        case .jua: "주아"
+        case .nanumBrush: "나눔붓"
+        case .nanumPen: "나눔펜"
+        case .poorStory: "푸어스토리"
+        case .singleDay: "싱글데이"
+        }
+    }
+
+    /// 번들 폰트 파일 이름. nil이면 시스템 폰트를 쓴다.
+    var resource: String? {
+        switch self {
+        case .basic, .bold, .serif, .rounded: nil
+        case .gaeguLight: "Gaegu-Light"
+        case .gaegu: "Gaegu-Regular"
+        case .gaeguBold: "Gaegu-Bold"
+        case .gamjaFlower: "GamjaFlower-Regular"
+        case .hiMelody: "HiMelody-Regular"
+        case .jua: "Jua-Regular"
+        case .nanumBrush: "NanumBrushScript-Regular"
+        case .nanumPen: "NanumPenScript-Regular"
+        case .poorStory: "PoorStory-Regular"
+        case .singleDay: "SingleDay-Regular"
         }
     }
 
@@ -64,10 +115,31 @@ enum TextFontStyle: String, CaseIterable, Identifiable, Hashable, Codable {
     }
 
     /// 주어진 픽셀 크기의 실제 폰트. 측정과 렌더가 같은 값을 쓴다.
+    /// 폰트 파일을 못 찾으면 시스템 한글 폰트로 떨어진다 — 글씨가 사라지지 않는다.
     func font(ofSize size: CGFloat) -> UIFont {
+        if let resource {
+            return MirrorFontLibrary.uiFont(resource: resource, size: size, fallbackWeight: weight)
+        }
         let base = UIFont.systemFont(ofSize: size, weight: weight)
         guard let descriptor = base.fontDescriptor.withDesign(design) else { return base }
         return UIFont(descriptor: descriptor, size: size)
+    }
+}
+
+/// 글꼴 고르기 화면의 묶음. 너무 잘게 나누지 않는다.
+enum TextFontGroup: String, CaseIterable, Identifiable {
+    case recommended = "추천"
+    case handwriting = "손글씨"
+    case emphasis = "강조"
+
+    var id: String { rawValue }
+
+    var styles: [TextFontStyle] {
+        switch self {
+        case .recommended: [.gaegu, .gamjaFlower, .nanumPen]
+        case .handwriting: [.hiMelody, .poorStory, .singleDay, .nanumBrush, .gaeguLight]
+        case .emphasis: [.jua, .gaeguBold]
+        }
     }
 }
 

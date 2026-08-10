@@ -2314,7 +2314,13 @@ struct EditorGeometryTests {
 
     @Test("글꼴 / 정렬 preset이 모두 유효하다")
     func textStylePresets() {
-        #expect(TextFontStyle.allCases.count == 4)
+        // 손글씨 라이브러리가 붙으면서 늘었다. 예전 4개(basic/bold/serif/rounded)는
+        // 저장된 데이터가 쓰고 있어 그대로 남아 있어야 한다.
+        #expect(TextFontStyle.allCases.count == 14)
+        #expect(TextFontStyle.selectable.count == 11)
+        for raw in ["basic", "bold", "serif", "rounded"] {
+            #expect(TextFontStyle(rawValue: raw) != nil)
+        }
         for style in TextFontStyle.allCases {
             #expect(!style.title.isEmpty)
             #expect(style.font(ofSize: 40).pointSize == 40)

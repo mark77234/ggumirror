@@ -26,7 +26,8 @@ final class PreviewLayerView: UIView {
     init(session: AVCaptureSession) {
         super.init(frame: .zero)
         backgroundColor = .black
-        previewLayer.videoGravity = .resizeAspectFill
+        // Camera Area를 꽉 채운다. 거울 프레임 두께와 카메라 영역 크기는 확정값이라 건드리지 않는다.
+        previewLayer.videoGravity = MirrorCamera.previewGravity
         previewLayer.session = session
 
         guard let connection = previewLayer.connection else { return }

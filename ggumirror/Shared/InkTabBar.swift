@@ -63,26 +63,36 @@ struct InkTabBar: View {
     private func item(for tab: MainTab) -> some View {
         let isSelected = selection == tab
         return VStack(spacing: 3) {
-            InkGlyphView(
-                glyph: tab.glyph,
-                size: 19,
-                tint: isSelected ? PaperTheme.subtleSurface : PaperTheme.ink
-            )
+            InkGlyphView(glyph: tab.glyph, size: 19, tint: PaperTheme.ink)
             Text(tab.title)
-                .font(InkFont.caption)
+                .font(InkFont.tab)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+
+            // 선택 표시는 큰 알약이 아니라 손으로 그은 짧은 밑줄이다.
+            InkUnderline()
+                .stroke(PaperTheme.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                .frame(width: 26, height: 4)
+                .opacity(isSelected ? 1 : 0)
         }
-        // 선택 상태는 색 대비로만 구분한다. 그라디언트 없음.
-        .foregroundStyle(isSelected ? PaperTheme.subtleSurface : PaperTheme.ink)
-        .opacity(isSelected ? 1 : 0.62)
+        .foregroundStyle(PaperTheme.ink)
+        .opacity(isSelected ? 1 : 0.5)
         .frame(maxWidth: .infinity)
         .frame(minHeight: max(itemHeight, 44))
-        .background {
-            UnevenRoundedRectangle.ink(19, 22, 23, 18)
-                .fill(isSelected ? PaperTheme.ink : .clear)
-        }
         .contentShape(.rect)
+    }
+}
+
+/// 손으로 그은 듯 살짝 휜 짧은 밑줄. 매번 같은 모양이다.
+struct InkUnderline: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY + rect.height * 0.18))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.midY - rect.height * 0.12),
+            control: CGPoint(x: rect.midX, y: rect.midY - rect.height * 0.6)
+        )
+        return path
     }
 }
 

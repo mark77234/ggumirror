@@ -92,50 +92,85 @@ struct TextFontSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// 이름만 늘어놓지 않는다. 각 줄이 **그 글꼴로** 쓰여 있어 눈으로 고른다.
+    private let sample = "오늘도 예쁘게"
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("글꼴")
                 .font(InkFont.cardTitle)
                 .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
 
-            ForEach(TextFontStyle.allCases) { option in
-                Button {
-                    onPick(option)
-                    dismiss()
-                } label: {
-                    HStack(spacing: 12) {
-                        Text("오늘도 예쁘게")
-                            .font(Font(option.font(ofSize: 19)))
-                            .foregroundStyle(PaperTheme.ink)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(option.title)
-                            .font(InkFont.caption)
-                            .foregroundStyle(PaperTheme.secondaryInk)
-                        if option == style {
-                            Image(systemName: "checkmark")
-                                .font(.system(.footnote, weight: .bold))
-                                .foregroundStyle(PaperTheme.ink)
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    section(title: "기본", styles: [.basic])
+                    ForEach(TextFontGroup.allCases) { group in
+                        section(title: group.rawValue, styles: group.styles)
                     }
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 52)
-                    .background {
-                        let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                        shape
-                            .fill(PaperTheme.subtleSurface)
-                            .overlay(shape.stroke(PaperTheme.ink, lineWidth: option == style ? 2.2 : 1.4))
+                    // 예전에 저장해 둔 글꼴을 쓰고 있으면 그것도 보여준다.
+                    if !TextFontStyle.selectable.contains(style) {
+                        section(title: "지금 글꼴", styles: [style])
                     }
-                    .contentShape(.rect)
                 }
-                .buttonStyle(InkPressStyle())
-                .accessibilityLabel("\(option.title) 글꼴")
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
-
-            Spacer(minLength: 0)
+            .scrollIndicators(.hidden)
         }
-        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func section(title: String, styles: [TextFontStyle]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+
+            ForEach(styles) { option in
+                row(option)
+            }
+        }
+    }
+
+    private func row(_ option: TextFontStyle) -> some View {
+        let isSelected = option == style
+        return Button {
+            onPick(option)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Text(sample)
+                    .font(Font(option.font(ofSize: 21)))
+                    .foregroundStyle(PaperTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 8)
+                Text(option.title)
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .lineLimit(1)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(.footnote, weight: .bold))
+                        .foregroundStyle(PaperTheme.ink)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .background {
+                let shape = InkCorner.chip
+                shape
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: isSelected ? 2.2 : InkLine.thin))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("\(option.title) 글꼴")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

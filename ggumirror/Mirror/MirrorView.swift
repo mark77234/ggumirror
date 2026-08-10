@@ -172,9 +172,9 @@ struct MirrorView: View {
     private func message(_ title: String, detail: String, showsSettings: Bool) -> some View {
         VStack(spacing: 12) {
             Text(title)
-                .font(.headline)
+                .font(InkFont.cardTitle)
             Text(detail)
-                .font(.subheadline)
+                .font(InkFont.secondary)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             if showsSettings {

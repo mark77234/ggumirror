@@ -26,6 +26,7 @@ enum MirrorCapture {
         let composition = ZStack {
             Color.black
             if let frame {
+                // 화면과 **같은 규칙**(aspect fill)이다. 미리 보던 화각과 저장되는 화각이 같아야 한다.
                 Image(uiImage: frame)
                     .resizable()
                     .scaledToFill()

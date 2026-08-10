@@ -25,6 +25,53 @@ final class MirrorCamera {
     /// Portrait 전용. AVCaptureConnection에서 세로 방향에 해당하는 각도.
     nonisolated static let portraitRotationAngle: CGFloat = 90
 
+    // MARK: - 줌 없음 정책
+    //
+    // 꾸미러 거울에는 줌이 없다. 사용자 줌 / pinch / 프로그램 줌 / digital crop 전부 없다.
+    //
+    // 주의: 아래 둘은 다른 문제다.
+    //   A. 기기의 실제 zoom(videoZoomFactor) — 여기서 1x로 못박는다.
+    //   B. 비율이 다른 화면에 맞추면서 생기는 crop — 거울 geometry가 확정값이라 피할 수 없다.
+    // B를 없애겠다고 Camera Area를 줄이거나 프레임을 두껍게 만들지 않는다.
+
+    /// 기기 줌 배율. 항상 1x다.
+    nonisolated static let zoomFactor: CGFloat = 1
+
+    /// 화면에 놓는 방법. **Camera Area를 꽉 채운다.**
+    ///
+    /// 거울 프레임 두께(108 / 108 / 180 / 220)와 Camera Area(864 × 1940)는 확정값이다.
+    /// 카메라 화각을 넓히겠다고 이걸 `.resizeAspect`로 바꾸면 영상이 작아지고
+    /// 남는 자리만큼 프레임이 두꺼워 보인다 — 디자인이 바뀌므로 하지 않는다.
+    nonisolated static let previewGravity: AVLayerVideoGravity = .resizeAspectFill
+
+    // MARK: - 가장 넓은 화각 고르기
+
+    /// format 하나를 고르는 데 필요한 것만 뽑은 값. 순수 함수로 시험할 수 있게 분리했다.
+    nonisolated struct FormatChoice: Equatable {
+        let fieldOfView: Float
+        let width: Int32
+        let height: Int32
+
+        var pixels: Int { Int(width) * Int(height) }
+    }
+
+    /// 화면 세로가 길어 소스의 **가로 일부는 어차피 잘린다.**
+    /// 반대로 세로로 보이는 화각은 format의 `videoFieldOfView`(가로 화각)가 그대로 살아난다.
+    /// 그래서 화각이 가장 큰 format이 곧 가장 넓게 보이는 format이다.
+    ///
+    /// 화각이 같다면 필요 이상으로 큰 버퍼를 받지 않도록 **작은 쪽**을 고른다.
+    /// (화면보다 작아지지 않을 만큼은 남긴다.)
+    nonisolated static func bestFormatIndex(_ candidates: [FormatChoice], minimumWidth: Int32 = 1080) -> Int? {
+        guard !candidates.isEmpty else { return nil }
+        let widest = candidates.map(\.fieldOfView).max() ?? 0
+        let sameFieldOfView = candidates.enumerated().filter { $0.element.fieldOfView == widest }
+
+        // 화면 해상도를 채울 만한 것 중 가장 작은 것. 없으면 그중 가장 큰 것.
+        let bigEnough = sameFieldOfView.filter { min($0.element.width, $0.element.height) >= minimumWidth }
+        if let pick = bigEnough.min(by: { $0.element.pixels < $1.element.pixels }) { return pick.offset }
+        return sameFieldOfView.max(by: { $0.element.pixels < $1.element.pixels })?.offset
+    }
+
     // ponytail: AVCaptureSession is internally locked; every mutation below happens on sessionQueue only.
     nonisolated(unsafe) let session = AVCaptureSession()
     private nonisolated let sessionQueue = DispatchQueue(label: "com.mark77234.ggumirror.camera")
@@ -80,15 +127,44 @@ final class MirrorCamera {
         session.beginConfiguration()
         defer { session.commitConfiguration() }
 
-        session.sessionPreset = .high
-
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input)
         else { return }
 
+        configure(device)
+
         session.addInput(input)
         addFrameOutput()
+    }
+
+    /// 줌은 1x로 못박고, 쓸 수 있는 format 중 화각이 가장 넓은 것을 고른다.
+    /// **디지털 줌을 쓰지 않고** 화각을 넓히는 유일한 정상 경로다.
+    private nonisolated func configure(_ device: AVCaptureDevice) {
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        defer { device.unlockForConfiguration() }
+
+        // 30fps 이상 나오는 format만 후보로 본다.
+        let candidates = device.formats.filter { format in
+            format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 30 }
+        }
+        let choices = candidates.map { format -> FormatChoice in
+            let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return FormatChoice(
+                fieldOfView: format.videoFieldOfView,
+                width: size.width,
+                height: size.height
+            )
+        }
+        if let index = Self.bestFormatIndex(choices) {
+            device.activeFormat = candidates[index]
+            #if DEBUG
+            print("[MirrorCamera] format \(choices[index]) / 후보 \(choices.count)개 중 화각 최대")
+            #endif
+        }
+
+        // 다른 앱이 남긴 값이 있을 수 있으므로 1x임을 명시적으로 확인한다.
+        device.videoZoomFactor = Self.zoomFactor
     }
 
     /// preview와 같은 그림을 얻기 위한 video data output.

@@ -403,7 +403,8 @@ struct MirrorEditorCanvas: View {
     private func resizeSelectedText(by delta: CGFloat, transform: EditorCanvasTransform, isEnded: Bool) {
         guard let base = textAtGestureStart ?? selectedText, !base.isLocked else { return }
         if textAtGestureStart == nil { textAtGestureStart = base }
-        let sizeDelta = Double(delta * 2 / transform.canvasSize.width)
+        // 스티커와 같은 식에 감도만 낮춰 곱한다. 조금 끌면 조금만 커진다.
+        let sizeDelta = Double(delta * 2 / transform.canvasSize.width) * TextPolicy.resizeSensitivity
         draggingText = base.resized(fontSize: base.fontSize + sizeDelta).constrained()
         if isEnded { commitText() }
     }

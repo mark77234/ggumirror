@@ -12,7 +12,7 @@ import SwiftUI
 
 enum PaperTheme {
     /// 일반 앱 화면의 기본 배경.
-    static let paper = Color(red: 0.976, green: 0.973, blue: 0.957)         // #F9F8F4
+    static let paper = Color(red: 0.988, green: 0.984, blue: 0.965)         // #FCFBF6
     /// 본문 텍스트와 모든 잉크 라인.
     static let ink = Color(red: 0.102, green: 0.102, blue: 0.102)           // #1A1A1A
     /// 보조 설명 텍스트.
@@ -29,17 +29,65 @@ enum PaperTheme {
 
 // MARK: - Typography
 
-/// 한국어 가독성 우선. 손글씨 폰트를 본문에 강제하지 않고 시스템 한글 폰트를 쓴다.
-/// 전부 text style 기반이라 Dynamic Type을 그대로 따라간다.
+/// 앱 UI의 글씨. **개구(Gaegu) 하나로 고정된 브랜드 서체**다.
+/// 거울에 넣는 장식 텍스트(`TextFontStyle`)와는 별개다 — 사용자가 그걸 바꿔도 UI는 그대로다.
+///
+/// 화면에서 `.font(.system(...))`을 직접 쓰지 않는다. 여기 semantic 이름만 쓴다.
+/// 모든 값이 `relativeTo`를 갖고 있어 Dynamic Type을 그대로 따라간다.
+/// 폰트를 못 찾으면 같은 semantic의 시스템 한글 폰트로 떨어진다.
 enum InkFont {
-    static let pageTitle = Font.system(.largeTitle, weight: .bold)
-    static let cardTitle = Font.system(.title3, weight: .semibold)
-    static let body = Font.system(.body)
-    static let secondary = Font.system(.subheadline)
-    static let caption = Font.system(.caption)
+    /// 화면 최상단 큰 제목. "상점", "내 거울".
+    static var pageTitle: Font { BrandFont.scaled(BrandFont.bold, 34, .largeTitle, fallback: .bold) }
+    /// 그다음 크기의 제목. 상세 화면 이름.
+    static var title: Font { BrandFont.scaled(BrandFont.bold, 28, .title, fallback: .bold) }
+    /// 카드 / 시트 제목.
+    static var cardTitle: Font { BrandFont.scaled(BrandFont.bold, 22, .title3, fallback: .semibold) }
+    /// 구역 이름. 목록 머리말.
+    static var sectionTitle: Font { BrandFont.scaled(BrandFont.bold, 19, .headline, fallback: .semibold) }
+    /// 본문.
+    static var body: Font { BrandFont.scaled(BrandFont.regular, 19, .body) }
+    /// 버튼 글씨. 본문보다 살짝 굵게.
+    static var button: Font { BrandFont.scaled(BrandFont.bold, 19, .body, fallback: .semibold) }
+    /// 보조 설명.
+    static var secondary: Font { BrandFont.scaled(BrandFont.regular, 17, .subheadline) }
+    /// 작은 라벨 / 캡션.
+    static var caption: Font { BrandFont.scaled(BrandFont.regular, 15, .caption) }
+    /// 탭바처럼 아주 좁은 자리.
+    static var tab: Font { BrandFont.scaled(BrandFont.regular, 14, .caption2) }
+    /// 가격 · 개수처럼 자리 맞춤이 필요한 숫자.
+    static var numeric: Font { BrandFont.scaled(BrandFont.bold, 18, .body, fallback: .semibold) }
+    /// 아주 옅은 보조 표현.
+    static var whisper: Font { BrandFont.scaled(BrandFont.light, 16, .footnote, fallback: .light) }
+}
+
+// MARK: - Ink line
+
+/// 잉크 선 굵기. 화면마다 1.4 / 1.6 / 1.9를 직접 적지 않는다.
+/// 손그림 느낌은 굵기를 흔들어서가 아니라 **모양**으로 낸다 — 굵기는 안정적이어야 한다.
+enum InkLine {
+    /// 구분선 · 작은 아이콘 테두리.
+    static let thin: CGFloat = 1.3
+    /// 기본. 버튼 · 칩 · 입력.
+    static let regular: CGFloat = 1.6
+    /// 카드 · 시트처럼 면을 크게 잡는 곳.
+    static let emphasis: CGFloat = 1.9
 }
 
 // MARK: - Shape
+
+/// 자주 쓰는 모서리 조합. 값을 화면마다 다시 적지 않는다.
+/// 네 모서리를 일부러 조금씩 다르게 둔다 — "손으로 상자를 그렸다" 정도의 어긋남이고,
+/// **매번 같은 값**이라 다시 그려도 모양이 흔들리지 않는다.
+enum InkCorner {
+    /// 카드 · 시트처럼 큰 면.
+    static var card: UnevenRoundedRectangle { .ink(20, 24, 25, 19) }
+    /// 버튼 · 입력처럼 손이 닿는 것.
+    static var control: UnevenRoundedRectangle { .ink(16, 13, 17, 12) }
+    /// 칩 · 작은 라벨.
+    static var chip: UnevenRoundedRectangle { .ink(15, 12, 16, 13) }
+    /// 아이콘 배지처럼 작은 정사각.
+    static var badge: UnevenRoundedRectangle { .ink(13, 16, 12, 15) }
+}
 
 /// 손으로 그린 듯 네 모서리 반지름이 조금씩 다른 사각형.
 extension UnevenRoundedRectangle {

@@ -12,6 +12,8 @@
 //
 //  템플릿을 늘릴 때는 `artworkTemplates`에 한 줄 추가하면 된다.
 //  PNG는 Resources/StoreTemplates/<카테고리>/<파일이름>.png 에 둔다.
+//  폴더 갈래는 Free / RibbonHeart / Diary / Y2K / Moments 다섯 가지로 정해 두었다.
+//  (빈 폴더는 번들에 그대로 복사돼 이름 충돌을 내므로, 첫 PNG를 넣을 때 함께 만든다.)
 //
 
 import CoreGraphics
@@ -166,7 +168,9 @@ enum StoreCatalog {
         )
     }
 
-    /// 남은 개발용 샘플. 최종 artwork로 하나씩 교체될 자리다.
+    /// **임시 placeholder.** SF Symbol을 흩뿌려 만든 개발용 샘플이라 최종 상점 콘텐츠가 아니다.
+    /// 다음 Content Asset Phase에서 실제 손그림 PNG(`artworkTemplates`)로 하나씩 교체한다.
+    /// 그때까지는 목록을 채워 필터 / 정렬을 확인하는 용도로만 둔다.
     static let creators: [MirrorTemplate] = [
         MirrorTemplate(
             id: "bunny-sketch",

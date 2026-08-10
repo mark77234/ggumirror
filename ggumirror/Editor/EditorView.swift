@@ -164,7 +164,7 @@ struct EditorView: View {
                 TextFontSheet(style: text.style) { style in
                     apply(text) { $0.style = style }
                 }
-                .presentationDetents([.height(340)])
+                .presentationDetents([.medium, .large])
                 .paperSheet()
             }
         }

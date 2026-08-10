@@ -64,7 +64,7 @@ struct MirrorControls: View {
                 Image(systemName: "house")
                     .font(.system(size: 14, weight: .semibold))
                 Text("홈으로")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(InkFont.secondary)
             }
             .foregroundStyle(.white)
             .padding(.leading, 9)
