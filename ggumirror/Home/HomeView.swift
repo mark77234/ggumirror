@@ -11,7 +11,7 @@ import SwiftUI
 struct HomeView: View {
     var library: MirrorLibrary
     var onOpenMirror: () -> Void
-    var onEditMirror: (MyMirror) -> Void
+    var onEdit: (RootView.EditorRequest) -> Void
 
     @State private var tab: MainTab = .home
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -26,7 +26,9 @@ struct HomeView: View {
             case .mine:
                 MyMirrorsView(
                     library: library,
-                    onEditMirror: onEditMirror,
+                    // 내 거울에서 고르면 원본을 두고 새 거울로 저장한다.
+                    onEditMirror: { onEdit(.init(design: MirrorDesign(mirror: $0), context: .duplicate)) },
+                    onCreateMirror: { onEdit(.init(design: .blank, context: .createNew)) },
                     onBrowseStore: { tab = .store }
                 )
             }
@@ -113,7 +115,7 @@ struct HomeView: View {
     private var currentMirror: some View {
         let mirror = library.currentMirror
         return VStack(spacing: 8) {
-            MirrorPreview(style: mirror.style, strokes: mirror.strokes)
+            MirrorPreview(mirror: mirror)
             Text(mirror.name)
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
@@ -137,13 +139,18 @@ struct HomeView: View {
                 title: "거울 꾸미기",
                 subtitle: "지금 쓰는 거울을 바로 편집",
                 tilt: 0.26,
-                // 거울 선택 화면 없이 지금 쓰는 거울 Editor로 바로 들어간다.
-                action: { onEditMirror(library.currentMirror) }
+                // 거울 선택 화면 없이 지금 쓰는 거울을 그 자리에서 고친다.
+                action: {
+                    onEdit(.init(
+                        design: MirrorDesign(mirror: library.currentMirror),
+                        context: .editCurrent
+                    ))
+                }
             )
         }
     }
 }
 
 #Preview {
-    HomeView(library: MirrorLibrary(), onOpenMirror: {}, onEditMirror: { _ in })
+    HomeView(library: MirrorLibrary(), onOpenMirror: {}, onEdit: { _ in })
 }

@@ -33,6 +33,19 @@ struct MirrorDecorationView: View {
 }
 
 extension MirrorDesign {
+    /// "+ 거울 만들기"의 시작점. 가장 단순한 프레임 하나뿐이다.
+    /// 상점 템플릿을 몰래 복사해 오지 않는다.
+    static var blank: MirrorDesign {
+        MirrorDesign(
+            mirror: MyMirror(
+                id: "new-\(UUID().uuidString)",
+                name: "새 거울",
+                origin: .made,
+                style: MirrorLibrary.defaultMirror.style
+            )
+        )
+    }
+
     /// 라이브러리가 비어 있는 비정상 상태에서 쓰는 안전한 기본값.
     /// 정상 흐름에서는 노출되지 않는다.
     static var fallback: MirrorDesign {

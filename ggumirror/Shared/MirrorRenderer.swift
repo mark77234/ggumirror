@@ -191,16 +191,7 @@ enum MirrorRenderer {
         let reach = max(rect.width, rect.height)
         guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
 
-        var symbol = context.resolve(Image(systemName: sticker.source.symbolName))
-        // original 스티커(향후 사진 등)는 원본 색을 유지한다.
-        if let tint = sticker.resolvedTint {
-            symbol.shading = .color(tint)
-        }
-
-        let intrinsic = symbol.size
-        let scale = min(rect.width / intrinsic.width, rect.height / intrinsic.height)
-        let drawn = CGSize(width: intrinsic.width * scale, height: intrinsic.height * scale)
-
+        // 변형(이동 / 회전 / 뒤집기 / 투명도)은 source 종류와 무관하게 하나의 경로다.
         var layer = context
         layer.opacity = sticker.opacity
         layer.translateBy(x: rect.midX, y: rect.midY)
@@ -208,7 +199,31 @@ enum MirrorRenderer {
         if sticker.isFlippedHorizontally {
             layer.scaleBy(x: -1, y: 1)
         }
-        layer.draw(symbol, in: CGRect(
+
+        let drawn: CGSize
+        let artwork: GraphicsContext.ResolvedImage
+
+        switch sticker.source {
+        case .builtIn(let builtIn):
+            var symbol = context.resolve(Image(systemName: builtIn.symbolName))
+            // original 스티커(사진 등)는 원본 색을 유지한다.
+            if let tint = sticker.resolvedTint {
+                symbol.shading = .color(tint)
+            }
+            let intrinsic = symbol.size
+            let scale = min(rect.width / intrinsic.width, rect.height / intrinsic.height)
+            drawn = CGSize(width: intrinsic.width * scale, height: intrinsic.height * scale)
+            artwork = symbol
+
+        case .photo(let assetID, _):
+            // asset이 없으면 조용히 건너뛴다 — 사진을 못 찾아도 거울 전체가 깨지지 않는다.
+            guard let image = PhotoStickerAssetStore.shared.image(for: assetID) else { return }
+            // frame이 이미 원본 비율을 담고 있으므로 그대로 채운다.
+            drawn = rect.size
+            artwork = context.resolve(Image(decorative: image, scale: 1))
+        }
+
+        layer.draw(artwork, in: CGRect(
             x: -drawn.width / 2, y: -drawn.height / 2,
             width: drawn.width, height: drawn.height
         ))

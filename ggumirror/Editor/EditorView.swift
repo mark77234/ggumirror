@@ -6,12 +6,15 @@
 //  Drawing / Sticker / Text는 Phase 3-2.
 //
 
+import PhotosUI
 import SwiftUI
 
 struct EditorView: View {
     @State var design: MirrorDesign
-    /// 저장 정책(기본/구매 → 새 거울, 슬롯 제한)을 위해 라이브러리를 직접 본다.
+    /// 저장 정책(제자리 갱신 / 새 거울 / 슬롯 제한)을 위해 라이브러리를 직접 본다.
     var library: MirrorLibrary
+    /// 어디서 들어왔는가. 저장이 갱신인지 새 거울인지를 이 값이 정한다.
+    var context: MirrorEditorContext
     var onSaved: () -> Void
 
     @State private var mode: EditorMode = .overview
@@ -31,6 +34,12 @@ struct EditorView: View {
     @State private var isNamingMirror = false
     @State private var draftName = ""
     @State private var showsSlotFull = false
+    /// 진입 시 context를 그대로 들고 있다가, 새 거울을 만든 뒤에는 그 거울 편집으로 바뀐다.
+    @State private var saveContext: MirrorEditorContext = .editCurrent
+    /// 사진 → 스티커 변환. 한 번에 하나만 돌고, 화면을 벗어나면 취소된다.
+    @State private var photoTask: Task<Void, Never>?
+    @State private var isMakingPhotoSticker = false
+    @State private var photoFallback: PhotoStickerFallback?
     /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
     @State private var viewports: [EditorSide: EditorViewportState] = [:]
     @State private var isEditingDrawSettings = false
@@ -64,13 +73,14 @@ struct EditorView: View {
             primaryToolBar
         }
         .paperBackground()
+        .onAppear { saveContext = context }
         .fullScreenCover(isPresented: $isPreviewing) {
             EditorPreviewView(design: design)
         }
         .sheet(isPresented: $isNamingMirror) {
             MirrorNameSheet(
                 name: $draftName,
-                isNewMirror: library.needsNewSlot(for: design),
+                isNewMirror: true,
                 onSave: { saveMirror() }
             )
             .presentationDetents([.height(260)])
@@ -95,12 +105,40 @@ struct EditorView: View {
             }
         }
         .sheet(isPresented: $isPickingSticker) {
-            StickerPickerSheet { source in
-                addSticker(source)
-                isPickingSticker = false
-            }
+            StickerPickerSheet(
+                onPick: { source in
+                    addSticker(source)
+                    isPickingSticker = false
+                },
+                onPickPhoto: { item in
+                    isPickingSticker = false
+                    makePhotoSticker(from: item)
+                }
+            )
             .presentationDetents([.medium])
             .presentationBackground { PaperBackground() }
+        }
+        .overlay {
+            if isMakingPhotoSticker { photoProgress }
+        }
+        .alert(
+            "사진에서 피사체를 찾지 못했어요",
+            isPresented: Binding(get: { photoFallback != nil }, set: { if !$0 { photoFallback = nil } }),
+            presenting: photoFallback
+        ) { fallback in
+            Button("다시 고르기") {
+                photoFallback = nil
+                isPickingSticker = true
+            }
+            Button("원본 그대로 넣기") { addOriginalPhoto(fallback) }
+            Button("취소", role: .cancel) { photoFallback = nil }
+        } message: { _ in
+            Text("배경을 지우지 못했어요. 다른 사진을 고르거나 원본을 그대로 넣을 수 있어요.")
+        }
+        // Editor를 떠나면 진행 중인 변환을 정리한다.
+        .onDisappear {
+            photoTask?.cancel()
+            photoTask = nil
         }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
@@ -132,10 +170,7 @@ struct EditorView: View {
 
                 Spacer()
 
-                Button("저장") {
-                    draftName = design.name
-                    isNamingMirror = true
-                }
+                Button("저장") { beginSave() }
                 .font(InkFont.body.weight(.semibold))
                 .frame(minWidth: 44, minHeight: 44)
             }
@@ -352,19 +387,101 @@ struct EditorView: View {
         .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
     }
 
+    /// 새 거울이 될 때만 이름을 묻는다. 지금 쓰는 거울을 고치는 중이면 바로 저장한다.
+    private func beginSave() {
+        guard library.willCreateNewMirror(for: design, context: saveContext) else {
+            saveMirror()
+            return
+        }
+        // 복제로 들어왔으면 원본 이름을 바탕으로 채워두고, 사용자가 고칠 수 있게 한다.
+        draftName = saveContext == .duplicate ? "\(design.name) 복사본" : design.name
+        isNamingMirror = true
+    }
+
     private func saveMirror() {
-        switch library.save(design, name: draftName) {
-        case .updated, .created:
+        switch library.save(design, name: draftName, context: saveContext) {
+        case .updated:
             isNamingMirror = false
+            onSaved()
+            dismiss()
+        case .created(let id, let name):
+            isNamingMirror = false
+            // 방금 만든 거울을 기억한다. 같은 Editor에서 다시 저장하면 이 거울을 갱신한다.
+            design.id = id
+            design.name = name
+            saveContext = .editCurrent
             onSaved()
             dismiss()
         case .needsMoreSlots:
             isNamingMirror = false
-            // 이름이 비었을 수도 있고 슬롯이 없을 수도 있다.
-            if library.needsNewSlot(for: design), !library.hasFreeCreatedSlot {
-                showsSlotFull = true
+            if !library.hasFreeCreatedSlot { showsSlotFull = true }
+        }
+    }
+
+    // MARK: - 사진 스티커
+
+    /// 배경 제거에 실패했을 때 되돌아갈 자리. 원본 데이터는 여기에만 잠깐 머문다.
+    private struct PhotoStickerFallback: Identifiable {
+        let id = UUID()
+        let data: Data
+    }
+
+    private var photoProgress: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .tint(PaperTheme.ink)
+            Text("사진을 스티커로 만드는 중...")
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .background {
+            let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
+            shape
+                .fill(PaperTheme.subtleSurface)
+                .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.8))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PaperTheme.ink.opacity(0.12))
+        // 처리 중에는 캔버스를 건드리지 못하게 한다.
+        .contentShape(.rect)
+        .accessibilityElement()
+        .accessibilityLabel("사진을 스티커로 만드는 중")
+    }
+
+    /// 고른 사진을 기기 안에서 배경 제거해 스티커로 넣는다. 네트워크를 쓰지 않는다.
+    private func makePhotoSticker(from item: PhotosPickerItem) {
+        // 연속으로 고르면 앞의 작업은 버린다.
+        photoTask?.cancel()
+        isMakingPhotoSticker = true
+
+        photoTask = Task {
+            defer { isMakingPhotoSticker = false }
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw PhotoStickerError.unreadable
+                }
+                try Task.checkCancellation()
+                let image = try await PhotoStickerMaker.makeSticker(from: data)
+                try Task.checkCancellation()
+                addSticker(PhotoStickerAssetStore.shared.register(image))
+            } catch is CancellationError {
+                return
+            } catch {
+                // 실패해도 앱은 그대로. 사용자가 다음 동작을 고른다.
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    photoFallback = PhotoStickerFallback(data: data)
+                }
             }
         }
+    }
+
+    /// 배경 제거 없이 축소한 원본만 넣는다.
+    private func addOriginalPhoto(_ fallback: PhotoStickerFallback) {
+        photoFallback = nil
+        guard let image = try? PhotoStickerMaker.makeOriginal(from: fallback.data) else { return }
+        addSticker(PhotoStickerAssetStore.shared.register(image))
     }
 
     /// 지금 보고 있는 위치에 넣는다. Right 하단을 보고 있으면 Right 하단에 생긴다.
@@ -657,7 +774,8 @@ private struct EditorPreviewView: View {
 }
 
 #Preview {
-    EditorView(design: MirrorDesign(mirror: MirrorLibrary().mirrors[3]),
+    EditorView(design: .blank,
                library: MirrorLibrary(),
+               context: .createNew,
                onSaved: {})
 }

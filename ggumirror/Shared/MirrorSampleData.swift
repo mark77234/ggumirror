@@ -340,11 +340,35 @@ enum MirrorStoragePolicy {
     }
 }
 
+/// Editor에 **어떤 의도로 들어왔는가**. 저장 동작은 origin이 아니라 이 값으로 갈린다.
+enum MirrorEditorContext: Equatable {
+    /// 홈 → 거울 꾸미기. 지금 쓰는 거울을 그 자리에서 고친다.
+    case editCurrent
+    /// 내 거울 → 특정 거울 꾸미기. 원본은 두고 새 거울로 저장한다.
+    case duplicate
+    /// 내 거울 → + 거울 만들기. 빈 거울에서 시작한다.
+    case createNew
+}
+
 /// 저장 결과. 슬롯이 없으면 조용히 실패하지 않고 이유를 돌려준다.
 enum MirrorSaveOutcome: Equatable {
-    case updated(String)
-    case created(String)
+    case updated(id: String, name: String)
+    case created(id: String, name: String)
     case needsMoreSlots
+
+    var mirrorID: String? {
+        switch self {
+        case .updated(let id, _), .created(let id, _): id
+        case .needsMoreSlots: nil
+        }
+    }
+
+    var name: String? {
+        switch self {
+        case .updated(_, let name), .created(_, let name): name
+        case .needsMoreSlots: nil
+        }
+    }
 }
 
 /// 내 거울 목록과 현재 사용 중인 거울. 아직 메모리에만 있다.
@@ -387,22 +411,27 @@ final class MirrorLibrary {
         purchasedCreatedSlots += MirrorStoragePolicy.slotPackSize
     }
 
-    /// Editor 저장.
-    /// - 사용자가 만든 거울을 다시 편집하면 그 거울을 갱신한다(슬롯 추가 소모 없음).
-    /// - 기본 제공 / 구매 거울을 꾸미면 원본은 두고 "내가 만든 거울"을 새로 만든다(슬롯 1개 필요).
+    /// Editor 저장. 무엇이 될지는 **어디서 들어왔는가**(context)가 정한다.
+    /// - `.editCurrent`: 내 거울에 이미 있는 거울이면 제자리 갱신(이름 유지, 슬롯 소모 없음).
+    ///   목록에 없는 기본 거울이면 그때 한 번 새 거울을 만든다.
+    /// - `.duplicate` / `.createNew`: 언제나 새 `.made` 거울. 원본은 건드리지 않는다.
     @discardableResult
-    func save(_ design: MirrorDesign, name rawName: String) -> MirrorSaveOutcome {
-        guard let name = MirrorStoragePolicy.normalizedName(rawName) else { return .needsMoreSlots }
-
-        if let index = mirrors.firstIndex(where: { $0.id == design.id }), mirrors[index].origin == .made {
+    func save(
+        _ design: MirrorDesign,
+        name rawName: String,
+        context: MirrorEditorContext
+    ) -> MirrorSaveOutcome {
+        if context == .editCurrent,
+           let index = mirrors.firstIndex(where: { $0.id == design.id }) {
             mirrors[index].style = design.style
             mirrors[index].strokes = design.strokes
             mirrors[index].stickers = design.stickers
-            mirrors[index].name = name
+            // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
             currentID = mirrors[index].id
-            return .updated(name)
+            return .updated(id: mirrors[index].id, name: mirrors[index].name)
         }
 
+        guard let name = MirrorStoragePolicy.normalizedName(rawName) else { return .needsMoreSlots }
         guard hasFreeCreatedSlot else { return .needsMoreSlots }
 
         let copy = MyMirror(
@@ -411,17 +440,18 @@ final class MirrorLibrary {
             origin: .made,
             style: design.style,
             strokes: design.strokes,
+            // 사진 스티커는 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers
         )
         mirrors.append(copy)
         currentID = copy.id
-        return .created(name)
+        return .created(id: copy.id, name: copy.name)
     }
 
-    /// 이 디자인을 저장하면 새 슬롯이 필요한지.
-    func needsNewSlot(for design: MirrorDesign) -> Bool {
-        guard let mirror = mirrors.first(where: { $0.id == design.id }) else { return true }
-        return mirror.origin != .made
+    /// 이 저장이 새 거울을 만들지. Editor는 이때만 이름을 묻는다.
+    func willCreateNewMirror(for design: MirrorDesign, context: MirrorEditorContext) -> Bool {
+        guard context == .editCurrent else { return true }
+        return !mirrors.contains { $0.id == design.id }
     }
 
     /// 상점에서 템플릿을 받아 내 거울에 넣는다.
@@ -445,7 +475,7 @@ final class MirrorLibrary {
     }
 
     func duplicate(_ mirror: MyMirror) {
-        guard let index = mirrors.firstIndex(of: mirror) else { return }
+        guard hasFreeCreatedSlot, let index = mirrors.firstIndex(of: mirror) else { return }
         var copy = mirror
         copy = MyMirror(
             id: "\(mirror.id)-copy-\(mirrors.count)",

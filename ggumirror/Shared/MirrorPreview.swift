@@ -59,6 +59,19 @@ struct MirrorPreview: View {
     }
 }
 
+extension MirrorPreview {
+    /// 거울 한 장을 통째로 넘긴다.
+    /// 획이나 스티커를 빠뜨릴 수 없도록 개별 인자로 조립하지 않는다.
+    init(mirror: MyMirror, lineWidth: CGFloat = 1.8) {
+        self.init(
+            style: mirror.style,
+            strokes: mirror.strokes,
+            stickers: mirror.stickers,
+            lineWidth: lineWidth
+        )
+    }
+}
+
 #Preview {
     HStack(spacing: 12) {
         MirrorPreview(style: BasicMirror.softPink.style)

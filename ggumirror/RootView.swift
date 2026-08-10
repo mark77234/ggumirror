@@ -12,7 +12,14 @@ struct RootView: View {
     @State private var screen: Screen = .mirror
     /// 아직 persistence가 없어 앱이 살아 있는 동안만 유지되는 로컬 데이터.
     @State private var library = MirrorLibrary()
-    @State private var editing: MyMirror?
+    @State private var editing: EditorRequest?
+
+    /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
+    struct EditorRequest: Identifiable {
+        let id = UUID()
+        let design: MirrorDesign
+        let context: MirrorEditorContext
+    }
 
     private enum Screen {
         case mirror
@@ -27,12 +34,13 @@ struct RootView: View {
             HomeView(
                 library: library,
                 onOpenMirror: { screen = .mirror },
-                onEditMirror: { editing = $0 }
+                onEdit: { editing = $0 }
             )
-            .fullScreenCover(item: $editing) { mirror in
+            .fullScreenCover(item: $editing) { request in
                 EditorView(
-                    design: MirrorDesign(mirror: mirror),
+                    design: request.design,
                     library: library,
+                    context: request.context,
                     onSaved: { editing = nil }
                 )
             }

@@ -32,7 +32,7 @@ enum StickerRenderMode: Hashable {
 /// 기본 제공 스티커. 지금은 개발용 placeholder이고
 /// 최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
 /// rawValue는 저장 식별자이므로 asset을 바꿔도 유지한다.
-enum StickerSource: String, CaseIterable, Identifiable, Hashable {
+enum BuiltInSticker: String, CaseIterable, Identifiable, Hashable {
     // 하트 / 러브
     case heart, heartSmall, heartDouble, heartArrow
     // 리본 / 패션
@@ -128,8 +128,46 @@ enum StickerSource: String, CaseIterable, Identifiable, Hashable {
 
     var supportsTint: Bool { renderMode == .template }
 
-    static func all(in category: StickerCategory) -> [StickerSource] {
+    static func all(in category: StickerCategory) -> [BuiltInSticker] {
         category == .all ? allCases : allCases.filter { $0.category == category }
+    }
+}
+
+/// 스티커 하나가 무엇으로 그려지는지.
+/// 사진 스티커도 **참조만** 담는다 — 이미지 자체는 PhotoStickerAssetStore에 한 번만 보관한다.
+/// 덕분에 MirrorDesign / EditorSnapshot / Undo 스택에 binary가 복사되지 않는다.
+enum StickerSource: Hashable {
+    case builtIn(BuiltInSticker)
+    /// - Parameter aspectRatio: 잘라낸 foreground의 가로 / 세로. 정사각형을 강요하지 않는다.
+    case photo(assetID: UUID, aspectRatio: Double)
+
+    var title: String {
+        switch self {
+        case .builtIn(let sticker): sticker.title
+        case .photo: "내 사진"
+        }
+    }
+
+    /// 사진은 원본 색을 그대로 쓴다 — tint를 지원하지 않는다.
+    var renderMode: StickerRenderMode {
+        switch self {
+        case .builtIn(let sticker): sticker.renderMode
+        case .photo: .original
+        }
+    }
+
+    var supportsTint: Bool { renderMode == .template }
+
+    /// 가로 / 세로 비율. 기본 제공 스티커는 정사각형이다.
+    var aspectRatio: Double {
+        switch self {
+        case .builtIn: 1
+        case .photo(_, let aspectRatio): aspectRatio
+        }
+    }
+
+    var photoAssetID: UUID? {
+        if case .photo(let assetID, _) = self { assetID } else { nil }
     }
 }
 
@@ -161,16 +199,22 @@ struct StickerObject: Identifiable, Hashable {
         NormalizedPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
     }
 
-    /// Master Canvas는 세로로 길어서, 정사각 스티커를 만들려면 높이 비율을 보정해야 한다.
+    /// Master Canvas는 세로로 길어서, 화면상 비율을 유지하려면 높이를 보정해야 한다.
+    /// aspectRatio는 artwork의 가로 / 세로. 사진 스티커는 원본 비율을 그대로 쓴다.
+    static func height(for width: Double, aspectRatio: Double) -> Double {
+        width / max(aspectRatio, 0.0001) * MirrorCanvas.size.width / MirrorCanvas.size.height
+    }
+
+    /// 정사각 스티커용 단축. 기본 제공 스티커가 쓴다.
     static func squareHeight(for width: Double) -> Double {
-        width * MirrorCanvas.size.width / MirrorCanvas.size.height
+        height(for: width, aspectRatio: 1)
     }
 
     /// 중심을 유지한 채 폭을 바꾼다. 종횡비는 항상 유지된다.
     func resized(width: Double) -> StickerObject {
         var copy = self
         let clamped = min(max(width, Self.sizeRange.lowerBound), Self.sizeRange.upperBound)
-        let height = Self.squareHeight(for: clamped)
+        let height = Self.height(for: clamped, aspectRatio: source.aspectRatio)
         let middle = center
         copy.frame = NormalizedRect(
             x: middle.x - clamped / 2,
@@ -256,7 +300,7 @@ enum StickerPlacement {
         side: EditorSide
     ) -> StickerObject {
         let width = 0.16
-        let height = StickerObject.squareHeight(for: width)
+        let height = StickerObject.height(for: width, aspectRatio: source.aspectRatio)
         let viewportCenter = NormalizedPoint(
             x: visibleRect.x + visibleRect.width / 2,
             y: visibleRect.y + visibleRect.height / 2

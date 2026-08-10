@@ -6,16 +6,24 @@
 //  최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
 //
 
+import PhotosUI
 import SwiftUI
 
 struct StickerPickerSheet: View {
     let onPick: (StickerSource) -> Void
+    /// 사진 1장 선택. 배경 제거와 진행 표시는 Editor가 맡는다.
+    var onPickPhoto: (PhotosPickerItem) -> Void = { _ in }
 
     @State private var category: StickerCategory = .all
+    @State private var photoItem: PhotosPickerItem?
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
     var body: some View {
         VStack(spacing: 0) {
+            photoEntry
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
             InkFilterBar(items: StickerCategory.allCases, selection: $category) { $0.rawValue }
                 .padding(.top, 14)
                 .padding(.bottom, 8)
@@ -23,9 +31,9 @@ struct StickerPickerSheet: View {
             ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(StickerSource.all(in: category)) { source in
+                    ForEach(BuiltInSticker.all(in: category)) { source in
                         Button {
-                            onPick(source)
+                            onPick(.builtIn(source))
                         } label: {
                             VStack(spacing: 8) {
                                 Image(systemName: source.symbolName)
@@ -58,6 +66,45 @@ struct StickerPickerSheet: View {
             }
             .scrollIndicators(.hidden)
         }
+        // 시트가 닫힌 뒤에 처리하지 않도록 선택 즉시 위로 넘긴다.
+        .onChange(of: photoItem) { _, newValue in
+            guard let newValue else { return }
+            photoItem = nil
+            onPickPhoto(newValue)
+        }
+    }
+
+    /// 사진 스티커 진입점. 기본 제공 스티커보다 먼저 눈에 들어오게 위에 둔다.
+    private var photoEntry: some View {
+        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+            HStack(spacing: 10) {
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 20, weight: .light))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("내 사진으로 만들기")
+                        .font(InkFont.body.weight(.semibold))
+                    Text("배경을 지워 스티커로 만들어요")
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(.footnote, weight: .bold))
+            }
+            .foregroundStyle(PaperTheme.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(minHeight: 44)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                shape
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.6))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("내 사진으로 스티커 만들기")
     }
 }
 

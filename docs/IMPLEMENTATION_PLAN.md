@@ -150,7 +150,7 @@ Photo Sticker Phase 이전에 확정한 정책이다.
 Sticker
 
 - 기본 제공 스티커 20종 이상 + 카테고리 필터(전체 / 하트 / 리본 / 반짝임 / 꽃 / 두들)
-- `StickerSource.rawValue`는 저장 식별자다. asset을 교체해도 유지한다.
+- `BuiltInSticker.rawValue`는 저장 식별자다. asset을 교체해도 유지한다.
 - template 스티커는 tint 지원, 기본값 잉크색. `.original`(사진 등)은 tint 무시.
 - 색 변경은 Undo / Redo 대상이다.
 - 이동 중 촉각 피드백은 시간(0.09s) + 이동 거리(Master 26px)로 제한한다. 프레임마다 울리지 않는다.
@@ -187,7 +187,7 @@ Sticker
 - 이미 놓은 스티커를 다시 탭하면 선택 + 필요할 때만 최소 focus.
 - Focus 조건: 스티커가 화면에 다 보이면 이동 없음. 아니면 zoom 유지 + 최소 pan.
 - 잠긴 스티커도 선택 가능(변형만 막힌다).
-- hit test는 회전 bounding box + 최소 tap target 44pt.
+- hit test는 중심 기준 역회전 후 로컬 사각형 판정 + 최소 tap target 44pt.
 - Sticker 도구에서 빈 곳 한 손가락 drag = 화면 이동. Drawing / Eraser는 기존 그대로.
 - 제스처 우선순위: handle → sticker → scroll handle → 빈 캔버스 / gutter.
 - Pan은 언제나 같은 `EditorViewportState` 하나만 쓴다. Undo History에 들어가지 않는다.
@@ -204,6 +204,58 @@ Mirror Inner Corner Radius
 - `MirrorLibrary.defaultMirror` = 목록에 없는 초기 적용 거울. 슬롯을 쓰지 않는다.
 - 기본 단색 8종은 상점의 "기본" 카테고리 무료 템플릿으로 이동.
 - 무료 템플릿 받기는 실제로 동작한다(`MirrorLibrary.acquire`). 조각 결제 / ledger는 미구현.
+
+## Phase 3-3D — Photo Sticker (확정)
+
+기존 Sticker Engine을 그대로 쓴다. 새 Transform Engine을 만들지 않았다.
+
+- 진입: Sticker Picker 상단 "내 사진으로 만들기" → `PhotosPicker`(1장, `.images`).
+- 배경 제거: Vision `GenerateForegroundInstanceMaskRequest` + `generateMaskedImage(croppedToInstancesExtent:)`.
+  온디바이스 전용이고 네트워크를 쓰지 않는다.
+- 다운샘플: `CGImageSourceCreateThumbnailAtIndex`, 긴 변 `PhotoStickerMaker.maximumPixelSize`(1600)로 제한.
+- 잘라낸 뒤 긴 변의 `transparentPadding`(4%)만큼 투명 여백을 더한다.
+- 실패: `PhotoStickerError.noSubject` → 다시 고르기 / 원본 그대로 넣기 / 취소. crash 없음.
+- 중복 실행 / Editor 이탈은 `Task` 취소로 정리한다.
+
+데이터 경계 (중요)
+
+- 이미지 binary는 `PhotoStickerAssetStore`에만 있다. `MirrorDesign` / `StickerObject` / `EditorSnapshot` / Undo 스택에는 들어가지 않는다.
+- `StickerSource`가 `.builtIn(BuiltInSticker)` / `.photo(assetID:aspectRatio:)` 둘로 나뉜다 — 사진은 **참조 + 비율**만 담는다.
+- 복제는 같은 assetID를 참조하므로 이미지가 늘지 않는다.
+- 렌더는 `MirrorRenderer` 한 곳에서 두 source를 모두 처리한다 → Editor / Preview / 홈 / 내 거울 / 상점 / 실제 Mirror / Capture가 같은 결과.
+
+이 Phase에서 하지 않은 것
+
+- Sticker Creator / Marketplace
+- Text / Shapes / Layers
+- 사진 asset의 디스크 persistence (앱 전체 persistence Phase에서 함께)
+
+## Phase 3-3D.1 — Photo Preview Fix + Mirror Creation + Save Context (확정)
+
+미리보기 버그
+
+- 홈 / 내 거울 미리보기가 `MirrorPreview`에 `stickers:`를 넘기지 않아 **모든 스티커**가 빠져 있었다.
+- `MirrorPreview.init(mirror:)`로 거울 한 장을 통째로 넘긴다. 인자를 하나씩 조립하지 않아 다시 빠뜨릴 수 없다.
+- AssetStore / assetID / 저장 경로 / 렌더러에는 문제가 없었다.
+
+Editor Save Context
+
+- `MirrorEditorContext { editCurrent, duplicate, createNew }`를 진입 시점에 넘긴다.
+- `MirrorLibrary.save(_:name:context:)`가 이 값으로 갈린다. origin만 보고 추측하지 않는다.
+- `willCreateNewMirror(for:context:)`가 true일 때만 이름을 묻는다.
+- 새 거울을 만든 뒤 Editor는 새 id를 기억하고 context를 `editCurrent`로 바꾼다 — 연속 저장이 거울을 여러 개 만들지 않는다.
+- `MirrorSaveOutcome`이 id와 이름을 함께 돌려준다.
+
+거울 만들기
+
+- 내 거울 상단에 항상 `+ 거울 만들기`. Empty State에도 같은 동작.
+- `MirrorDesign.blank` = standard 108 / 180 + 둥근 Mirror Area + 장식 없음. 상점 템플릿을 복사하지 않는다.
+- 슬롯이 없으면 Editor에 들어가기 전에 막는다.
+
+사진 asset
+
+- 거울을 복제해도 `StickerSource.photo(assetID:)`를 그대로 참조한다. binary는 하나.
+- 디스크 persistence는 여전히 후속 Persistence Phase.
 
 ## Sticker Creator (후속 Phase)
 

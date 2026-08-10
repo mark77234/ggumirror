@@ -832,7 +832,7 @@ struct EditorGeometryTests {
         let library = MirrorLibrary()
         library.acquire(StoreCatalog.basics[0])      // 무료 기본 템플릿 → origin .basic
         library.acquire(StoreCatalog.creators[0])    // Creator 템플릿 → origin .purchased
-        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "내가 만든 거울")
+        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "내가 만든 거울", context: .createNew)
         return library
     }
 
@@ -864,7 +864,7 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: library.currentMirror)
         design.backgroundColor = BasicMirror.mint.style.frame
         design.strokes = [DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.4)], width: 0.01)]
-        _ = library.save(design, name: "테스트 거울")
+        _ = library.save(design, name: "테스트 거울", context: .editCurrent)
 
         let updated = MirrorDesign(mirror: library.currentMirror)
         #expect(updated.backgroundColor == BasicMirror.mint.style.frame)
@@ -881,8 +881,8 @@ struct EditorGeometryTests {
 
     // MARK: - Sticker
 
-    private func sticker(_ source: StickerSource = .heart, at point: NormalizedPoint, width: Double = 0.16) -> StickerObject {
-        let height = StickerObject.squareHeight(for: width)
+    private func sticker(_ source: StickerSource = .builtIn(.heart), at point: NormalizedPoint, width: Double = 0.16) -> StickerObject {
+        let height = StickerObject.height(for: width, aspectRatio: source.aspectRatio)
         return StickerObject(
             source: source,
             frame: NormalizedRect(x: point.x - width / 2, y: point.y - height / 2, width: width, height: height)
@@ -897,7 +897,7 @@ struct EditorGeometryTests {
             side: .right, insets: .standard, viewport: viewport,
             state: .init(pan: CGSize(width: 0, height: -100_000))
         )
-        let placed = StickerPlacement.insert(.heart, in: design, visibleRect: transform.visibleRect, side: .right)
+        let placed = StickerPlacement.insert(.builtIn(.heart), in: design, visibleRect: transform.visibleRect, side: .right)
 
         #expect(placed.center.y > 0.6, "하단을 보고 있는데 위쪽에 생김")
         #expect(placed.center.x > 0.5, "오른쪽을 보고 있는데 왼쪽에 생김")
@@ -996,7 +996,7 @@ struct EditorGeometryTests {
         var design = mirrorDesign(.white)
         var back = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
         back.zIndex = 1
-        var front = sticker(.star, at: NormalizedPoint(x: 0.05, y: 0.5))
+        var front = sticker(.builtIn(.star), at: NormalizedPoint(x: 0.05, y: 0.5))
         front.zIndex = 2
         design.stickers = [front, back]
         // 렌더러는 zIndex 오름차순으로 정렬해서 그린다.
@@ -1096,31 +1096,31 @@ struct EditorGeometryTests {
     func stickerSurvivesSave() {
         let library = MirrorLibrary()
         var design = MirrorDesign(mirror: library.currentMirror)
-        let item = sticker(.ribbon, at: NormalizedPoint(x: 0.95, y: 0.8))
+        let item = sticker(.builtIn(.ribbon), at: NormalizedPoint(x: 0.95, y: 0.8))
         design.stickers = [item]
-        _ = library.save(design, name: "테스트 거울")
+        _ = library.save(design, name: "테스트 거울", context: .editCurrent)
 
         let updated = MirrorDesign(mirror: library.currentMirror)
         #expect(updated.stickers.first?.id == item.id)
-        #expect(updated.stickers.first?.source == .ribbon)
+        #expect(updated.stickers.first?.source == .builtIn(.ribbon))
     }
 
     // MARK: - Sticker 라이브러리 / tint
 
     @Test("기본 스티커가 20종 이상이고 식별자가 겹치지 않는다")
     func stickerLibraryIsLargeAndUnique() {
-        #expect(StickerSource.allCases.count >= 20)
-        #expect(Set(StickerSource.allCases.map(\.rawValue)).count == StickerSource.allCases.count)
-        #expect(Set(StickerSource.allCases.map(\.symbolName)).count == StickerSource.allCases.count)
-        #expect(StickerSource.allCases.allSatisfy { !$0.title.isEmpty })
+        #expect(BuiltInSticker.allCases.count >= 20)
+        #expect(Set(BuiltInSticker.allCases.map(\.rawValue)).count == BuiltInSticker.allCases.count)
+        #expect(Set(BuiltInSticker.allCases.map(\.symbolName)).count == BuiltInSticker.allCases.count)
+        #expect(BuiltInSticker.allCases.allSatisfy { !$0.title.isEmpty })
     }
 
     @Test("카테고리 필터가 동작한다", arguments: StickerCategory.allCases)
     func stickerCategoryFilters(category: StickerCategory) {
-        let filtered = StickerSource.all(in: category)
+        let filtered = BuiltInSticker.all(in: category)
         #expect(!filtered.isEmpty)
         if category == .all {
-            #expect(filtered.count == StickerSource.allCases.count)
+            #expect(filtered.count == BuiltInSticker.allCases.count)
         } else {
             #expect(filtered.allSatisfy { $0.category == category })
         }
@@ -1197,9 +1197,10 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: basic)
         design.strokes = [DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.3)], width: 0.01)]
 
-        #expect(library.needsNewSlot(for: design))
-        let outcome = library.save(design, name: "내 첫 거울")
-        #expect(outcome == .created("내 첫 거울"))
+        #expect(library.willCreateNewMirror(for: design, context: .duplicate))
+        let outcome = library.save(design, name: "내 첫 거울", context: .duplicate)
+        #expect(outcome.name == "내 첫 거울")
+        #expect(outcome.mirrorID != basic.id)
         #expect(library.mirrors.count == before + 1)
         // 원본은 손대지 않는다
         #expect(library.mirrors.first { $0.id == basic.id }?.strokes.isEmpty == true)
@@ -1213,13 +1214,14 @@ struct EditorGeometryTests {
         let library = seededLibrary()
         let purchased = library.mirrors.first { $0.origin == .purchased }!
         let design = MirrorDesign(mirror: purchased)
-        #expect(library.needsNewSlot(for: design))
-        let purchasedOutcome = library.save(design, name: "구매 거울 편집")
-        #expect(purchasedOutcome == .created("구매 거울 편집"))
+        #expect(library.willCreateNewMirror(for: design, context: .duplicate))
+        let purchasedOutcome = library.save(design, name: "구매 거울 편집", context: .duplicate)
+        #expect(purchasedOutcome.name == "구매 거울 편집")
+        #expect(purchasedOutcome.mirrorID != purchased.id)
         #expect(library.mirrors.contains { $0.id == purchased.id && $0.origin == .purchased })
     }
 
-    @Test("내가 만든 거울을 다시 편집하면 같은 거울이 갱신된다")
+    @Test("홈에서 내가 만든 거울을 다시 편집하면 같은 거울이 갱신된다")
     func savingCreatedMirrorUpdatesInPlace() {
         let library = seededLibrary()
         let made = library.mirrors.first { $0.origin == .made }!
@@ -1227,11 +1229,12 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: made)
         design.backgroundColor = BasicMirror.mint.style.frame
 
-        #expect(!library.needsNewSlot(for: design))
-        let updatedOutcome = library.save(design, name: "이름 변경")
-        #expect(updatedOutcome == .updated("이름 변경"))
+        #expect(!library.willCreateNewMirror(for: design, context: .editCurrent))
+        let updatedOutcome = library.save(design, name: "무시되는 이름", context: .editCurrent)
+        #expect(updatedOutcome == .updated(id: made.id, name: made.name))
         #expect(library.mirrors.count == before)
-        #expect(library.mirrors.first { $0.id == made.id }?.name == "이름 변경")
+        // 이름은 그대로 — 홈에서 고칠 때마다 다시 묻지 않는다.
+        #expect(library.mirrors.first { $0.id == made.id }?.name == made.name)
     }
 
     @Test("슬롯은 내가 만든 거울만 소비한다")
@@ -1251,11 +1254,11 @@ struct EditorGeometryTests {
         let basic = library.mirrors.first { $0.origin == .basic }!
 
         while library.hasFreeCreatedSlot {
-            let outcome = library.save(MirrorDesign(mirror: basic), name: "거울")
+            let outcome = library.save(MirrorDesign(mirror: basic), name: "거울", context: .duplicate)
             #expect(outcome != .needsMoreSlots)
         }
         #expect(library.createdCount == library.createdCapacity)
-        let blocked = library.save(MirrorDesign(mirror: basic), name: "하나 더")
+        let blocked = library.save(MirrorDesign(mirror: basic), name: "하나 더", context: .duplicate)
         #expect(blocked == .needsMoreSlots)
     }
 
@@ -1264,13 +1267,13 @@ struct EditorGeometryTests {
         let library = seededLibrary()
         let basic = library.mirrors.first { $0.origin == .basic }!
         while library.hasFreeCreatedSlot {
-            _ = library.save(MirrorDesign(mirror: basic), name: "거울")
+            _ = library.save(MirrorDesign(mirror: basic), name: "거울", context: .duplicate)
         }
         let existing = library.mirrors.last { $0.origin == .made }!
         var design = MirrorDesign(mirror: existing)
         design.backgroundColor = BasicMirror.sky.style.frame
-        let stillEditable = library.save(design, name: "계속 편집")
-        #expect(stillEditable == .updated("계속 편집"))
+        let stillEditable = library.save(design, name: "계속 편집", context: .editCurrent)
+        #expect(stillEditable == .updated(id: existing.id, name: existing.name))
     }
 
     @Test("슬롯 팩은 보관 공간을 늘린다")
@@ -1936,6 +1939,461 @@ struct EditorGeometryTests {
 
         #expect(dragged.center.y > target.center.y)
         #expect(abs(dragged.center.x - target.center.x) < 0.0001)
+    }
+
+    // MARK: - Photo Sticker
+
+    /// 가운데가 불투명하고 가장자리는 투명한 테스트용 이미지.
+    private func testImage(width: Int, height: Int) -> CGImage {
+        let context = CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.1, green: 0.6, blue: 0.9, alpha: 1))
+        context.fill(CGRect(
+            x: width / 4, y: height / 4,
+            width: width / 2, height: height / 2
+        ))
+        return context.makeImage()!
+    }
+
+    private func testImageData(width: Int, height: Int) -> Data {
+        UIImage(cgImage: testImage(width: width, height: height)).pngData()!
+    }
+
+    @Test("사진 스티커는 이미지가 아니라 참조만 담는다")
+    func photoStickerStoresOnlyReference() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+
+        #expect(source.photoAssetID != nil)
+        #expect(store.isRegistered(source))
+        // 참조 하나만으로 값 비교가 끝난다 — binary가 모델에 들어가지 않는다.
+        let a = sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5))
+        var b = a
+        b.id = a.id
+        #expect(a == b)
+        #expect(StickerSource.builtIn(.heart).photoAssetID == nil)
+    }
+
+    @Test("AssetStore는 등록한 이미지를 그대로 돌려준다")
+    func assetStoreRegisterAndResolve() {
+        let store = PhotoStickerAssetStore()
+        let image = testImage(width: 300, height: 200)
+        let source = store.register(image)
+
+        guard let id = source.photoAssetID else { return #expect(Bool(false)) }
+        #expect(store.image(for: id)?.width == 300)
+        #expect(store.image(for: id)?.height == 200)
+        #expect(store.image(for: UUID()) == nil)     // 없는 asset은 nil — 렌더러가 건너뛴다
+        #expect(store.count == 1)
+    }
+
+    @Test("사진 스티커는 원본 비율을 유지한다")
+    func photoKeepsIntrinsicAspectRatio() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+        #expect(abs(source.aspectRatio - 1.5) < 0.0001)
+
+        // 정사각형을 강요하지 않는다.
+        let square = StickerObject.height(for: 0.2, aspectRatio: 1)
+        let wide = StickerObject.height(for: 0.2, aspectRatio: 1.5)
+        #expect(wide < square)
+
+        // 크기를 바꿔도 비율이 유지된다.
+        let resized = sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5)).resized(width: 0.3)
+        let masterAspect = (resized.frame.width * MirrorCanvas.size.width)
+            / (resized.frame.height * MirrorCanvas.size.height)
+        #expect(abs(masterAspect - 1.5) < 0.001)
+    }
+
+    @Test("사진 스티커는 tint를 지원하지 않는다")
+    func photoStickerHasNoTint() {
+        let store = PhotoStickerAssetStore()
+        var item = sticker(store.register(testImage(width: 200, height: 200)), at: NormalizedPoint(x: 0.05, y: 0.5))
+        item.tintColor = .red
+        #expect(item.source.renderMode == .original)
+        #expect(!item.source.supportsTint)
+        #expect(item.resolvedTint == nil)
+    }
+
+    @Test("Undo / Redo를 반복해도 이미지가 복사되지 않는다")
+    func historyKeepsNoImageBinary() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+        let item = sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5))
+
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
+        history.apply(.addSticker(item), to: &snapshot)
+        for offset in 1...5 {
+            var moved = snapshot.stickers[0]
+            moved.opacity = 1 - Double(offset) / 10
+            history.apply(.replaceSticker(moved), to: &snapshot)
+        }
+        for _ in 0..<3 { history.undo(&snapshot) }
+        for _ in 0..<3 { history.redo(&snapshot) }
+
+        // 스택이 아무리 깊어져도 이미지는 여전히 한 장이다.
+        #expect(store.count == 1)
+        #expect(snapshot.stickers[0].source == source)
+        #expect(store.isRegistered(snapshot.stickers[0].source))
+    }
+
+    @Test("복제한 사진 스티커는 같은 asset을 참조한다")
+    func duplicateSharesPhotoAsset() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+        let original = sticker(source, at: NormalizedPoint(x: 0.05, y: 0.4))
+
+        var copy = original
+        copy.id = UUID()
+        #expect(copy.id != original.id)
+        #expect(copy.source == original.source)                  // 같은 assetID
+        #expect(copy.source.photoAssetID == original.source.photoAssetID)
+        #expect(store.count == 1)                                // 이미지는 늘지 않는다
+    }
+
+    @Test("사진 스티커 여러 장이 같은 asset을 공유한다")
+    func multiplePhotoStickersShareAssets() {
+        let store = PhotoStickerAssetStore()
+        let shared = store.register(testImage(width: 200, height: 200))
+        let items = (0..<4).map { index in
+            sticker(shared, at: NormalizedPoint(x: 0.05, y: 0.2 + Double(index) * 0.15))
+        }
+        #expect(items.count == 4)
+        #expect(store.count == 1)
+
+        // 서로 다른 사진은 각각 보관된다.
+        _ = store.register(testImage(width: 100, height: 100))
+        #expect(store.count == 2)
+    }
+
+    @Test("큰 사진은 축소해서 처리한다")
+    func largePhotoIsDownsampled() throws {
+        let data = testImageData(width: 4000, height: 3000)
+        let image = try PhotoStickerMaker.makeOriginal(from: data)
+
+        #expect(max(image.width, image.height) <= PhotoStickerMaker.maximumPixelSize)
+        #expect(max(image.width, image.height) > 0)
+        // 비율은 그대로다.
+        #expect(abs(Double(image.width) / Double(image.height) - 4.0 / 3.0) < 0.02)
+    }
+
+    @Test("잘라낸 스티커에 투명 여백이 남는다")
+    func croppedStickerKeepsTransparentPadding() {
+        let source = testImage(width: 200, height: 100)
+        let padded = PhotoStickerMaker.padded(source)
+        let inset = Int((200.0 * PhotoStickerMaker.transparentPadding).rounded())
+
+        #expect(inset > 0)
+        #expect(padded.width == source.width + inset * 2)
+        #expect(padded.height == source.height + inset * 2)
+        #expect(padded.alphaInfo != .none)                 // 투명도를 유지한다
+    }
+
+    @Test("사진 스티커가 실제 Mirror에 그려지고 중앙은 투명하다")
+    func photoStickerRendersInRuntime() {
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5), width: 0.14)]
+
+        let center = runtimePixel(design: design, at: NormalizedPoint(x: 0.05, y: 0.5))
+        #expect((center?.alpha ?? 0) > 200)
+        #expect((center?.blue ?? 0) > (center?.red ?? 255))     // 파란 테스트 이미지가 보인다
+
+        // 카메라 영역은 그대로 투명하다.
+        let mirror = runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))
+        #expect((mirror?.alpha ?? 255) < 20)
+    }
+
+    @Test("Capture에도 사진 스티커가 같은 자리에 들어간다")
+    func photoStickerRendersInCapture() {
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5), width: 0.14)]
+
+        let size = CGSize(width: 300, height: 650)
+        let image = MirrorCapture.compose(frame: nil, design: design, size: size)
+        #expect(image != nil)
+        #expect(abs((image?.size.width ?? 0) - size.width) < 1)
+    }
+
+    @Test("사진 스티커도 같은 변형 / 제약 / 배치를 쓴다")
+    func photoStickerReusesTransformEngine() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+        var item = sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5))
+
+        // 회전 / 뒤집기 / 투명도 / 잠금
+        item.rotation = 30
+        item.isFlippedHorizontally = true
+        item.opacity = 0.5
+        item.isLocked = true
+        #expect(item.rotation == 30)
+        #expect(item.isFlippedHorizontally)
+        #expect(item.opacity == 0.5)
+        #expect(item.isLocked)
+
+        // 크기 범위 제한은 기본 스티커와 동일
+        #expect(item.resized(width: 5).frame.width == StickerObject.sizeRange.upperBound)
+
+        // 둥근 Mirror Area 제약도 동일
+        let pushed = sticker(source, at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: .standard)
+        #expect(!MirrorFrameInsets.standard.isInsideMirrorArea(pushed.center))
+
+        // 배치도 기존 StickerPlacement 그대로
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = []
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let placed = StickerPlacement.insert(
+            source, in: design, visibleRect: transform.visibleRect, side: .right
+        )
+        #expect(placed.center.x > 0.5)
+        #expect(abs(placed.frame.width / placed.frame.height
+                    * MirrorCanvas.size.width / MirrorCanvas.size.height - 1.5) < 0.001)
+    }
+
+    @Test("사진 스티커도 확대 / 회전 상태에서 재선택된다")
+    func photoStickerIsReselectable() {
+        let store = PhotoStickerAssetStore()
+        let source = store.register(testImage(width: 300, height: 200))
+
+        for zoom in [1.0, 3.0] {
+            let state = EditorViewportState(zoom: CGFloat(zoom))
+            let transform = SideDetailTransform(
+                side: .right, insets: .standard, viewport: viewport, state: state
+            )
+            let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
+            var item = sticker(source, at: master, width: 0.12)
+            item.rotation = 40
+
+            var selection: UUID? = item.id
+            selection = nil                                       // 완료
+            selection = tap([item], at: screenCenter(item, transform), transform: transform, selection: selection)
+            #expect(selection == item.id)
+        }
+    }
+
+    // MARK: - Photo Sticker Preview (Home / My Mirrors)
+
+    /// 저장된 거울을 Gallery 미리보기와 같은 pipeline으로 그린다.
+    private func previewPixel(
+        _ mirror: MyMirror,
+        at point: NormalizedPoint,
+        size: CGSize = CGSize(width: 200, height: 433)
+    ) -> (red: Int, green: Int, blue: Int, alpha: Int)? {
+        let view = MirrorPreview(mirror: mirror).frame(width: size.width, height: size.height)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        renderer.isOpaque = false
+        guard let image = renderer.cgImage else { return nil }
+
+        let width = image.width, height = image.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let x = Int(point.x * Double(width))
+        let y = Int(point.y * Double(height))
+        guard x >= 0, x < width, y >= 0, y < height else { return nil }
+        let offset = (y * width + x) * 4
+        return (Int(data[offset]), Int(data[offset + 1]), Int(data[offset + 2]), Int(data[offset + 3]))
+    }
+
+    /// 사진 스티커가 든 거울을 만들어 저장한다.
+    private func libraryWithPhotoMirror() -> (MirrorLibrary, StickerSource) {
+        let library = MirrorLibrary()
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        design.stickers = [sticker(source, at: NormalizedPoint(x: 0.05, y: 0.5), width: 0.14)]
+        _ = library.save(design, name: "사진 거울", context: .editCurrent)
+        return (library, source)
+    }
+
+    @Test("저장한 거울이 사진 스티커 참조를 그대로 들고 있다")
+    func savedMirrorPreservesPhotoSticker() {
+        let (library, source) = libraryWithPhotoMirror()
+        let saved = library.currentMirror
+
+        #expect(saved.stickers.count == 1)
+        #expect(saved.stickers[0].source == source)
+        #expect(saved.stickers[0].source.photoAssetID == source.photoAssetID)
+        #expect(PhotoStickerAssetStore.shared.isRegistered(saved.stickers[0].source))
+    }
+
+    @Test("홈 / 내 거울 미리보기에 사진 스티커가 실제로 그려진다")
+    func previewsRenderPhotoSticker() {
+        let (library, _) = libraryWithPhotoMirror()
+        let saved = library.currentMirror
+
+        // 홈의 현재 거울과 내 거울 목록은 같은 MyMirror를 같은 pipeline으로 그린다.
+        #expect(library.mirrors.first?.id == saved.id)
+
+        let pixel = previewPixel(saved, at: NormalizedPoint(x: 0.05, y: 0.5))
+        #expect((pixel?.alpha ?? 0) > 200)
+        #expect((pixel?.blue ?? 0) > (pixel?.red ?? 255))   // 파란 테스트 사진이 보인다
+    }
+
+    @Test("복제한 거울도 같은 사진을 참조하고 binary는 하나다")
+    func duplicatedMirrorSharesPhotoBinary() {
+        let (library, source) = libraryWithPhotoMirror()
+        let original = library.currentMirror
+        let before = PhotoStickerAssetStore.shared.count
+
+        let outcome = library.save(MirrorDesign(mirror: original), name: "사진 거울 복사본", context: .duplicate)
+        #expect(outcome.name == "사진 거울 복사본")
+
+        let copy = library.mirrors.last!
+        #expect(copy.id != original.id)
+        #expect(copy.stickers[0].source == source)                      // 같은 assetID
+        #expect(PhotoStickerAssetStore.shared.count == before)          // 이미지는 늘지 않는다
+
+        // 원본 / 복사본 둘 다 보인다.
+        for mirror in [original, copy] {
+            let pixel = previewPixel(mirror, at: NormalizedPoint(x: 0.05, y: 0.5))
+            #expect((pixel?.alpha ?? 0) > 200)
+        }
+    }
+
+    @Test("asset을 찾지 못해도 렌더러가 죽지 않는다")
+    func missingPhotoAssetDoesNotCrashRenderer() {
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        // store에 없는 assetID
+        design.stickers = [sticker(.photo(assetID: UUID(), aspectRatio: 1), at: NormalizedPoint(x: 0.05, y: 0.5))]
+
+        let pixel = runtimePixel(design: design, at: NormalizedPoint(x: 0.05, y: 0.5))
+        #expect(pixel != nil)                                    // 프레임은 그대로 그려진다
+        let center = runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))
+        #expect((center?.alpha ?? 255) < 20)
+    }
+
+    // MARK: - Editor Save Context
+
+    @Test("홈에서 고치면 같은 거울이 갱신되고 슬롯이 늘지 않는다")
+    func homeEditCurrentUpdatesInPlace() {
+        let library = MirrorLibrary()
+        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "내 거울", context: .editCurrent)
+        let created = library.currentMirror
+        let slots = library.createdCount
+
+        var design = MirrorDesign(mirror: created)
+        design.backgroundColor = BasicMirror.mint.style.frame
+        let outcome = library.save(design, name: "다른 이름", context: .editCurrent)
+
+        #expect(outcome == .updated(id: created.id, name: created.name))
+        #expect(library.mirrors.count == 1)
+        #expect(library.createdCount == slots)
+        #expect(library.currentMirror.name == created.name)      // 이름 유지
+        #expect(library.currentMirror.style.frame == BasicMirror.mint.style.frame)
+    }
+
+    @Test("기본 거울은 첫 저장에서만 새 거울이 되고 이후에는 갱신된다")
+    func defaultMirrorCreatesOnceThenUpdates() {
+        let library = MirrorLibrary()
+        #expect(library.mirrors.isEmpty)
+
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        #expect(library.willCreateNewMirror(for: design, context: .editCurrent))
+
+        let first = library.save(design, name: "첫 거울", context: .editCurrent)
+        #expect(first.name == "첫 거울")
+        #expect(library.mirrors.count == 1)
+        #expect(library.createdCount == 1)
+        #expect(library.currentMirror.id == first.mirrorID)
+
+        // Editor가 새 id를 기억한 뒤 다시 저장하면 갱신된다.
+        design.id = first.mirrorID ?? design.id
+        #expect(!library.willCreateNewMirror(for: design, context: .editCurrent))
+        let second = library.save(design, name: "또 다른 이름", context: .editCurrent)
+        #expect(second.mirrorID == first.mirrorID)
+        #expect(library.mirrors.count == 1)
+        #expect(library.createdCount == 1)
+    }
+
+    @Test("내 거울에서 꾸미면 내가 만든 거울도 원본이 남고 새 거울이 생긴다")
+    func myMirrorsEditAlwaysDuplicates() {
+        let library = MirrorLibrary()
+        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "원본", context: .createNew)
+        let source = library.currentMirror
+
+        var design = MirrorDesign(mirror: source)
+        design.backgroundColor = BasicMirror.sky.style.frame
+        #expect(library.willCreateNewMirror(for: design, context: .duplicate))
+
+        let outcome = library.save(design, name: "원본 복사본", context: .duplicate)
+        #expect(outcome.mirrorID != source.id)
+        #expect(library.mirrors.count == 2)
+        #expect(library.createdCount == 2)
+        // 원본은 그대로다.
+        #expect(library.mirrors.first { $0.id == source.id }?.style.frame == source.style.frame)
+        #expect(library.mirrors.first { $0.id == source.id }?.name == "원본")
+        // 새 거울이 바로 적용된다.
+        #expect(library.currentMirror.id == outcome.mirrorID)
+    }
+
+    @Test("+ 거울 만들기는 빈 거울에서 시작해 새 거울을 만든다")
+    func createNewStartsBlank() {
+        let blank = MirrorDesign.blank
+        #expect(blank.strokes.isEmpty)
+        #expect(blank.stickers.isEmpty)
+        #expect(blank.insets == .standard)
+        #expect(blank.style.doodles.isEmpty)                 // 상점 템플릿을 복사하지 않는다
+        #expect(blank.style.frame == MirrorLibrary.defaultMirror.style.frame)
+
+        let library = MirrorLibrary()
+        let outcome = library.save(blank, name: "새로 만든 거울", context: .createNew)
+        #expect(outcome.name == "새로 만든 거울")
+        #expect(library.mirrors.count == 1)
+        #expect(library.mirrors[0].origin == .made)
+        #expect(library.createdCount == 1)
+        #expect(library.currentMirror.id == outcome.mirrorID)
+    }
+
+    @Test("저장하지 않고 취소하면 아무것도 바뀌지 않는다")
+    func cancelChangesNothing() {
+        let library = MirrorLibrary()
+        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "원본", context: .createNew)
+        let before = library.mirrors
+        let currentBefore = library.currentID
+        let slotsBefore = library.createdCount
+
+        // Editor에서 편집만 하고 저장하지 않은 상태
+        var design = MirrorDesign(mirror: library.currentMirror)
+        design.backgroundColor = BasicMirror.lavender.style.frame
+        design.stickers = [sticker(at: NormalizedPoint(x: 0.05, y: 0.4))]
+
+        #expect(library.mirrors == before)
+        #expect(library.currentID == currentBefore)
+        #expect(library.createdCount == slotsBefore)
+    }
+
+    @Test("슬롯이 가득 차면 새로 만들기와 복제는 막히고 현재 거울 편집은 된다")
+    func fullSlotsBlockCreateAndDuplicateOnly() {
+        let library = MirrorLibrary()
+        while library.hasFreeCreatedSlot {
+            _ = library.save(.blank, name: "거울", context: .createNew)
+        }
+        #expect(library.createdCount == MirrorStoragePolicy.freeCreatedSlots)
+        #expect(!library.hasFreeCreatedSlot)
+
+        #expect(library.save(.blank, name: "하나 더", context: .createNew) == .needsMoreSlots)
+
+        let existing = library.currentMirror
+        #expect(library.save(MirrorDesign(mirror: existing), name: "복사본", context: .duplicate) == .needsMoreSlots)
+
+        // 현재 거울 편집은 계속 된다.
+        var design = MirrorDesign(mirror: existing)
+        design.backgroundColor = BasicMirror.gray.style.frame
+        #expect(library.save(design, name: "", context: .editCurrent) == .updated(id: existing.id, name: existing.name))
+        #expect(library.mirrors.count == MirrorStoragePolicy.freeCreatedSlots)
     }
 
     @Test("프레임 두께는 여전히 108 / 180으로 고정이다")

@@ -11,12 +11,15 @@ import SwiftUI
 struct MyMirrorsView: View {
     @Bindable var library: MirrorLibrary
     var onEditMirror: (MyMirror) -> Void
+    /// 빈 거울에서 새로 시작한다.
+    var onCreateMirror: () -> Void = {}
     /// 아직 아무 거울도 없을 때 상점으로 보낸다.
     var onBrowseStore: () -> Void = {}
 
     @State private var filter: MyMirrorFilter = .all
     @State private var actionTarget: MyMirror?
     @State private var notice: String?
+    @State private var showsSlotFull = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var mirrors: [MyMirror] {
@@ -34,13 +37,17 @@ struct MyMirrorsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 14)
 
-            Text("내가 만든 거울 \(library.createdCount) / \(library.createdCapacity)")
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.secondaryInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-                .accessibilityLabel("내가 만든 거울 \(library.createdCount)개, 최대 \(library.createdCapacity)개")
+            HStack(spacing: 12) {
+                Text("내가 만든 거울 \(library.createdCount) / \(library.createdCapacity)")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("내가 만든 거울 \(library.createdCount)개, 최대 \(library.createdCapacity)개")
+
+                createButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 10)
 
             InkFilterBar(items: MyMirrorFilter.allCases, selection: $filter) { $0.rawValue }
                 .padding(.bottom, 14)
@@ -67,6 +74,40 @@ struct MyMirrorsView: View {
         } message: {
             Text(notice ?? "")
         }
+        .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
+            Button("보관 공간 늘리기") { showsSlotFull = false }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("새 거울을 만들려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.")
+        }
+    }
+
+    /// 거울이 있든 없든 항상 여기서 새 거울을 시작할 수 있다.
+    private var createButton: some View {
+        Button {
+            createMirror()
+        } label: {
+            Label("거울 만들기", systemImage: "plus")
+                .font(InkFont.caption.weight(.semibold))
+                .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 36)
+                .background {
+                    Capsule().stroke(PaperTheme.ink, lineWidth: 1.6)
+                }
+                .contentShape(.capsule)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("새 거울 만들기")
+    }
+
+    /// 보관 공간이 없으면 들어가기 전에 막는다 — 다 꾸미고 나서 저장이 실패하지 않게.
+    private func createMirror() {
+        guard library.hasFreeCreatedSlot else {
+            showsSlotFull = true
+            return
+        }
+        onCreateMirror()
     }
 
     private var gallery: some View {
@@ -98,7 +139,6 @@ struct MyMirrorsView: View {
     }
 
     /// 처음 설치하면 내 거울은 비어 있다. 빈 화면 대신 다음에 할 일을 보여준다.
-    /// "새 거울 만들기"는 아직 없는 기능이라 버튼으로 내지 않는다.
     private var emptyState: some View {
         VStack(spacing: 14) {
             MirrorIcon(size: 62)
@@ -113,16 +153,29 @@ struct MyMirrorsView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("상점 둘러보기") { onBrowseStore() }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.subtleSurface)
-                .padding(.horizontal, 22)
-                .frame(minHeight: 48)
-                .background {
-                    UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
-                }
-                .buttonStyle(InkPressStyle())
-                .padding(.top, 2)
+            VStack(spacing: 10) {
+                Button("거울 만들기") { createMirror() }
+                    .font(InkFont.body.weight(.semibold))
+                    .foregroundStyle(PaperTheme.subtleSurface)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                    }
+                    .buttonStyle(InkPressStyle())
+
+                Button("상점 둘러보기") { onBrowseStore() }
+                    .font(InkFont.body)
+                    .foregroundStyle(PaperTheme.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                            .stroke(PaperTheme.ink, lineWidth: 1.6)
+                    }
+                    .buttonStyle(InkPressStyle())
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 32)
@@ -137,7 +190,7 @@ private struct MyMirrorItem: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            MirrorPreview(style: mirror.style, strokes: mirror.strokes)
+            MirrorPreview(mirror: mirror)
                 .padding(.bottom, 6)
 
             HStack(spacing: 6) {
