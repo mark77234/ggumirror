@@ -59,7 +59,7 @@ enum MirrorRenderer {
     static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
 
     /// 레이어 순서 (실제 Mirror 기준):
-    ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커 / 도형 / 텍스트(zIndex 순)
+    ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커 / 텍스트(zIndex 순)
     ///
     /// 배경만 카메라 영역을 비운다. **장식은 전체 캔버스 어디든 그려진다** —
     /// 카메라 영역 위의 콧수염 / 하트 / 사진 스티커가 그대로 얼굴 위에 얹힌다.
@@ -72,7 +72,6 @@ enum MirrorRenderer {
         strokes: [DrawingStroke],
         stickers: [StickerObject] = [],
         texts: [TextObject] = [],
-        shapes: [ShapeObject] = [],
         activeStroke: DrawingStroke? = nil,
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
@@ -115,59 +114,17 @@ enum MirrorRenderer {
         }
 
         // 5. 사용자 오브젝트 — Drawing 위에 얹힌다.
-        //    스티커 / 도형 / 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
+        //    스티커(사진 포함)와 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
         //    선택 hit test도 정확히 같은 규칙을 뒤집어 쓴다.
-        //    rank: 같은 zIndex면 스티커(0) → 도형(1) → 텍스트(2) 순으로 위.
+        //    rank: zIndex가 같은 예전 데이터에서는 텍스트(1)가 스티커(0) 위.
         let objects: [(order: (Int, Int), draw: () -> Void)] =
             stickers.map { sticker in
                 ((sticker.zIndex, 0), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
-            } + shapes.map { shape in
-                ((shape.zIndex, 1), { drawShape(shape, in: context, transform: transform, visible: visible) })
             } + texts.map { text in
-                ((text.zIndex, 2), { drawText(text, in: context, transform: transform, visible: visible) })
+                ((text.zIndex, 1), { drawText(text, in: context, transform: transform, visible: visible) })
             }
         for object in objects.sorted(by: { $0.order < $1.order }) {
             object.draw()
-        }
-    }
-
-    // MARK: - Shape
-
-    /// 도형 하나. 모양은 `ShapeKind.path(in:)` 하나에서만 나온다.
-    static func drawShape(
-        _ object: ShapeObject,
-        in context: GraphicsContext,
-        transform: MirrorViewTransform,
-        visible: CGRect
-    ) {
-        let rect = transform.rect(object.frame)
-        // 회전까지 고려해 넉넉히 잡고, 완전히 화면 밖일 때만 건너뛴다.
-        let reach = max(rect.width, rect.height)
-        guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
-
-        var layer = context
-        layer.opacity = object.opacity
-        layer.translateBy(x: rect.midX, y: rect.midY)
-        layer.rotate(by: .degrees(object.rotation))
-
-        // 회전은 layer가 처리하므로 path는 원점 기준으로 만든다.
-        let local = CGRect(
-            x: -rect.width / 2, y: -rect.height / 2,
-            width: rect.width, height: rect.height
-        )
-        let path = object.kind.path(in: local)
-        let lineWidth = object.strokeWidth * transform.canvasSize.width
-
-        switch object.resolvedFillMode {
-        case .fill:
-            layer.fill(path, with: .color(object.fillColor))
-        case .stroke:
-            layer.stroke(path, with: .color(object.strokeColor),
-                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
-        case .both:
-            layer.fill(path, with: .color(object.fillColor))
-            layer.stroke(path, with: .color(object.strokeColor),
-                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
         }
     }
 

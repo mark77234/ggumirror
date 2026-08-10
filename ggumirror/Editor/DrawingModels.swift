@@ -210,10 +210,9 @@ enum EditorEdit {
     /// 내용 / 이동 / 크기 / 회전 / 색 / 글꼴 / 정렬 / 잠금 / 투명도 — 최종값 1회 반영.
     case replaceText(TextObject)
     case deleteText(UUID)
-    case addShape(ShapeObject)
-    /// 이동 / 크기 / 회전 / 색 / 굵기 / 채우기 방식 / 잠금 / 투명도 — 최종값 1회 반영.
-    case replaceShape(ShapeObject)
-    case deleteShape(UUID)
+    /// Layers에서 순서를 바꿨다. 앞에 보이는 것부터 나열한 id 목록.
+    /// drag 중이 아니라 놓았을 때 1회만 들어온다.
+    case reorderDecorations(frontToBack: [UUID])
 }
 
 /// Undo / Redo가 되돌리는 편집 대상 전체.
@@ -221,10 +220,9 @@ struct EditorSnapshot: Equatable {
     var strokes: [DrawingStroke] = []
     var stickers: [StickerObject] = []
     var texts: [TextObject] = []
-    var shapes: [ShapeObject] = []
 }
 
-/// Drawing / Sticker / Text / Shape를 하나의 시간순 history로 관리한다.
+/// Drawing / Sticker / Text를 하나의 시간순 history로 관리한다.
 /// Pan / Zoom / Scroll Handle / Fit 같은 viewport 조작은 여기 들어오지 않는다.
 struct EditorHistory {
     private var undoStack: [EditorSnapshot] = []
@@ -266,14 +264,8 @@ struct EditorHistory {
             updated.texts[index] = text
         case .deleteText(let id):
             updated.texts.removeAll { $0.id == id }
-        case .addShape(let shape):
-            guard !updated.shapes.contains(where: { $0.id == shape.id }) else { return }
-            updated.shapes.append(shape)
-        case .replaceShape(let shape):
-            guard let index = updated.shapes.firstIndex(where: { $0.id == shape.id }) else { return }
-            updated.shapes[index] = shape
-        case .deleteShape(let id):
-            updated.shapes.removeAll { $0.id == id }
+        case .reorderDecorations(let frontToBack):
+            updated.reorderDecorations(frontToBack: frontToBack)
         }
         commit(updated, to: &snapshot)
     }
@@ -294,12 +286,11 @@ struct EditorHistory {
 extension MirrorDesign {
     /// history가 다루는 편집 대상만 떼어내고 되돌려 받는다.
     var snapshot: EditorSnapshot {
-        get { EditorSnapshot(strokes: strokes, stickers: stickers, texts: texts, shapes: shapes) }
+        get { EditorSnapshot(strokes: strokes, stickers: stickers, texts: texts) }
         set {
             strokes = newValue.strokes
             stickers = newValue.stickers
             texts = newValue.texts
-            shapes = newValue.shapes
         }
     }
 }

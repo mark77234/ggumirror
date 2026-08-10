@@ -311,35 +311,34 @@ Free Canvas 위에 텍스트를 얹는다. Sticker interaction 구조를 그대�
 - 테두리 / 그림자 / glow / 그라디언트 / 텍스트 배경 박스 / 말풍선
 - Shapes, Layers UI, Sticker Creator / Marketplace, Persistence, Store Publish
 
-## Phase 3-4B — Shapes / Decorations (확정)
+## Phase 3-4B — Shapes / Decorations (실험 후 제거)
 
-Free Canvas 위의 도형 / 꾸미기 요소. Sticker · Text interaction 구조를 그대로 재사용했다.
+도형 / 꾸미기 요소를 한 번 구현했으나 **제품 방향 결정으로 제거했다.**
+현재 Editor 장식은 Drawing / Sticker · Photo Sticker / Text 세 가지뿐이다.
+로드맵에 다시 기본 계획으로 넣지 않는다.
 
-- `ShapeObject`: id / kind / frame(normalized) / rotation / fillColor / strokeColor /
-  strokeWidth(normalized) / fillMode / opacity / zIndex / isLocked. 화면 pt를 저장하지 않는다.
-- 모양은 `ShapeKind.path(in:)` 한 곳에서만 만든다 — 렌더러 / picker 썸네일이 같은 정의를 쓴다.
-  난수를 쓰지 않으므로 저장 후 모습이 변하지 않는다(테이프 포함).
-- 10종: 원 / 사각형 / 둥근 사각형 / 선 / 하트 / 별 / 물결선 / 리본 라인 / 테이프 / 말풍선.
-- 선 · 물결선 · 리본 라인은 `isStrokeOnly` — `resolvedFillMode`가 언제나 `.stroke`다.
-- 크기는 비율을 유지하며 uniform scale. 한 방향만 늘리는 두 번째 handle은 만들지 않았다.
-- `MirrorDesign.shapes`, `EditorSnapshot.shapes`, `EditorEdit.addShape / replaceShape / deleteShape`.
-- `topDecorationZIndex`가 스티커 / 텍스트 / 도형을 함께 본다.
-- 렌더러는 세 종류를 하나의 zIndex 목록으로 정렬해 그리고,
-  hit test가 같은 규칙(zIndex → 스티커 0 < 도형 1 < 텍스트 2 → 배열 순서)을 뒤집어 쓴다.
-- 얇은 선도 최소 tap target(44pt) 덕분에 넉넉한 touch tolerance를 갖는다.
+같은 Phase에서 확정한 **Home Save 정책은 그대로 유지된다.**
 
-Home Save 정책 변경 (최신)
-
-- 홈에서 저장할 때는 **이름을 묻지 않는다.** `MirrorLibrary.needsName(for:)`가 `.editCurrent`에서 false.
+- 홈에서 저장할 때는 이름을 묻지 않는다. `MirrorLibrary.needsName(for:)`가 `.editCurrent`에서 false.
 - 목록에 없는 기본 거울을 홈에서 처음 저장하면
   `MirrorStoragePolicy.automaticName(existing:)`이 "나의 거울" / "나의 거울 2" …를 지어준다.
 - 내 거울에서 복제 / 새로 만들기는 그대로 이름을 받는다.
-- 이 정책이 이전 "Default 첫 저장 시 이름 시트" 정책보다 최신이다.
 
-이 Phase에서 하지 않은 것
+## Phase 3-4C — Layers (확정)
 
-- Layers UI (다음 Phase 3-4C), 도형 텍스처 polish, 말풍선 + 텍스트 결합
-- 사용자 조절 corner radius, 한 방향 resize handle
+순서를 바꿀 수 있는 대상은 **스티커(사진 포함)와 텍스트**뿐이다.
+
+- `DecorationLayer` — `.sticker` / `.text` 두 case. 향후 ImportedArtwork는 case 하나만 늘리면 된다.
+  지금 미래를 위한 generic protocol 계층을 만들지 않았다.
+- `MirrorDesign.decorationLayers`가 **앞에 보이는 것부터** 나열한다.
+  정렬 기준(zIndex → 스티커 0 < 텍스트 1 → 배열 순서)은 Renderer / hit test와 완전히 같다.
+- `EditorSnapshot.reorderDecorations(frontToBack:)`가 zIndex를 0부터 연속으로 다시 매긴다.
+  오브젝트 id와 zIndex 외 속성은 건드리지 않는다.
+- `EditorEdit.reorderDecorations(frontToBack:)` — 드래그 중이 아니라 놓았을 때 1회만 커밋한다.
+- 사진 스티커는 assetID만 유지된다. 이미지 복사도, 배경 제거 재실행도 없다.
+- Drawing은 하나의 고정 레이어(장식보다 아래), Background는 고정 최하단. 둘 다 재정렬 불가.
+- 목록 줄을 누르면 Canvas 선택으로 이어진다. 잠긴 장식도 선택 가능.
+- 이번 단계에는 숨기기 / 목록 삭제가 없다.
 
 ## Text Polish TODO (후속)
 
@@ -354,6 +353,18 @@ B. Decoration Font 확장
 - 현재 4종(기본 / 굵게 / 명조 / 둥근)은 system font 기반 MVP다.
 - 한글을 지원하는 손글씨 / 귀여운 글씨 / 굵은 포스터 / 얇은 감성 / 레트로 계열로 넓힌다.
 - 실제 폰트 licensing과 bundle 전략을 함께 정한 뒤 Visual·Text Polish에서 진행한다.
+
+## 다음 우선순위 — Persistence (후속)
+
+- `MirrorDesign`(획 / 스티커 / 텍스트 / 순서)과 **사진 스티커 asset**이 앱 재실행 후에도 남아야 한다.
+- 지금 `PhotoStickerAssetStore`는 메모리 캐시라 앱을 끄면 사진이 사라진다.
+- 모델은 assetID 참조를 유지한 채 이미지를 파일로 저장하는 방향.
+
+## External Mirror Artwork Import (Persistence 이후)
+
+- 1080 × 2340 작업 가이드 export → Procreate / ibisPaint / Photoshop 등에서 작업
+- transparent PNG를 꾸미러로 가져와 전체 Canvas `ImportedArtwork` 레이어로 추가
+- Layers 목록에 레이어 한 줄로 들어간다.
 
 ## Sticker Creator (후속 Phase)
 

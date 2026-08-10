@@ -325,8 +325,6 @@ struct MyMirror: Identifiable, Hashable {
     var stickers: [StickerObject] = []
     /// Editor에서 얹은 텍스트.
     var texts: [TextObject] = []
-    /// Editor에서 얹은 도형 / 꾸미기 요소.
-    var shapes: [ShapeObject] = []
 }
 
 /// 사용자 제작 거울 보관 정책. 기본 제공 / 구매 거울은 슬롯을 쓰지 않는다.
@@ -441,7 +439,6 @@ final class MirrorLibrary {
             mirrors[index].strokes = design.strokes
             mirrors[index].stickers = design.stickers
             mirrors[index].texts = design.texts
-            mirrors[index].shapes = design.shapes
             // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
             currentID = mirrors[index].id
             return .updated(id: mirrors[index].id, name: mirrors[index].name)
@@ -466,8 +463,7 @@ final class MirrorLibrary {
             strokes: design.strokes,
             // 사진 스티커는 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers,
-            texts: design.texts,
-            shapes: design.shapes
+            texts: design.texts
         )
         mirrors.append(copy)
         currentID = copy.id
@@ -517,8 +513,7 @@ final class MirrorLibrary {
             style: mirror.style,
             strokes: mirror.strokes,
             stickers: mirror.stickers,
-            texts: mirror.texts,
-            shapes: mirror.shapes
+            texts: mirror.texts
         )
         mirrors.insert(copy, at: index + 1)
     }

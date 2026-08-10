@@ -1576,7 +1576,7 @@ struct EditorGeometryTests {
     // MARK: - Photo Sticker
 
     /// 가운데가 불투명하고 가장자리는 투명한 테스트용 이미지.
-    private func testImage(width: Int, height: Int) -> CGImage {
+    private func testImage(width: Int, height: Int, color: CGColor? = nil) -> CGImage {
         let context = CGContext(
             data: nil, width: width, height: height,
             bitsPerComponent: 8, bytesPerRow: 0,
@@ -1584,7 +1584,7 @@ struct EditorGeometryTests {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )!
         context.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        context.setFillColor(CGColor(red: 0.1, green: 0.6, blue: 0.9, alpha: 1))
+        context.setFillColor(color ?? CGColor(red: 0.1, green: 0.6, blue: 0.9, alpha: 1))
         context.fill(CGRect(
             x: width / 4, y: height / 4,
             width: width / 2, height: height / 2
@@ -2759,500 +2759,327 @@ struct EditorGeometryTests {
         #expect(MirrorStoragePolicy.automaticName(existing: ["핑크 거울"]) == "나의 거울")
     }
 
-    // MARK: - Shape Object
 
-    private func makeShape(
-        _ kind: ShapeKind = .heart,
-        at point: NormalizedPoint = NormalizedPoint(x: 0.5, y: 0.5),
-        width: Double = 0.2
-    ) -> ShapeObject {
-        let height = StickerObject.height(for: width, aspectRatio: kind.defaultAspectRatio)
-        return ShapeObject(
-            kind: kind,
-            frame: NormalizedRect(
-                x: point.x - width / 2, y: point.y - height / 2,
-                width: width, height: height
-            )
-        )
-    }
 
-    @Test("ShapeObject 기본값이 유효하다")
-    func shapeDefaults() {
-        let shape = makeShape()
-        #expect(shape.kind == .heart)
-        #expect(shape.rotation == 0)
-        #expect(shape.opacity == 1)
-        #expect(!shape.isLocked)
-        #expect(shape.fillMode == .both)
-        #expect(shape.strokeWidth == ShapePolicy.defaultStrokeWidth)
-        #expect(shape.strokeColor == PaperTheme.ink)
-        // normalized 좌표만 담는다.
-        #expect((0...1).contains(shape.center.x))
-        #expect((0...1).contains(shape.center.y))
-    }
 
-    @Test("도형 종류가 모두 고유하고 유효한 path를 만든다")
-    func shapeKindsAreUniqueAndDrawable() {
-        #expect(ShapeKind.allCases.count == 10)
-        #expect(Set(ShapeKind.allCases.map(\.rawValue)).count == ShapeKind.allCases.count)
-        #expect(Set(ShapeKind.allCases.map(\.title)).count == ShapeKind.allCases.count)
 
-        let rect = CGRect(x: 0, y: 0, width: 100, height: 60)
-        for kind in ShapeKind.allCases {
-            let path = kind.path(in: rect)
-            #expect(!path.isEmpty, "\(kind.title) path가 비었다")
-            // 주어진 사각형을 크게 벗어나지 않는다.
-            #expect(path.boundingRect.width <= rect.width + 1)
-            #expect(path.boundingRect.height <= rect.height + 1)
-            // 같은 입력이면 항상 같은 결과 — 저장 후 모습이 변하지 않는다.
-            #expect(kind.path(in: rect).boundingRect == path.boundingRect)
-        }
-        // 카테고리 필터
-        #expect(ShapeKind.all(in: .all).count == ShapeKind.allCases.count)
-        #expect(ShapeKind.all(in: .basic).allSatisfy { $0.category == .basic })
-        #expect(ShapeKind.all(in: .decorative).allSatisfy { $0.category == .decorative })
-    }
+    // MARK: - Layers
 
-    @Test("선으로만 그리는 종류는 채우기를 무시한다")
-    func strokeOnlyKindsIgnoreFill() {
-        for kind in [ShapeKind.line, .wave, .ribbon] {
-            var shape = makeShape(kind)
-            shape.fillMode = .fill
-            #expect(shape.kind.isStrokeOnly)
-            #expect(shape.resolvedFillMode == .stroke)
-        }
-        var heart = makeShape(.heart)
-        heart.fillMode = .fill
-        #expect(heart.resolvedFillMode == .fill)
-    }
+    /// 같은 자리에 겹친 스티커 / 사진 스티커 / 텍스트.
+    private func mixedDesign() -> (MirrorDesign, StickerObject, StickerObject, TextObject) {
+        let source = PhotoStickerAssetStore.shared.register(testImage(width: 200, height: 200))
+        var item = sticker(.builtIn(.ribbon), at: cameraCenter)
+        var photo = sticker(source, at: cameraCenter)
+        var text = makeText("HELLO", at: cameraCenter)
+        item.zIndex = 0
+        photo.zIndex = 1
+        text.zIndex = 2
 
-    @Test("도형 크기는 비율을 유지하고 범위를 벗어나지 않는다")
-    func shapeResizeKeepsProportions() {
-        let shape = makeShape(.rectangle, width: 0.28)
-        let ratio = shape.frame.width / shape.frame.height
-
-        let bigger = shape.resized(width: 0.5)
-        #expect(abs(bigger.frame.width / bigger.frame.height - ratio) < 0.0001)
-        #expect(abs(bigger.center.x - shape.center.x) < 0.0001)   // 중심 유지
-
-        #expect(shape.resized(width: 5).frame.width == ShapePolicy.widthRange.upperBound)
-        #expect(shape.resized(width: 0).frame.width == ShapePolicy.widthRange.lowerBound)
-    }
-
-    @Test("선 굵기는 Master 기준 normalized 값이다")
-    func shapeStrokeWidthIsNormalized() {
-        var shape = makeShape(.line)
-        shape.strokeWidth = ShapePolicy.strokeWidthRange.upperBound
-        // 화면 배율이 달라져도 저장 값은 그대로다.
-        for zoom in [1.0, 3.0] {
-            let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: CGFloat(zoom)))
-            let onScreen = shape.strokeWidth * transform.canvasSize.width
-            #expect(onScreen > 0)
-            #expect(shape.strokeWidth == ShapePolicy.strokeWidthRange.upperBound)
-        }
-    }
-
-    @Test("도형 복제는 새 id와 같은 스타일을 가진다")
-    func shapeDuplicateKeepsStyle() {
-        var shape = makeShape(.star)
-        shape.fillColor = .red
-        shape.strokeColor = .blue
-        shape.strokeWidth = ShapePolicy.strokeWidthRange.upperBound
-        shape.rotation = 30
-        shape.opacity = 0.6
-
-        var copy = shape
-        copy.id = UUID()
-        #expect(copy.id != shape.id)
-        #expect(copy.kind == shape.kind)
-        #expect(copy.fillColor == shape.fillColor)
-        #expect(copy.strokeColor == shape.strokeColor)
-        #expect(copy.strokeWidth == shape.strokeWidth)
-        #expect(copy.rotation == shape.rotation)
-        #expect(copy.opacity == shape.opacity)
-    }
-
-    @Test("topDecorationZIndex가 스티커 / 텍스트 / 도형을 함께 본다")
-    func topZIndexIncludesShapes() {
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.stickers = [sticker(at: NormalizedPoint(x: 0.2, y: 0.2))]
-        design.stickers[0].zIndex = 3
-        design.texts = [makeText(at: NormalizedPoint(x: 0.3, y: 0.3))]
-        design.texts[0].zIndex = 5
-        design.shapes = [makeShape()]
-        design.shapes[0].zIndex = 9
-
-        #expect(design.topDecorationZIndex == 9)
-
-        // 새 장식은 언제나 그 위에 올라간다.
-        let placed = ShapePlacement.insert(.circle, in: design, visibleRect: NormalizedRect(x: 0, y: 0, width: 1, height: 1))
-        #expect(placed.zIndex == 10)
+        design.stickers = [item, photo]
+        design.texts = [text]
+        return (design, item, photo, text)
     }
 
-    // MARK: - Shape History
+    @Test("Layers 목록은 앞에 보이는 것부터 나열한다")
+    func layersListIsFrontFirst() {
+        let (design, item, photo, text) = mixedDesign()
+        let layers = design.decorationLayers
 
-    @Test("도형 추가 / 삭제가 되돌려진다")
-    func shapeAddAndDeleteAreUndoable() {
-        let shape = makeShape()
-        var snapshot = EditorSnapshot()
+        #expect(layers.count == 3)
+        #expect(layers.map(\.id) == [text.id, photo.id, item.id])
+        // 사진 스티커도 스티커 레이어로 취급한다.
+        #expect(layers[1].subtitle == "사진 스티커")
+        #expect(layers[2].subtitle == "스티커")
+        #expect(layers[0].subtitle == "텍스트")
+        #expect(layers[0].title == "HELLO")
+    }
+
+    @Test("Layers 순서 / 렌더 순서 / hit test 순서가 모두 같다")
+    func layersRendererAndHitTestAgree() {
+        let (design, _, _, _) = mixedDesign()
+        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
+        let location = placement.point(cameraCenter)
+
+        /// 렌더러와 같은 규칙으로 뽑은 최상단.
+        func topmost(_ design: MirrorDesign) -> UUID? {
+            var best: ((Int, Int), UUID)?
+            func consider(_ order: (Int, Int), _ id: UUID) {
+                if best == nil || order > best!.0 { best = (order, id) }
+            }
+            for object in design.stickers where object.contains(location, in: placement) {
+                consider((object.zIndex, 0), object.id)
+            }
+            for object in design.texts where object.contains(location, in: placement) {
+                consider((object.zIndex, 1), object.id)
+            }
+            return best?.1
+        }
+
+        #expect(design.decorationLayers.first?.id == topmost(design))
+
+        // 순서를 뒤집어도 셋이 계속 일치한다.
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: design.decorationLayers.reversed().map(\.id))
+        var flipped = design
+        flipped.snapshot = snapshot
+        #expect(flipped.decorationLayers.first?.id == topmost(flipped))
+        #expect(flipped.decorationLayers.map(\.id) == design.decorationLayers.reversed().map(\.id))
+    }
+
+    @Test("순서를 바꾸면 zIndex가 0부터 연속으로 다시 매겨진다")
+    func reorderNormalizesZIndex() {
+        var (design, item, photo, text) = mixedDesign()
+        // 일부러 띄엄띄엄한 값으로 만들어 둔다.
+        design.stickers[0].zIndex = 5
+        design.stickers[1].zIndex = 5
+        design.texts[0].zIndex = 40
+
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: [item.id, text.id, photo.id])
+        design.snapshot = snapshot
+
+        let zIndexes = design.stickers.map(\.zIndex) + design.texts.map(\.zIndex)
+        #expect(Set(zIndexes).count == 3)                       // 겹치지 않는다
+        #expect(zIndexes.sorted() == [0, 1, 2])                 // 0부터 연속
+        #expect(design.decorationLayers.map(\.id) == [item.id, text.id, photo.id])
+
+        // id는 그대로다.
+        #expect(design.stickers.contains { $0.id == item.id })
+        #expect(design.stickers.contains { $0.id == photo.id })
+        #expect(design.texts.contains { $0.id == text.id })
+        _ = (item, photo, text)
+    }
+
+    @Test("순서를 바꿔도 zIndex 말고는 아무것도 변하지 않는다")
+    func reorderChangesOnlyZIndex() {
+        var (design, item, photo, text) = mixedDesign()
+        design.stickers[0].rotation = 24
+        design.stickers[0].opacity = 0.6
+        design.texts[0].alignment = .leading
+        let before = design
+
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: [item.id, photo.id, text.id])
+        design.snapshot = snapshot
+
+        for (old, new) in zip(before.stickers, design.stickers) {
+            var normalized = new
+            normalized.zIndex = old.zIndex
+            #expect(normalized == old)
+        }
+        for (old, new) in zip(before.texts, design.texts) {
+            var normalized = new
+            normalized.zIndex = old.zIndex
+            #expect(normalized == old)
+        }
+    }
+
+    @Test("사진 스티커 순서를 바꿔도 이미지가 다시 만들어지지 않는다")
+    func reorderKeepsPhotoAsset() {
+        var (design, item, photo, text) = mixedDesign()
+        let before = PhotoStickerAssetStore.shared.count
+        let source = design.stickers.first { $0.id == photo.id }?.source
+
+        var snapshot = design.snapshot
+        for order in [[photo.id, text.id, item.id], [text.id, item.id, photo.id], [item.id, photo.id, text.id]] {
+            snapshot.reorderDecorations(frontToBack: order)
+        }
+        design.snapshot = snapshot
+
+        #expect(PhotoStickerAssetStore.shared.count == before)   // 이미지가 늘지 않는다
+        #expect(design.stickers.first { $0.id == photo.id }?.source == source)
+        #expect(PhotoStickerAssetStore.shared.isRegistered(source!))
+    }
+
+    @Test("순서 변경은 되돌릴 수 있고 다시 실행할 수 있다")
+    func reorderIsUndoable() {
+        let (design, item, photo, text) = mixedDesign()
+        var snapshot = design.snapshot
         var history = EditorHistory()
+        let original = snapshot
 
-        history.apply(.addShape(shape), to: &snapshot)
-        #expect(snapshot.shapes.count == 1)
+        history.apply(.reorderDecorations(frontToBack: [item.id, photo.id, text.id]), to: &snapshot)
+        var changed = design
+        changed.snapshot = snapshot
+        #expect(changed.decorationLayers.map(\.id) == [item.id, photo.id, text.id])
+
         history.undo(&snapshot)
-        #expect(snapshot.shapes.isEmpty)
+        #expect(snapshot == original)
+        var restored = design
+        restored.snapshot = snapshot
+        #expect(restored.decorationLayers.map(\.id) == [text.id, photo.id, item.id])
+
         history.redo(&snapshot)
-        #expect(snapshot.shapes.count == 1)
-
-        history.apply(.deleteShape(shape.id), to: &snapshot)
-        #expect(snapshot.shapes.isEmpty)
-        history.undo(&snapshot)
-        #expect(snapshot.shapes.first?.id == shape.id)
+        var again = design
+        again.snapshot = snapshot
+        #expect(again.decorationLayers.map(\.id) == [item.id, photo.id, text.id])
     }
 
-    @Test("도형의 모든 속성 변경이 되돌려진다")
-    func shapePropertyEditsAreUndoable() {
-        var snapshot = EditorSnapshot(shapes: [makeShape(.rectangle)])
-        var history = EditorHistory()
+    @Test("여러 번 순서를 바꿔도 계속 정규화된다")
+    func repeatedReorderStaysNormalized() {
+        var (design, item, photo, text) = mixedDesign()
+        var snapshot = design.snapshot
 
-        let changes: [(String, (inout ShapeObject) -> Void)] = [
-            ("이동", { $0 = $0.moved(to: NormalizedPoint(x: 0.2, y: 0.8)) }),
-            ("크기", { $0 = $0.resized(width: 0.4) }),
-            ("회전", { $0.rotation = 33 }),
-            ("채우기 색", { $0.fillColor = .red }),
-            ("선 색", { $0.strokeColor = .blue }),
-            ("선 굵기", { $0.strokeWidth = ShapePolicy.strokeWidthRange.upperBound }),
-            ("칠하기 방식", { $0.fillMode = .stroke }),
-            ("투명도", { $0.opacity = 0.35 }),
-            ("잠금", { $0.isLocked = true })
-        ]
-
-        for (label, change) in changes {
-            let before = snapshot.shapes[0]
-            var updated = before
-            change(&updated)
-            history.apply(.replaceShape(updated), to: &snapshot)
-            #expect(snapshot.shapes[0] != before, "\(label) 변경이 반영되지 않음")
-            history.undo(&snapshot)
-            #expect(snapshot.shapes[0] == before, "\(label) Undo가 되돌리지 못함")
-            history.redo(&snapshot)
-            #expect(snapshot.shapes[0] == updated, "\(label) Redo가 다시 적용하지 못함")
+        for order in [[item.id, text.id, photo.id], [photo.id, item.id, text.id], [text.id, photo.id, item.id]] {
+            snapshot.reorderDecorations(frontToBack: order)
+            design.snapshot = snapshot
+            let zIndexes = (design.stickers.map(\.zIndex) + design.texts.map(\.zIndex)).sorted()
+            #expect(zIndexes == [0, 1, 2])
+            #expect(design.decorationLayers.map(\.id) == order)
         }
     }
 
-    // MARK: - Shape Interaction
+    @Test("순서를 바꾼 뒤 추가 / 복제한 장식은 언제나 맨 앞에 온다")
+    func newObjectsGoOnTopAfterReorder() {
+        var (design, item, photo, text) = mixedDesign()
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: [item.id, photo.id, text.id])
+        design.snapshot = snapshot
+        #expect(design.topDecorationZIndex == 2)
 
-    @Test("도형을 탭하면 선택되고 완료 후 다시 선택된다")
-    func shapeTapSelectAndReselect() {
-        let transform = EditorCanvasTransform(viewport: viewport)
-        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        let shape = makeShape()
-        let rect = placement.rect(shape.frame)
-        let point = CGPoint(x: rect.midX, y: rect.midY)
-
-        var selection: UUID?
-        for _ in 0..<3 {
-            selection = shape.contains(point, in: placement) ? shape.id : nil
-            #expect(selection == shape.id)
-            selection = nil                                    // 완료
-            #expect(selection == nil)
-        }
-        #expect(!shape.contains(CGPoint(x: rect.midX, y: rect.midY - 400), in: placement))
-    }
-
-    @Test("회전한 도형 / 작은 도형 / 얇은 선도 잡힌다")
-    func rotatedThinAndSmallShapesStayTappable() {
-        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
-
-        var rotated = makeShape(.rectangle)
-        rotated.rotation = 40
-        let rect = placement.rect(rotated.frame)
-        #expect(rotated.contains(CGPoint(x: rect.midX, y: rect.midY), in: placement))
-
-        // 얇은 선도 선 자체보다 넉넉한 touch tolerance를 갖는다.
-        let line = makeShape(.line, width: 0.4)
-        let lineRect = placement.rect(line.frame)
-        #expect(lineRect.height < ShapeObject.minimumTapTarget)
-        #expect(line.contains(
-            CGPoint(x: lineRect.midX, y: lineRect.midY + ShapeObject.minimumTapTarget / 2 - 1),
-            in: placement
-        ))
-
-        // 아주 작은 도형도 최소 tap target을 갖는다.
-        let tiny = makeShape(.circle, width: ShapePolicy.widthRange.lowerBound)
-        let tinyRect = placement.rect(tiny.frame)
-        #expect(tiny.contains(
-            CGPoint(x: tinyRect.midX + ShapeObject.minimumTapTarget / 2 - 1, y: tinyRect.midY),
-            in: placement
-        ))
-    }
-
-    @Test("잠긴 도형도 선택은 된다")
-    func lockedShapeIsSelectable() {
-        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
-        var locked = makeShape()
-        locked.isLocked = true
-        let rect = placement.rect(locked.frame)
-        #expect(locked.contains(CGPoint(x: rect.midX, y: rect.midY), in: placement))
-    }
-
-    @Test("겹친 스티커 / 텍스트 / 도형 중 가장 위가 선택된다")
-    func topmostAcrossAllDecorationKinds() {
-        let placement = MirrorViewTransform(canvasSize: CGSize(width: 300, height: 650), offset: .zero)
-        let point = NormalizedPoint(x: 0.5, y: 0.5)
-        let location = placement.point(point)
-
-        var item = sticker(at: point)
-        var text = makeText("겹침", at: point)
-        var shape = makeShape(.circle, at: point)
-
-        /// 렌더러와 같은 규칙: zIndex → 스티커(0) < 도형(1) < 텍스트(2).
-        func topmost() -> String {
-            var best: ((Int, Int), String)?
-            func consider(_ order: (Int, Int), _ name: String) {
-                if best == nil || order > best!.0 { best = (order, name) }
-            }
-            if item.contains(location, in: placement) { consider((item.zIndex, 0), "sticker") }
-            if shape.contains(location, in: placement) { consider((shape.zIndex, 1), "shape") }
-            if text.contains(location, in: placement) { consider((text.zIndex, 2), "text") }
-            return best?.1 ?? "none"
-        }
-
-        item.zIndex = 5; shape.zIndex = 6; text.zIndex = 7
-        #expect(topmost() == "text")
-        item.zIndex = 9
-        #expect(topmost() == "sticker")
-        shape.zIndex = 12
-        #expect(topmost() == "shape")
-        // 동률이면 렌더 순서를 따른다.
-        item.zIndex = 12; text.zIndex = 12
-        #expect(topmost() == "text")
-    }
-
-    @Test("도형 선택은 스티커 / 텍스트 선택을 푼다")
-    func shapeSelectionIsExclusive() {
-        var selectedStickerID: UUID? = UUID()
-        var selectedTextID: UUID? = UUID()
-        var selectedShapeID: UUID?
-
-        let shape = makeShape()
-        selectedShapeID = shape.id
-        selectedStickerID = nil
-        selectedTextID = nil
-        #expect(selectedShapeID == shape.id)
-        #expect(selectedStickerID == nil)
-        #expect(selectedTextID == nil)
-
-        // 반대로 텍스트를 고르면 도형 선택이 풀린다.
-        let text = makeText()
-        selectedTextID = text.id
-        selectedShapeID = nil
-        #expect(selectedShapeID == nil)
-        #expect(selectedTextID == text.id)
-    }
-
-    @Test("도형을 끌면 도형이 움직인다")
-    func shapeDragMovesShape() {
-        let shape = makeShape()
-        let moved = shape.moved(to: NormalizedPoint(x: 0.3, y: 0.7)).constrained()
-        #expect(abs(moved.center.x - 0.3) < 0.0001)
-        #expect(abs(moved.center.y - 0.7) < 0.0001)
-        #expect(moved.id == shape.id)
-        #expect(moved.kind == shape.kind)
-    }
-
-    // MARK: - Shape Free Canvas
-
-    @Test("도형은 프레임 / 카메라 / 경계 어디든 놓을 수 있다")
-    func shapeCanGoAnywhereOnCanvas() {
-        let insets = MirrorFrameInsets.standard
-        for place in [
-            NormalizedPoint(x: 0.5, y: 0.03),
-            cameraCenter,
-            NormalizedPoint(x: 0.11, y: 0.5),
-            NormalizedPoint(x: 0.5, y: 0.96)
-        ] {
-            let placed = makeShape(at: place).constrained()
-            #expect(abs(placed.center.x - place.x) < 0.0001)
-            #expect(abs(placed.center.y - place.y) < 0.0001)
-        }
-        #expect(insets.isInsideMirrorArea(makeShape(at: cameraCenter).constrained().center))
-    }
-
-    @Test("도형은 Master Canvas 밖으로만 나가지 못한다")
-    func shapeConstrainedOnlyByCanvas() {
-        for point in [NormalizedPoint(x: 1.7, y: 0.5), NormalizedPoint(x: -0.6, y: 1.3)] {
-            let placed = makeShape(at: point).constrained()
-            #expect((0...1).contains(placed.center.x))
-            #expect((0...1).contains(placed.center.y))
-        }
-    }
-
-    @Test("새 도형은 보고 있는 화면 한가운데에 생긴다")
-    func shapeInsertsAtViewportCenter() {
-        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        let transform = EditorCanvasTransform(viewport: viewport, state: .init(zoom: 2))
-        let placed = ShapePlacement.insert(.heart, in: design, visibleRect: transform.visibleRect)
-
-        let center = NormalizedPoint(
-            x: transform.visibleRect.x + transform.visibleRect.width / 2,
-            y: transform.visibleRect.y + transform.visibleRect.height / 2
+        // 새 스티커
+        let newSticker = StickerPlacement.insert(
+            .builtIn(.heart), in: design, visibleRect: NormalizedRect(x: 0, y: 0, width: 1, height: 1)
         )
-        #expect(abs(placed.center.x - center.x) < 0.001)
-        #expect(abs(placed.center.y - center.y) < 0.001)
-        // 선으로만 그리는 종류는 처음부터 테두리 모드다.
-        #expect(ShapePlacement.insert(.line, in: design, visibleRect: transform.visibleRect).fillMode == .stroke)
+        #expect(newSticker.zIndex == 3)
+        design.stickers.append(newSticker)
+        #expect(design.decorationLayers.first?.id == newSticker.id)
+
+        // 새 텍스트
+        let newText = TextPlacement.insert(
+            "새 글자", in: design, visibleRect: NormalizedRect(x: 0, y: 0, width: 1, height: 1)
+        )
+        #expect(newText.zIndex == 4)
+        design.texts.append(newText)
+        #expect(design.decorationLayers.first?.id == newText.id)
+
+        // 복제도 맨 앞
+        var copy = design.stickers[0]
+        copy.id = UUID()
+        copy.zIndex = design.topDecorationZIndex + 1
+        design.stickers.append(copy)
+        #expect(design.decorationLayers.first?.id == copy.id)
+        _ = (photo, text)
     }
 
-    // MARK: - Shape Render
+    @Test("잠긴 장식도 Layers 목록에 나오고 잠금이 표시된다")
+    func lockedObjectsAppearInLayers() {
+        var (design, item, _, text) = mixedDesign()
+        design.stickers[0].isLocked = true
+        design.texts[0].isLocked = true
 
-    /// 도형이 실제로 몇 픽셀이나 그려졌는지.
-    private func shapeInkCount(
-        _ design: MirrorDesign,
-        size: CGSize = CGSize(width: 300, height: 650)
-    ) -> Int {
-        let canvas = Canvas { context, canvasSize in
-            MirrorRenderer.draw(
-                style: design.style,
-                strokes: design.strokes,
-                stickers: design.stickers,
-                texts: design.texts,
-                shapes: design.shapes,
-                transform: .fitted(in: canvasSize),
-                mirrorAreaFill: design.style.frame,
-                in: context,
-                viewport: canvasSize
-            )
-        }
-        .frame(width: size.width, height: size.height)
-
-        let renderer = ImageRenderer(content: canvas)
-        renderer.scale = 1
-        guard let image = renderer.cgImage else { return 0 }
-
-        let width = image.width, height = image.height
-        var data = [UInt8](repeating: 0, count: width * height * 4)
-        let context = CGContext(
-            data: &data, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )!
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        var dark = 0
-        for y in 0..<height {
-            for x in 0..<width {
-                let i = (y * width + x) * 4
-                if data[i] < 120 && data[i + 1] < 120 && data[i + 2] < 120 { dark += 1 }
-            }
-        }
-        return dark
+        let layers = design.decorationLayers
+        #expect(layers.first { $0.id == item.id }?.isLocked == true)
+        #expect(layers.first { $0.id == text.id }?.isLocked == true)
     }
 
-    @Test("모든 도형 종류가 실제로 렌더된다", arguments: ShapeKind.allCases)
-    func everyShapeKindRenders(kind: ShapeKind) {
+    @Test("Drawing과 Background는 순서에 참여하지 않는다")
+    func drawingAndBackgroundAreFixed() {
+        var (design, _, _, _) = mixedDesign()
+        design.strokes = [
+            DrawingStroke(points: [cameraCenter], width: 0.02),
+            DrawingStroke(points: [NormalizedPoint(x: 0.2, y: 0.2)], width: 0.02)
+        ]
+        let strokesBefore = design.strokes
+
+        // Layers 목록에는 장식만 들어간다.
+        #expect(design.decorationLayers.count == 3)
+
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: design.decorationLayers.reversed().map(\.id))
+        design.snapshot = snapshot
+
+        // 획은 손대지 않는다.
+        #expect(design.strokes == strokesBefore)
+        #expect(design.backgroundColor == MirrorLibrary.defaultMirror.style.frame)
+    }
+
+    @Test("바꾼 순서가 렌더 결과로 이어진다")
+    func reorderChangesRenderedResult() {
+        // 같은 자리에 색이 다른 두 사진 스티커를 겹쳐 어느 쪽이 위인지 픽셀로 확인한다.
+        let store = PhotoStickerAssetStore.shared
+        let redSource = store.register(testImage(
+            width: 200, height: 200, color: CGColor(red: 0.9, green: 0.1, blue: 0.1, alpha: 1)
+        ))
+        let blueSource = store.register(testImage(
+            width: 200, height: 200, color: CGColor(red: 0.1, green: 0.1, blue: 0.9, alpha: 1)
+        ))
+        var red = sticker(redSource, at: cameraCenter, width: 0.3)
+        var blue = sticker(blueSource, at: cameraCenter, width: 0.3)
+        red.zIndex = 0
+        blue.zIndex = 1
+
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.shapes = [makeShape(kind, at: cameraCenter, width: 0.4)]
-        #expect(shapeInkCount(design) > 0, "\(kind.title)이(가) 한 픽셀도 그려지지 않음")
+        design.stickers = [red, blue]
+        #expect(design.decorationLayers.first?.id == blue.id)
+        let blueOnTop = runtimePixel(design: design, at: cameraCenter)
+        #expect((blueOnTop?.blue ?? 0) > (blueOnTop?.red ?? 255))
+
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: [red.id, blue.id])
+        design.snapshot = snapshot
+        #expect(design.decorationLayers.first?.id == red.id)
+        let redOnTop = runtimePixel(design: design, at: cameraCenter)
+        #expect((redOnTop?.red ?? 0) > (redOnTop?.blue ?? 255))
     }
 
-    @Test("채우기 색 / 선 색 / 굵기 / 투명도 / 회전이 렌더에 반영된다")
-    func shapeStyleAffectsRender() {
-        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        var shape = makeShape(.rectangle, at: cameraCenter, width: 0.4)
-        shape.fillMode = .fill
-        shape.fillColor = PaperTheme.ink              // 어두운 채우기
-        design.shapes = [shape]
-        let filled = shapeInkCount(design)
-        #expect(filled > 0)
+    @Test("바꾼 순서가 저장 / 미리보기 / Capture까지 그대로 간다")
+    func reorderSurvivesSaveAndPreview() {
+        var (design, item, photo, text) = mixedDesign()
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: [item.id, text.id, photo.id])
+        design.snapshot = snapshot
+        let expected = design.decorationLayers.map(\.id)
 
-        // 밝은 색으로 바꾸면 어두운 픽셀이 줄어든다.
-        design.shapes[0].fillColor = .white
-        #expect(shapeInkCount(design) < filled)
+        // 홈 저장 — 이름을 묻지 않고 순서 그대로 저장된다.
+        let library = MirrorLibrary()
+        let created = library.save(design, name: "", context: .editCurrent)
+        #expect(created.name == "나의 거울")
 
-        // 테두리만 그리면 채운 것보다 적게 칠해진다.
-        design.shapes[0].fillColor = PaperTheme.ink
-        design.shapes[0].fillMode = .stroke
-        let stroked = shapeInkCount(design)
-        #expect(stroked < filled)
+        let saved = library.currentMirror
+        var restored = MirrorDesign(mirror: saved)
+        #expect(restored.decorationLayers.map(\.id) == expected)
 
-        // 선을 굵게 하면 더 많이 칠해진다.
-        design.shapes[0].strokeWidth = ShapePolicy.strokeWidthRange.upperBound
-        #expect(shapeInkCount(design) > stroked)
+        // 홈에서 다시 저장해도 순서가 유지된다.
+        restored.id = created.mirrorID ?? restored.id
+        _ = library.save(restored, name: "", context: .editCurrent)
+        #expect(MirrorDesign(mirror: library.currentMirror).decorationLayers.map(\.id) == expected)
 
-        // 투명하게 하면 줄어든다.
-        design.shapes[0].fillMode = .fill
-        design.shapes[0].opacity = 0.15
-        #expect(shapeInkCount(design) < filled)
+        // 내 거울 복제도 순서를 그대로 가져간다.
+        _ = library.save(restored, name: "복사본", context: .duplicate)
+        #expect(MirrorDesign(mirror: library.mirrors.last!).decorationLayers.map(\.id) == expected)
 
-        // 회전해도 그려진다.
-        design.shapes[0].opacity = 1
-        design.shapes[0].rotation = 35
-        #expect(shapeInkCount(design) > 0)
-    }
-
-    @Test("도형이 미리보기 / 실제 Mirror / Capture에 모두 나온다")
-    func shapeReachesPreviewRuntimeAndCapture() {
-        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        var heart = makeShape(.heart, at: cameraCenter, width: 0.3)
-        heart.fillMode = .fill
-        heart.fillColor = PaperTheme.ink
-        design.shapes = [heart]
-
-        // 실제 거울: 카메라 영역 위에 그려진다.
-        #expect((runtimePixel(design: design, at: cameraCenter)?.alpha ?? 0) > 100)
-        // 도형에서 떨어진 곳은 여전히 카메라가 비친다 — 배경이 채워지지 않았다.
-        #expect((runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.8))?.alpha ?? 255) < 20)
-
-        // 홈 / 내 거울 미리보기도 같은 pipeline을 쓴다.
-        var mirror = MirrorLibrary.defaultMirror
-        mirror.shapes = design.shapes
-        #expect((previewPixel(mirror, at: cameraCenter)?.alpha ?? 0) > 200)
-
-        // Capture
+        // 미리보기 / Capture도 같은 pipeline이라 순서가 같다.
+        #expect(previewPixel(saved, at: cameraCenter) != nil)
         #expect(MirrorCapture.compose(frame: nil, design: design, size: CGSize(width: 300, height: 650)) != nil)
     }
 
-    @Test("도형이 많아도 렌더가 끝난다")
-    func manyShapesStillRender() {
+    @Test("장식이 많아도 Layers 목록과 순서 변경이 동작한다")
+    func manyLayersStayOrdered() {
         var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.shapes = (0..<50).map { index in
-            var shape = makeShape(
-                ShapeKind.allCases[index % ShapeKind.allCases.count],
-                at: NormalizedPoint(x: 0.1 + Double(index % 8) * 0.1, y: 0.1 + Double(index / 8) * 0.12),
-                width: 0.08
-            )
-            shape.zIndex = index
-            return shape
+        design.stickers = (0..<50).map { index in
+            var object = sticker(at: NormalizedPoint(x: 0.5, y: 0.5))
+            object.zIndex = index * 2
+            return object
         }
-        #expect(design.shapes.count == 50)
-        #expect(design.topDecorationZIndex == 49)
-        #expect(shapeInkCount(design) > 0)
-    }
+        design.texts = (0..<50).map { index in
+            var object = makeText("텍스트 \(index)", at: NormalizedPoint(x: 0.5, y: 0.5))
+            object.zIndex = index * 2 + 1
+            return object
+        }
 
-    @Test("도형이 있어도 저장 정책과 슬롯은 그대로다")
-    func shapeDoesNotChangeSaveOrSlots() {
-        let library = MirrorLibrary()
-        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
-        design.shapes = (0..<20).map { _ in makeShape() }
+        let layers = design.decorationLayers
+        #expect(layers.count == 100)
+        #expect(layers.first?.zIndex == 99)          // 가장 앞이 맨 위
 
-        // 홈 저장 — 이름 없이 자동 생성, 슬롯 1개.
-        let created = library.save(design, name: "", context: .editCurrent)
-        #expect(created.name == "나의 거울")
-        #expect(library.createdCount == 1)
-        #expect(library.mirrors[0].shapes.count == 20)
+        var snapshot = design.snapshot
+        snapshot.reorderDecorations(frontToBack: layers.reversed().map(\.id))
+        design.snapshot = snapshot
 
-        // 도형이 20개든 슬롯은 하나다.
-        design.id = created.mirrorID ?? design.id
-        _ = library.save(design, name: "", context: .editCurrent)
-        #expect(library.createdCount == 1)
-        #expect(library.mirrors.count == 1)
-
-        // 내 거울에서 꾸미면 복제되고 도형도 따라간다.
-        let copy = library.save(design, name: "복사본", context: .duplicate)
-        #expect(copy.mirrorID != created.mirrorID)
-        #expect(library.mirrors.last?.shapes.count == 20)
-        #expect(library.createdCount == 2)
+        let zIndexes = (design.stickers.map(\.zIndex) + design.texts.map(\.zIndex)).sorted()
+        #expect(zIndexes == Array(0..<100))
+        #expect(design.decorationLayers.map(\.id) == layers.reversed().map(\.id))
     }
 
     @Test("프레임 두께는 108 / 108 / 180 / 220으로 고정이다")

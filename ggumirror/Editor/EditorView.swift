@@ -37,10 +37,7 @@ struct EditorView: View {
     @State private var draftText = ""
     /// 시트가 새 텍스트를 만드는 중인지, 기존 내용을 고치는 중인지.
     @State private var isAddingText = false
-    @State private var selectedShapeID: UUID?
-    @State private var isPickingShape = false
-    @State private var isChoosingShapeFill = false
-    @State private var isChoosingShapeStroke = false
+    @State private var isShowingLayers = false
     @State private var isNamingMirror = false
     @State private var draftName = ""
     @State private var showsSlotFull = false
@@ -131,31 +128,14 @@ struct EditorView: View {
             photoTask?.cancel()
             photoTask = nil
         }
-        .sheet(isPresented: $isPickingShape) {
-            ShapePickerSheet { kind in
-                addShape(kind)
-                isPickingShape = false
-            }
-            .presentationDetents([.medium])
+        .sheet(isPresented: $isShowingLayers) {
+            LayersSheet(
+                design: design,
+                onReorder: { history.apply(.reorderDecorations(frontToBack: $0), to: &design.snapshot) },
+                onSelect: { select($0) }
+            )
+            .presentationDetents([.medium, .large])
             .presentationBackground { PaperBackground() }
-        }
-        .sheet(isPresented: $isChoosingShapeFill) {
-            if let shape = selectedShape {
-                StickerColorSheet(color: shape.fillColor) { color in
-                    apply(shape) { $0.fillColor = color }
-                }
-                .presentationDetents([.height(300)])
-                .presentationBackground { PaperBackground() }
-            }
-        }
-        .sheet(isPresented: $isChoosingShapeStroke) {
-            if let shape = selectedShape {
-                StickerColorSheet(color: shape.strokeColor) { color in
-                    apply(shape) { $0.strokeColor = color }
-                }
-                .presentationDetents([.height(300)])
-                .presentationBackground { PaperBackground() }
-            }
         }
         .sheet(isPresented: $isEditingText) {
             TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
@@ -230,7 +210,6 @@ struct EditorView: View {
             visibleRect: $visibleRect,
             selectedStickerID: $selectedStickerID,
             selectedTextID: $selectedTextID,
-            selectedShapeID: $selectedShapeID,
             onEdit: { history.apply($0, to: &design.snapshot) }
         )
         .overlay(alignment: .topTrailing) { historyControls }
@@ -240,8 +219,6 @@ struct EditorView: View {
                 stickerContextBar(sticker)
             } else if tool == .text, let text = selectedText {
                 textContextBar(text)
-            } else if tool == .shape, let shape = selectedShape {
-                shapeContextBar(shape)
             } else if tool == .draw {
                 drawContextBar
             }
@@ -249,7 +226,6 @@ struct EditorView: View {
         .onChange(of: tool) { _, newValue in
             if newValue != .sticker { selectedStickerID = nil }
             if newValue != .text { selectedTextID = nil }
-            if newValue != .shape { selectedShapeID = nil }
         }
     }
 
@@ -510,6 +486,23 @@ struct EditorView: View {
         .overlay(alignment: .top) { InkSeparator() }
     }
 
+    // MARK: - Layers
+
+    /// Layers 목록에서 고른 장식을 Canvas 선택으로 옮긴다.
+    /// 겹쳐 있어 손으로 집기 어려운 오브젝트를 정확히 고르는 수단이다.
+    private func select(_ layer: DecorationLayer) {
+        switch layer {
+        case .sticker(let object):
+            tool = .sticker
+            selectedStickerID = object.id
+            selectedTextID = nil
+        case .text(let object):
+            tool = .text
+            selectedTextID = object.id
+            selectedStickerID = nil
+        }
+    }
+
     // MARK: - Text
 
     private var selectedText: TextObject? {
@@ -641,150 +634,6 @@ struct EditorView: View {
         selectedTextID = copy.id
     }
 
-    // MARK: - Shape
-
-    private var selectedShape: ShapeObject? {
-        guard let selectedShapeID else { return nil }
-        return design.shapes.first { $0.id == selectedShapeID }
-    }
-
-    /// 지금 보고 있는 화면 한가운데에 넣는다.
-    private func addShape(_ kind: ShapeKind) {
-        let shape = ShapePlacement.insert(kind, in: design, visibleRect: visibleRect)
-        history.apply(.addShape(shape), to: &design.snapshot)
-        selectedShapeID = shape.id
-        selectedStickerID = nil
-        selectedTextID = nil
-    }
-
-    /// 도형을 선택했을 때만 보이는 전용 컨트롤. 스티커 / 텍스트 바와 같은 구성이다.
-    private func shapeContextBar(_ shape: ShapeObject) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Text("투명도")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                Slider(
-                    value: Binding(
-                        get: { shape.opacity },
-                        set: { value in apply(shape) { $0.opacity = value } }
-                    ),
-                    in: 0.1...1
-                )
-                .tint(PaperTheme.ink)
-                .disabled(shape.isLocked)
-                .accessibilityLabel("장식 투명도")
-
-                Text("선 굵기")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                Slider(
-                    value: Binding(
-                        get: { shape.strokeWidth },
-                        set: { value in apply(shape) { $0.strokeWidth = value } }
-                    ),
-                    in: ShapePolicy.strokeWidthRange
-                )
-                .tint(PaperTheme.ink)
-                .disabled(shape.isLocked)
-                .accessibilityLabel("장식 선 굵기")
-            }
-
-            HStack(spacing: 8) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        if !shape.kind.isStrokeOnly {
-                            colorButton("채우기 색", color: shape.fillColor, isEnabled: !shape.isLocked) {
-                                isChoosingShapeFill = true
-                            }
-                        }
-                        colorButton("선 색", color: shape.strokeColor, isEnabled: !shape.isLocked) {
-                            isChoosingShapeStroke = true
-                        }
-
-                        if !shape.kind.isStrokeOnly {
-                            iconButton("칠하기 방식", icon: shape.fillMode.icon, isEnabled: !shape.isLocked) {
-                                // 채우기 → 테두리 → 둘 다 순으로 한 단계씩 돈다.
-                                let all = ShapeFillMode.allCases
-                                let next = all[(all.firstIndex(of: shape.fillMode).map { $0 + 1 } ?? 0) % all.count]
-                                apply(shape) { $0.fillMode = next }
-                            }
-                        }
-                        iconButton("복제", icon: "plus.square.on.square") { duplicate(shape) }
-                        iconButton(shape.isLocked ? "잠금 해제" : "잠금",
-                                   icon: shape.isLocked ? "lock" : "lock.open") {
-                            apply(shape) { $0.isLocked.toggle() }
-                        }
-                        iconButton("삭제", icon: "trash") {
-                            history.apply(.deleteShape(shape.id), to: &design.snapshot)
-                            selectedShapeID = nil
-                        }
-                    }
-                    .padding(.trailing, 4)
-                }
-                .scrollIndicators(.hidden)
-
-                Button("완료") {
-                    EditorHaptics.placementConfirmed()
-                    selectedShapeID = nil
-                }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.subtleSurface)
-                .padding(.horizontal, 18)
-                .frame(minHeight: 44)
-                .background {
-                    UnevenRoundedRectangle.ink(15, 12, 16, 13).fill(PaperTheme.ink)
-                }
-                .buttonStyle(InkPressStyle())
-                .accessibilityLabel("장식 배치 완료")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(PaperTheme.subtleSurface)
-        .overlay(alignment: .top) { InkSeparator() }
-    }
-
-    private func colorButton(
-        _ label: String,
-        color: Color,
-        isEnabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Circle()
-                .fill(color)
-                .frame(width: 22, height: 22)
-                .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
-                .frame(width: 44, height: 44)
-                .contentShape(.circle)
-        }
-        .buttonStyle(InkPressStyle())
-        .disabled(!isEnabled)
-        .accessibilityLabel(label)
-    }
-
-    private func apply(_ shape: ShapeObject, _ change: (inout ShapeObject) -> Void) {
-        var updated = shape
-        change(&updated)
-        history.apply(.replaceShape(updated), to: &design.snapshot)
-    }
-
-    private func duplicate(_ shape: ShapeObject) {
-        var copy = shape
-        copy.id = UUID()
-        copy.zIndex = design.topDecorationZIndex + 1
-        copy.frame = NormalizedRect(
-            x: shape.frame.x + 0.03,
-            y: shape.frame.y + 0.03,
-            width: shape.frame.width,
-            height: shape.frame.height
-        )
-        copy = copy.constrained()
-        history.apply(.addShape(copy), to: &design.snapshot)
-        selectedShapeID = copy.id
-    }
-
     private func apply(_ sticker: StickerObject, _ change: (inout StickerObject) -> Void) {
         var updated = sticker
         change(&updated)
@@ -828,10 +677,10 @@ struct EditorView: View {
                     tool = item
                     if item == .sticker, selectedStickerID == nil { isPickingSticker = true }
                     if item == .text, selectedTextID == nil { beginAddingText() }
-                    if item == .shape, selectedShapeID == nil { isPickingShape = true }
                 }
             }
             primaryButton("배경", icon: "paintpalette") { isChoosingBackground = true }
+            primaryButton("레이어", icon: "square.3.layers.3d") { isShowingLayers = true }
             primaryButton("미리보기", icon: "eye") { isPreviewing = true }
         }
         .padding(.horizontal, 16)
