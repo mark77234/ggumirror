@@ -16,7 +16,7 @@ struct TemplateDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                MirrorPreview(style: template.style, lineWidth: 2.1)
+                MirrorPreview(template: template, lineWidth: 2.1)
                     .frame(maxHeight: 420)
                     .padding(.top, 8)
 

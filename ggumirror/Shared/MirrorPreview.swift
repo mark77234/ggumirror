@@ -64,6 +64,16 @@ struct MirrorPreview: View {
 }
 
 extension MirrorPreview {
+    /// 상점 템플릿 한 장. 손그림 PNG가 있으면 그것까지 같이 그린다.
+    /// 비율은 항상 9 : 19.5로 고정돼 있어 목록에서도 상세에서도 찌그러지지 않는다.
+    init(template: MirrorTemplate, lineWidth: CGFloat = 1.8) {
+        self.init(
+            style: template.style,
+            importedArtworks: StoreArtworkLibrary.artworks(for: template),
+            lineWidth: lineWidth
+        )
+    }
+
     /// 거울 한 장을 통째로 넘긴다.
     /// 획이나 스티커를 빠뜨릴 수 없도록 개별 인자로 조립하지 않는다.
     init(mirror: MyMirror, lineWidth: CGFloat = 1.8) {

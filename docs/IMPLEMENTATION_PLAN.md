@@ -468,6 +468,23 @@ Persistence
 - 모든 시트(그리기 설정 / 텍스트 / 색 / 글꼴 / 레이어 / 외부 디자인 / 이름 / 등록 준비)가 같은 modifier를 쓴다.
 - 시트마다 padding을 덧대는 임시방편은 쓰지 않는다.
 
+## Phase 4-2A — 상점 템플릿 연결 (확정)
+
+손그림 PNG 3장을 실제 상점 데이터로 연결했다.
+
+- `Store/StoreCatalog.swift` — 상점 타입(태그 / 카테고리 / 템플릿 / 목록)을 한 파일로 모았다.
+  `MirrorSampleData.swift`에는 기본 색과 라이브러리만 남는다.
+- `Resources/StoreTemplates/<카테고리>/<이름>.png` — 번들이 폴더를 평탄화해도
+  `StoreArtworkResource.url`이 파일 이름으로 다시 찾는다.
+- `MirrorTemplate.artwork` — 손그림 템플릿에만 붙는다. 단색 기본 템플릿은 nil.
+- `assetID`는 템플릿마다 **고정 UUID**다. 상점을 열 때마다 새 파일이 쌓이지 않는다.
+- `StoreArtworkLibrary` — 번들 PNG → `MirrorArtworkImporter.framedArtwork` → 메모리 등록 + 캐시.
+  사용자 import와 같은 함수를 지나므로 카메라 영역이 비워지는 규칙이 상점에도 그대로 적용된다.
+- 구경할 때는 메모리만 쓰고, **받을 때** `persistToDisk`로 파일을 내린다.
+- `MirrorPreview(template:)` 하나를 목록과 상세가 같이 쓴다.
+
+템플릿을 늘리는 방법: PNG를 Resources에 넣고 `StoreCatalog.artworkTemplates`에 한 줄 추가.
+
 ## Phase 4-1 — Store Publish Foundation (확정)
 
 여기까지가 **등록 준비**다. 실제 등록 / 조각 차감 / listing / 판매는 없다.

@@ -80,5 +80,22 @@ final class ImportedArtworkAssetStore {
         for id in ids { _ = image(for: id) }
     }
 
+    /// 앱에 들어 있는 상점 템플릿 그림. id가 고정이라 볼 때마다 새로 쌓이지 않는다.
+    /// 상점을 구경하는 것만으로는 디스크에 쓰지 않는다 — 실제로 받을 때 `persistToDisk`.
+    func registerBundled(_ image: CGImage, id: UUID) {
+        guard assets[id] == nil else { return }
+        assets[id] = image
+        missing.remove(id)
+    }
+
+    /// 메모리에 있는 그림을 파일로 내린다. 거울이 참조하게 되는 순간 불린다.
+    func persistToDisk(_ id: UUID) {
+        guard let storage, let image = assets[id],
+              storage.readAsset(id, kind: .importedArtwork) == nil,
+              let data = storage.encodePNG(image)
+        else { return }
+        storage.writeAsset(data, id: id, kind: .importedArtwork)
+    }
+
     var count: Int { assets.count }
 }

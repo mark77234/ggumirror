@@ -105,7 +105,7 @@ private struct StoreGalleryItem: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            MirrorPreview(style: template.style)
+            MirrorPreview(template: template)
                 .padding(.bottom, 6)
 
             Text(template.name)
