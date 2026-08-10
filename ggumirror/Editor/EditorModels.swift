@@ -170,20 +170,6 @@ struct SideBandShape: Shape {
     }
 }
 
-// MARK: - Object
-
-/// 사용자가 얹는 오브젝트의 공통 기반.
-/// Drawing / Sticker / Text는 Phase 3-2에서 이 구조 위에 붙인다.
-/// side로 잘라 복제하지 않는다 — 모서리를 걸친 오브젝트도 하나로 유지된다.
-struct MirrorEditorObject: Identifiable, Hashable {
-    var id = UUID()
-    var frame: NormalizedRect
-    var rotation: Double = 0
-    var opacity: Double = 1
-    var zIndex: Int = 0
-    var isLocked = false
-}
-
 // MARK: - Design
 
 /// Editor가 편집하는 거울 한 장. 렌더링에 필요한 모든 것이 여기 담긴다.
@@ -194,8 +180,8 @@ struct MirrorDesign: Identifiable, Hashable {
     var style: MirrorStyle
     /// 사용자가 그린 획. Master Canvas normalized 좌표만 담는다.
     var strokes: [DrawingStroke] = []
-    /// Sticker / Text는 Phase 3-3에서 여기에 붙는다.
-    var objects: [MirrorEditorObject] = []
+    /// 사용자가 얹은 스티커. Drawing과 같은 Master normalized 좌표를 쓴다.
+    var stickers: [StickerObject] = []
 
     var insets: MirrorFrameInsets {
         get { style.insets }
@@ -212,6 +198,7 @@ struct MirrorDesign: Identifiable, Hashable {
         name = mirror.name
         style = mirror.style
         strokes = mirror.strokes
+        stickers = mirror.stickers
     }
 }
 

@@ -188,45 +188,81 @@ enum StrokeRenderer {
 
 // MARK: - History
 
-/// stroke 배열 스냅샷 기반 Undo / Redo. 추가 / 지우기 모두 같은 방식으로 처리된다.
-struct DrawingHistory {
-    private var undoStack: [[DrawingStroke]] = []
-    private var redoStack: [[DrawingStroke]] = []
+/// Editor가 되돌릴 수 있는 편집 의도.
+/// 배열 스냅샷을 통째로 넘기지 않으므로 오래된 복사본이 최신 상태를 덮어쓰지 않는다.
+enum EditorEdit {
+    case addStroke(DrawingStroke)
+    case eraseStrokes(Set<UUID>)
+    case addSticker(StickerObject)
+    /// 이동 / 크기 / 회전 / 뒤집기 / 잠금 / 투명도 — 모두 최종값 1회 반영.
+    case replaceSticker(StickerObject)
+    case deleteSticker(UUID)
+}
+
+/// Undo / Redo가 되돌리는 편집 대상 전체.
+struct EditorSnapshot: Equatable {
+    var strokes: [DrawingStroke] = []
+    var stickers: [StickerObject] = []
+}
+
+/// Drawing과 Sticker를 하나의 시간순 history로 관리한다.
+/// Pan / Zoom / Scroll Handle / Fit 같은 viewport 조작은 여기 들어오지 않는다.
+struct EditorHistory {
+    private var undoStack: [EditorSnapshot] = []
+    private var redoStack: [EditorSnapshot] = []
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
     /// 새 작업이 생기면 redo는 버린다.
-    mutating func commit(_ new: [DrawingStroke], to strokes: inout [DrawingStroke]) {
-        guard new != strokes else { return }
-        undoStack.append(strokes)
+    mutating func commit(_ new: EditorSnapshot, to snapshot: inout EditorSnapshot) {
+        guard new != snapshot else { return }
+        undoStack.append(snapshot)
         redoStack.removeAll()
-        strokes = new
+        snapshot = new
     }
 
-    mutating func undo(_ strokes: inout [DrawingStroke]) {
-        guard let previous = undoStack.popLast() else { return }
-        redoStack.append(strokes)
-        strokes = previous
-    }
-
-    /// 캔버스가 요청한 편집을 지금 시점의 배열에 적용한다.
-    /// 오래된 스냅샷을 덮어쓰지 않으므로 이전 획이 사라지지 않는다.
-    mutating func apply(_ edit: DrawingEdit, to strokes: inout [DrawingStroke]) {
-        var updated = strokes
+    /// 편집 의도를 **지금 시점의** 상태에 적용한다.
+    mutating func apply(_ edit: EditorEdit, to snapshot: inout EditorSnapshot) {
+        var updated = snapshot
         switch edit {
-        case .add(let stroke):
-            guard !updated.contains(where: { $0.id == stroke.id }) else { return }
-            updated.append(stroke)
-        case .erase(let removedIDs):
-            updated.removeAll { removedIDs.contains($0.id) }
+        case .addStroke(let stroke):
+            guard !updated.strokes.contains(where: { $0.id == stroke.id }) else { return }
+            updated.strokes.append(stroke)
+        case .eraseStrokes(let ids):
+            updated.strokes.removeAll { ids.contains($0.id) }
+        case .addSticker(let sticker):
+            guard !updated.stickers.contains(where: { $0.id == sticker.id }) else { return }
+            updated.stickers.append(sticker)
+        case .replaceSticker(let sticker):
+            guard let index = updated.stickers.firstIndex(where: { $0.id == sticker.id }) else { return }
+            updated.stickers[index] = sticker
+        case .deleteSticker(let id):
+            updated.stickers.removeAll { $0.id == id }
         }
-        commit(updated, to: &strokes)
+        commit(updated, to: &snapshot)
     }
 
-    mutating func redo(_ strokes: inout [DrawingStroke]) {
+    mutating func undo(_ snapshot: inout EditorSnapshot) {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(snapshot)
+        snapshot = previous
+    }
+
+    mutating func redo(_ snapshot: inout EditorSnapshot) {
         guard let next = redoStack.popLast() else { return }
-        undoStack.append(strokes)
-        strokes = next
+        undoStack.append(snapshot)
+        snapshot = next
+    }
+}
+
+extension MirrorDesign {
+    /// history가 다루는 편집 대상만 떼어내고 되돌려 받는다.
+    var snapshot: EditorSnapshot {
+        get { EditorSnapshot(strokes: strokes, stickers: stickers) }
+        set {
+            strokes = newValue.strokes
+            stickers = newValue.stickers
+        }
     }
 }

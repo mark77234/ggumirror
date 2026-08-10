@@ -36,6 +36,7 @@ struct MirrorPreview: View {
     let style: MirrorStyle
     /// 사용자가 그린 획. 중앙 Mirror Area에는 절대 그려지지 않는다.
     var strokes: [DrawingStroke] = []
+    var stickers: [StickerObject] = []
     /// 두꺼운 테두리를 쓸지. Detail의 큰 미리보기에서 사용한다.
     var lineWidth: CGFloat = 1.8
 
@@ -45,6 +46,7 @@ struct MirrorPreview: View {
             MirrorRenderer.draw(
                 style: style,
                 strokes: strokes,
+                stickers: stickers,
                 transform: .fitted(in: size),
                 in: context,
                 viewport: size

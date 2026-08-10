@@ -94,41 +94,41 @@ struct EditorGeometryTests {
 
     @Test("Undo / Redo가 순서대로 동작한다")
     func undoRedoOrder() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
 
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.05)], width: 0.01)
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.9)], width: 0.01)
 
-        history.commit([a], to: &strokes)
-        history.commit([a, b], to: &strokes)
-        #expect(strokes.map(\.id) == [a.id, b.id])
+        history.apply(.addStroke(a), to: &snapshot)
+        history.apply(.addStroke(b), to: &snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id, b.id])
 
-        history.undo(&strokes)
-        #expect(strokes.map(\.id) == [a.id])
-        history.undo(&strokes)
-        #expect(strokes.isEmpty)
+        history.undo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id])
+        history.undo(&snapshot)
+        #expect(snapshot.strokes.isEmpty)
         #expect(!history.canUndo)
 
-        history.redo(&strokes)
-        #expect(strokes.map(\.id) == [a.id])
-        history.redo(&strokes)
-        #expect(strokes.map(\.id) == [a.id, b.id])
+        history.redo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id])
+        history.redo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id, b.id])
         #expect(!history.canRedo)
     }
 
     @Test("새 작업이 생기면 Redo는 비워진다")
     func newWorkClearsRedo() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.05)], width: 0.01)
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: 0.01)
 
-        history.commit([a], to: &strokes)
-        history.undo(&strokes)
+        history.apply(.addStroke(a), to: &snapshot)
+        history.undo(&snapshot)
         #expect(history.canRedo)
 
-        history.commit([b], to: &strokes)
+        history.apply(.addStroke(b), to: &snapshot)
         #expect(!history.canRedo)
     }
 
@@ -324,66 +324,66 @@ struct EditorGeometryTests {
 
     @Test("오래된 스냅샷이 최신 획을 덮어쓰지 않는다")
     func editAppliesToLatestStrokes() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
 
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.1)], width: 0.01)
-        history.apply(.add(a), to: &strokes)
+        history.apply(.addStroke(a), to: &snapshot)
 
         // 캔버스가 A를 모르는 오래된 design 복사본을 들고 있다가 B를 커밋하는 상황
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: 0.01)
-        history.apply(.add(b), to: &strokes)
+        history.apply(.addStroke(b), to: &snapshot)
 
-        #expect(strokes.map(\.id) == [a.id, b.id])
+        #expect(snapshot.strokes.map(\.id) == [a.id, b.id])
     }
 
     @Test("같은 획을 두 번 커밋해도 중복되지 않는다")
     func duplicateCommitIsIgnored() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.1)], width: 0.01)
 
-        history.apply(.add(a), to: &strokes)
-        history.apply(.add(a), to: &strokes)
+        history.apply(.addStroke(a), to: &snapshot)
+        history.apply(.addStroke(a), to: &snapshot)
 
-        #expect(strokes.count == 1)
+        #expect(snapshot.strokes.count == 1)
     }
 
     @Test("지우기는 id 기준으로만 제거한다")
     func eraseRemovesOnlyTargets() {
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.1)], width: 0.01)
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: 0.01)
-        var strokes = [a, b]
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot(strokes: [a, b])
+        var history = EditorHistory()
 
-        history.apply(.erase(removedIDs: [a.id]), to: &strokes)
-        #expect(strokes.map(\.id) == [b.id])
+        history.apply(.eraseStrokes( [a.id]), to: &snapshot)
+        #expect(snapshot.strokes.map(\.id) == [b.id])
 
-        history.undo(&strokes)
-        #expect(strokes.map(\.id) == [a.id, b.id])
+        history.undo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id, b.id])
     }
 
     @Test("Undo는 viewport 조작에 오염되지 않는다")
     func undoIgnoresViewportOperations() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
         let a = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.1)], width: 0.01)
         let b = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.5)], width: 0.01)
 
-        history.apply(.add(a), to: &strokes)
+        history.apply(.addStroke(a), to: &snapshot)
         _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
                                 state: .init(zoom: 2, pan: CGSize(width: 0, height: -200)))
-        history.apply(.add(b), to: &strokes)
+        history.apply(.addStroke(b), to: &snapshot)
         _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
                                 state: .init(zoom: 1, pan: .zero))
 
-        history.undo(&strokes)
-        #expect(strokes.map(\.id) == [a.id])
-        history.undo(&strokes)
-        #expect(strokes.isEmpty)
-        history.redo(&strokes)
-        history.redo(&strokes)
-        #expect(strokes.map(\.id) == [a.id, b.id])
+        history.undo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id])
+        history.undo(&snapshot)
+        #expect(snapshot.strokes.isEmpty)
+        history.redo(&snapshot)
+        history.redo(&snapshot)
+        #expect(snapshot.strokes.map(\.id) == [a.id, b.id])
     }
 
     // MARK: - Stroke clipping (부분만 보여도 렌더되어야 한다)
@@ -679,16 +679,16 @@ struct EditorGeometryTests {
 
     @Test("도구를 바꿔도 이미 그린 획은 그대로다")
     func toolSwitchKeepsStrokes() {
-        var strokes: [DrawingStroke] = []
-        var history = DrawingHistory()
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
         let drawn = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.2)],
                                   brush: .pen, width: EditorBrush.pen.defaultWidth)
-        history.apply(.add(drawn), to: &strokes)
+        history.apply(.addStroke(drawn), to: &snapshot)
 
-        let before = strokes
+        let before = snapshot.strokes
         _ = EditorBrush.highlighter   // 도구 선택은 UI state일 뿐이다
-        #expect(strokes == before)
-        #expect(strokes.first?.brush == .pen)
+        #expect(snapshot.strokes == before)
+        #expect(snapshot.strokes.first?.brush == .pen)
     }
 
     @Test("새 도구로 그린 획도 렌더된다", arguments: EditorBrush.allCases)
@@ -860,6 +860,232 @@ struct EditorGeometryTests {
         #expect(fallback.style.frame == BasicMirror.white.style.frame)
         #expect(fallback.insets == .standard)
         #expect(fallback.strokes.isEmpty)
+    }
+
+    // MARK: - Sticker
+
+    private func sticker(_ source: StickerSource = .heart, at point: NormalizedPoint, width: Double = 0.16) -> StickerObject {
+        let height = StickerObject.squareHeight(for: width)
+        return StickerObject(
+            source: source,
+            frame: NormalizedRect(x: point.x - width / 2, y: point.y - height / 2, width: width, height: height)
+        )
+    }
+
+    @Test("스티커는 보고 있는 위치 근처에 들어간다")
+    func stickerInsertsNearViewport() {
+        let design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        // Right 하단을 보고 있는 상태
+        let transform = SideDetailTransform(
+            side: .right, insets: .standard, viewport: viewport,
+            state: .init(pan: CGSize(width: 0, height: -100_000))
+        )
+        let placed = StickerPlacement.insert(.heart, in: design, visibleRect: transform.visibleRect, side: .right)
+
+        #expect(placed.center.y > 0.6, "하단을 보고 있는데 위쪽에 생김")
+        #expect(placed.center.x > 0.5, "오른쪽을 보고 있는데 왼쪽에 생김")
+        #expect(!design.insets.isInsideMirrorArea(placed.center))
+    }
+
+    @Test("스티커 중심은 중앙 Mirror Area에 들어가지 않는다")
+    func stickerCenterStaysOutOfMirrorArea() {
+        let insets = MirrorFrameInsets.standard
+        let pushed = sticker(at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: insets)
+        #expect(!insets.isInsideMirrorArea(pushed.center))
+    }
+
+    @Test("모서리를 걸친 스티커도 하나의 오브젝트다")
+    func cornerStickerStaysSingleObject() {
+        let insets = MirrorFrameInsets.standard
+        let corner = sticker(at: NormalizedPoint(x: 0.96, y: 0.04)).constrained(to: insets)
+        #expect(corner.center.x > 0.9 && corner.center.y < 0.1)
+        // 밴드를 넘어가는 부분이 있어도 잘리거나 복제되지 않는다.
+        #expect(corner.frame.x < insets.mirrorArea.x + insets.mirrorArea.width)
+    }
+
+    @Test("이동은 화면 배율과 무관하게 같은 Master 위치가 된다", arguments: [1.0, 3.0])
+    func stickerMoveMapsToMaster(zoom: Double) {
+        let transform = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                            state: .init(zoom: CGFloat(zoom)))
+        let screenPoint = CGPoint(x: 40, y: 200)
+        let master = transform.masterPoint(from: screenPoint)
+        let moved = sticker(at: NormalizedPoint(x: 0.05, y: 0.2)).moved(to: master)
+        #expect(abs(moved.center.x - master.x) < 0.0001)
+        #expect(abs(moved.center.y - master.y) < 0.0001)
+    }
+
+    @Test("크기 조절은 종횡비를 유지하고 범위를 벗어나지 않는다")
+    func stickerResizeKeepsAspectAndClamps() {
+        let base = sticker(at: NormalizedPoint(x: 0.05, y: 0.3))
+        let bigger = base.resized(width: 0.30)
+        let ratio = bigger.frame.width / bigger.frame.height
+        let originalRatio = base.frame.width / base.frame.height
+        #expect(abs(ratio - originalRatio) < 0.0001)
+
+        #expect(base.resized(width: 0.0001).frame.width == StickerObject.sizeRange.lowerBound)
+        #expect(base.resized(width: 9).frame.width == StickerObject.sizeRange.upperBound)
+        // 중심은 유지된다
+        #expect(abs(bigger.center.x - base.center.x) < 0.0001)
+    }
+
+    @Test("회전 / 뒤집기 / 투명도가 모델에 남는다")
+    func stickerPropertiesPersist() {
+        var item = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        item.rotation = 24
+        item.isFlippedHorizontally = true
+        item.opacity = 0.4
+        #expect(item.rotation == 24)
+        #expect(item.isFlippedHorizontally)
+        #expect(item.opacity == 0.4)
+    }
+
+    @Test("회전해도 위치가 갑자기 튀지 않는다")
+    func rotationDoesNotMoveSticker() {
+        var item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5)).constrained(to: .standard)
+        let before = item.center
+        item.rotation = 40
+        let after = item.constrained(to: .standard).center
+        #expect(abs(after.x - before.x) < 0.0001)
+        #expect(abs(after.y - before.y) < 0.0001)
+    }
+
+    @Test("잠긴 스티커는 변형되지 않는다")
+    func lockedStickerIsProtected() {
+        var item = sticker(at: NormalizedPoint(x: 0.05, y: 0.4))
+        item.isLocked = true
+        // 잠금은 UI에서 막지만, 잠금 상태 자체는 되돌릴 수 있어야 한다.
+        var snapshot = EditorSnapshot(stickers: [item])
+        var history = EditorHistory()
+        var unlocked = item
+        unlocked.isLocked = false
+        history.apply(.replaceSticker(unlocked), to: &snapshot)
+        #expect(snapshot.stickers.first?.isLocked == false)
+    }
+
+    @Test("복제는 새 id와 약간의 offset을 가진다")
+    func duplicateGetsNewIdentity() {
+        let base = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        var copy = base
+        copy.id = UUID()
+        copy.frame = NormalizedRect(x: base.frame.x + 0.02, y: base.frame.y + 0.01,
+                                    width: base.frame.width, height: base.frame.height)
+        #expect(copy.id != base.id)
+        #expect(copy.frame.x != base.frame.x)
+        #expect(copy.frame.width == base.frame.width)
+    }
+
+    @Test("zIndex 순서대로 그려진다")
+    func stickersRespectZOrder() {
+        var design = mirrorDesign(.white)
+        var back = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        back.zIndex = 1
+        var front = sticker(.star, at: NormalizedPoint(x: 0.05, y: 0.5))
+        front.zIndex = 2
+        design.stickers = [front, back]
+        // 렌더러는 zIndex 오름차순으로 정렬해서 그린다.
+        #expect(design.stickers.sorted { $0.zIndex < $1.zIndex }.last?.id == front.id)
+    }
+
+    // MARK: - 통합 History
+
+    @Test("그리기와 스티커가 하나의 시간순 history로 되돌려진다")
+    func unifiedHistoryOrder() {
+        var snapshot = EditorSnapshot()
+        var history = EditorHistory()
+
+        let stroke = DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.2)], width: 0.01)
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        var moved = item
+        moved.frame.y += 0.1
+
+        history.apply(.addStroke(stroke), to: &snapshot)
+        history.apply(.addSticker(item), to: &snapshot)
+        history.apply(.replaceSticker(moved), to: &snapshot)
+        history.apply(.eraseStrokes([stroke.id]), to: &snapshot)
+
+        history.undo(&snapshot)   // 지우기 취소
+        #expect(snapshot.strokes.count == 1)
+        history.undo(&snapshot)   // 이동 취소
+        #expect(snapshot.stickers.first?.frame.y == item.frame.y)
+        history.undo(&snapshot)   // 스티커 추가 취소
+        #expect(snapshot.stickers.isEmpty)
+        history.undo(&snapshot)   // 그리기 취소
+        #expect(snapshot.strokes.isEmpty)
+
+        history.redo(&snapshot)
+        #expect(snapshot.strokes.count == 1)
+    }
+
+    @Test("스티커 삭제도 되돌릴 수 있다")
+    func deletingStickerIsUndoable() {
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        var snapshot = EditorSnapshot(stickers: [item])
+        var history = EditorHistory()
+
+        history.apply(.deleteSticker(item.id), to: &snapshot)
+        #expect(snapshot.stickers.isEmpty)
+        history.undo(&snapshot)
+        #expect(snapshot.stickers.first?.id == item.id)
+    }
+
+    @Test("viewport 조작은 스티커 데이터를 바꾸지 않는다")
+    func viewportDoesNotMutateStickers() {
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        let snapshot = EditorSnapshot(stickers: [item])
+        for zoom in [1.0, 2.0, 3.0] {
+            _ = SideDetailTransform(side: .left, insets: .standard, viewport: viewport,
+                                    state: .init(zoom: CGFloat(zoom), pan: CGSize(width: 0, height: -300)))
+        }
+        #expect(snapshot.stickers == [item])
+    }
+
+    // MARK: - Sticker 렌더
+
+    @Test("스티커가 실제 Mirror의 같은 위치에 보인다")
+    func stickerRendersInRuntime() {
+        var design = mirrorDesign(.white)
+        let point = NormalizedPoint(x: 0.05, y: 0.6)
+        design.stickers = [sticker(at: point, width: 0.18)]
+
+        // 아웃라인 스티커라 중심은 비어 있다. 영역 전체를 훑어 잉크 픽셀을 찾는다.
+        func inkCount(_ design: MirrorDesign) -> Int {
+            var count = 0
+            for dx in stride(from: -0.08, through: 0.08, by: 0.01) {
+                for dy in stride(from: -0.035, through: 0.035, by: 0.005) {
+                    let probe = NormalizedPoint(x: point.x + dx, y: point.y + dy)
+                    // 투명 픽셀(중앙 카메라 영역)은 red가 0이므로 alpha도 함께 본다.
+                    if let pixel = runtimePixel(design: design, at: probe),
+                       pixel.alpha > 200, pixel.red < 120 {
+                        count += 1
+                    }
+                }
+            }
+            return count
+        }
+        #expect(inkCount(design) > 0, "스티커가 렌더되지 않음")
+        #expect(inkCount(mirrorDesign(.white)) == 0)
+    }
+
+    @Test("스티커가 중앙 카메라 영역을 통째로 덮지 않는다")
+    func stickerNeverFillsCamera() {
+        var design = mirrorDesign(.white)
+        // 중앙에 넣으려 해도 배치 제약이 프레임으로 밀어낸다.
+        design.stickers = [sticker(at: NormalizedPoint(x: 0.5, y: 0.5), width: 0.4)
+            .constrained(to: .standard)]
+        #expect(runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5))?.alpha == 0)
+    }
+
+    @Test("Editor에서 얹은 스티커가 저장 후 현재 거울에 남는다")
+    func stickerSurvivesSave() {
+        let library = MirrorLibrary()
+        var design = MirrorDesign(mirror: library.currentMirror)
+        let item = sticker(.ribbon, at: NormalizedPoint(x: 0.95, y: 0.8))
+        design.stickers = [item]
+        library.save(design)
+
+        let updated = MirrorDesign(mirror: library.currentMirror)
+        #expect(updated.stickers.first?.id == item.id)
+        #expect(updated.stickers.first?.source == .ribbon)
     }
 
     // MARK: - 지우개

@@ -22,7 +22,9 @@ struct EditorView: View {
     @State private var brush: EditorBrush = .pen
     @State private var brushWidth: Double = EditorBrush.pen.defaultWidth
     @State private var brushColor: Color = PaperTheme.ink
-    @State private var history = DrawingHistory()
+    @State private var history = EditorHistory()
+    @State private var isPickingSticker = false
+    @State private var selectedStickerID: UUID?
     /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
     @State private var viewports: [EditorSide: EditorViewportState] = [:]
     @State private var isEditingDrawSettings = false
@@ -58,6 +60,14 @@ struct EditorView: View {
         .paperBackground()
         .fullScreenCover(isPresented: $isPreviewing) {
             EditorPreviewView(design: design)
+        }
+        .sheet(isPresented: $isPickingSticker) {
+            StickerPickerSheet { source in
+                addSticker(source)
+                isPickingSticker = false
+            }
+            .presentationDetents([.medium])
+            .presentationBackground { PaperBackground() }
         }
         .sheet(isPresented: $isEditingDrawSettings) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
@@ -219,14 +229,20 @@ struct EditorView: View {
             brushColor: brushColor,
             viewport: viewportBinding(for: side),
             visibleRect: $detailViewport,
-            onEdit: { history.apply($0, to: &design.strokes) }
+            selectedStickerID: $selectedStickerID,
+            onEdit: { history.apply($0, to: &design.snapshot) }
         )
         .overlay(alignment: .topTrailing) { historyControls }
         .overlay(alignment: .bottomTrailing) { fitControl(side) }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if tool == .draw {
+            if tool == .sticker, let sticker = selectedSticker {
+                stickerContextBar(sticker)
+            } else if tool == .draw {
                 drawContextBar
             }
+        }
+        .onChange(of: tool) { _, newValue in
+            if newValue != .sticker { selectedStickerID = nil }
         }
     }
 
@@ -234,10 +250,10 @@ struct EditorView: View {
     private var historyControls: some View {
         HStack(spacing: 6) {
             iconButton("실행 취소", icon: "arrow.uturn.backward", isEnabled: history.canUndo) {
-                history.undo(&design.strokes)
+                history.undo(&design.snapshot)
             }
             iconButton("다시 실행", icon: "arrow.uturn.forward", isEnabled: history.canRedo) {
-                history.redo(&design.strokes)
+                history.redo(&design.snapshot)
             }
         }
         .padding(10)
@@ -303,6 +319,99 @@ struct EditorView: View {
         .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
     }
 
+    /// 지금 보고 있는 위치에 넣는다. Right 하단을 보고 있으면 Right 하단에 생긴다.
+    private func addSticker(_ source: StickerSource) {
+        guard let side = mode.side else { return }
+        let sticker = StickerPlacement.insert(
+            source,
+            in: design,
+            visibleRect: detailViewport,
+            side: side
+        )
+        history.apply(.addSticker(sticker), to: &design.snapshot)
+        selectedStickerID = sticker.id
+    }
+
+    private var selectedSticker: StickerObject? {
+        guard let selectedStickerID else { return nil }
+        return design.stickers.first { $0.id == selectedStickerID }
+    }
+
+    /// 스티커를 선택했을 때만 보이는 전용 컨트롤. 그리기 설정과 동시에 뜨지 않는다.
+    private func stickerContextBar(_ sticker: StickerObject) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Text("투명도")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Slider(
+                    value: Binding(
+                        get: { sticker.opacity },
+                        set: { update(sticker) { $0.opacity = $1 } ($0) }
+                    ),
+                    in: 0.1...1
+                )
+                .tint(PaperTheme.ink)
+                .disabled(sticker.isLocked)
+                .accessibilityLabel("스티커 투명도")
+            }
+
+            HStack(spacing: 8) {
+                iconButton("복제", icon: "plus.square.on.square") { duplicate(sticker) }
+                iconButton("뒤집기", icon: "arrow.left.and.right.righttriangle.left.righttriangle.right",
+                           isEnabled: !sticker.isLocked) {
+                    apply(sticker) { $0.isFlippedHorizontally.toggle() }
+                }
+                iconButton(sticker.isLocked ? "잠금 해제" : "잠금",
+                           icon: sticker.isLocked ? "lock" : "lock.open") {
+                    apply(sticker) { $0.isLocked.toggle() }
+                }
+                Spacer(minLength: 0)
+                iconButton("삭제", icon: "trash") {
+                    history.apply(.deleteSticker(sticker.id), to: &design.snapshot)
+                    selectedStickerID = nil
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(PaperTheme.subtleSurface)
+        .overlay(alignment: .top) { InkSeparator() }
+    }
+
+    private func apply(_ sticker: StickerObject, _ change: (inout StickerObject) -> Void) {
+        var updated = sticker
+        change(&updated)
+        history.apply(.replaceSticker(updated), to: &design.snapshot)
+    }
+
+    /// 슬라이더처럼 값이 연속으로 오는 경우에도 최종값만 반영한다.
+    private func update(
+        _ sticker: StickerObject,
+        _ change: @escaping (inout StickerObject, Double) -> Void
+    ) -> (Double) -> Void {
+        { value in
+            var updated = sticker
+            change(&updated, value)
+            history.apply(.replaceSticker(updated), to: &design.snapshot)
+        }
+    }
+
+    private func duplicate(_ sticker: StickerObject) {
+        var copy = sticker
+        copy.id = UUID()
+        copy.zIndex = (design.stickers.map(\.zIndex).max() ?? 0) + 1
+        copy.frame = NormalizedRect(
+            x: sticker.frame.x + 0.02,
+            y: sticker.frame.y + 0.01,
+            width: sticker.frame.width,
+            height: sticker.frame.height
+        )
+        copy = copy.constrained(to: design.insets)
+        history.apply(.addSticker(copy), to: &design.snapshot)
+        selectedStickerID = copy.id
+    }
+
     private func viewportBinding(for side: EditorSide) -> Binding<EditorViewportState> {
         Binding(
             get: { viewports[side] ?? EditorViewportState() },
@@ -319,6 +428,7 @@ struct EditorView: View {
                 ForEach(EditorTool.allCases) { item in
                     primaryButton(item.title, icon: item.icon, isActive: tool == item) {
                         tool = item
+                        if item == .sticker, selectedStickerID == nil { isPickingSticker = true }
                     }
                 }
             }

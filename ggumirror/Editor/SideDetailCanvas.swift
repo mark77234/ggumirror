@@ -9,13 +9,6 @@
 
 import SwiftUI
 
-/// 캔버스가 요청하는 편집. 배열 스냅샷을 통째로 넘기지 않아서
-/// 오래된 design 복사본이 최신 획을 덮어쓰는 일이 생기지 않는다.
-enum DrawingEdit {
-    case add(DrawingStroke)
-    case erase(removedIDs: Set<UUID>)
-}
-
 struct SideDetailCanvas: View {
     let design: MirrorDesign
     let side: EditorSide
@@ -28,7 +21,9 @@ struct SideDetailCanvas: View {
     @Binding var viewport: EditorViewportState
     @Binding var visibleRect: NormalizedRect
     /// 제스처가 끝났을 때만 확정한다. 그리는 동안에는 design을 건드리지 않는다.
-    let onEdit: (DrawingEdit) -> Void
+    /// 현재 선택된 스티커.
+    @Binding var selectedStickerID: UUID?
+    let onEdit: (EditorEdit) -> Void
 
     /// 손가락을 떼기 전의 진행 중인 획. 여기만 자주 갱신된다.
     @State private var activeStroke: DrawingStroke?
@@ -36,6 +31,10 @@ struct SideDetailCanvas: View {
     @State private var pendingErase: Set<UUID> = []
     /// 두 손가락 조작 시작 시점의 viewport.
     @State private var viewportAtGestureStart: EditorViewportState?
+    /// 스티커 조작 중인 임시 상태. 제스처가 끝날 때 한 번만 history에 남긴다.
+    @State private var draggingSticker: StickerObject?
+    @State private var stickerAtGestureStart: StickerObject?
+    @State private var stickerGrabOffset = NormalizedPoint(x: 0, y: 0)
     /// 제스처 힌트는 한 번 이해하면 다시 보여주지 않는다.
     @AppStorage("editorGestureHintSeen") private var hasSeenGestureHint = false
     @State private var didInteract = false
@@ -61,7 +60,7 @@ struct SideDetailCanvas: View {
             ZStack {
                 // 뷰는 항상 viewport 크기다. 확대/이동은 그리는 좌표에만 반영한다.
                 MirrorCanvasView(
-                    design: design,
+                    design: previewDesign,
                     transform: MirrorViewTransform(
                         canvasSize: transform.canvasSize,
                         offset: transform.offset
@@ -76,6 +75,22 @@ struct SideDetailCanvas: View {
                     onTouch: { handleTouch($0, transform: transform) },
                     onNavigate: { navigate($0, transform: transform, viewportSize: proxy.size) }
                 )
+
+                if let selected = selectedSticker {
+                    StickerSelectionOverlay(
+                        sticker: selected,
+                        transform: MirrorViewTransform(
+                            canvasSize: transform.canvasSize,
+                            offset: transform.offset
+                        ),
+                        onResize: { delta, ended in
+                            resizeSelected(by: delta, transform: transform, isEnded: ended)
+                        },
+                        onRotate: { location, ended in
+                            rotateSelected(towards: location, transform: transform, isEnded: ended)
+                        }
+                    )
+                }
 
                 ScrollHandle(
                     side: side,
@@ -104,12 +119,20 @@ struct SideDetailCanvas: View {
 
     private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform) {
         switch phase {
-        case .began(let location), .moved(let location):
+        case .began(let location):
             dismissGestureHint()
             let point = transform.masterPoint(from: location)
             switch tool {
             case .draw: extendStroke(to: point)
             case .erase: erase(at: point, transform: transform)
+            case .sticker: beginStickerTouch(at: location, point: point, transform: transform)
+            }
+        case .moved(let location):
+            let point = transform.masterPoint(from: location)
+            switch tool {
+            case .draw: extendStroke(to: point)
+            case .erase: erase(at: point, transform: transform)
+            case .sticker: moveSticker(to: point)
             }
         case .ended, .cancelled:
             // 취소여도 유효한 작업이면 저장한다. 사용자가 그린 선이 이유 없이 사라지지 않게.
@@ -153,16 +176,90 @@ struct SideDetailCanvas: View {
 
     /// 진행 중이던 작업을 확정한다. 아직 아무것도 안 그린 제스처만 조용히 버린다.
     private func commitActiveWork() {
+        commitSticker()
         if let stroke = activeStroke {
             if stroke.points.count >= minimumCommittablePoints || tool == .draw {
-                onEdit(.add(stroke))
+                onEdit(.addStroke(stroke))
             }
             activeStroke = nil
         }
         if !pendingErase.isEmpty {
-            onEdit(.erase(removedIDs: pendingErase))
+            onEdit(.eraseStrokes(pendingErase))
             pendingErase = []
         }
+    }
+
+    // MARK: - Sticker
+
+    /// 조작 중에는 임시 스티커를 얹어 보여주고 design은 건드리지 않는다.
+    private var previewDesign: MirrorDesign {
+        guard let draggingSticker,
+              let index = design.stickers.firstIndex(where: { $0.id == draggingSticker.id })
+        else { return design }
+        var copy = design
+        copy.stickers[index] = draggingSticker
+        return copy
+    }
+
+    private var selectedSticker: StickerObject? {
+        guard let selectedStickerID else { return nil }
+        if let draggingSticker, draggingSticker.id == selectedStickerID { return draggingSticker }
+        return design.stickers.first { $0.id == selectedStickerID }
+    }
+
+    /// 위에 있는 스티커부터 hit test 한다. 빈 곳을 누르면 선택이 풀린다.
+    private func beginStickerTouch(at location: CGPoint, point: NormalizedPoint, transform: SideDetailTransform) {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let hit = design.stickers
+            .sorted { $0.zIndex > $1.zIndex }
+            .first { $0.hitRect(in: placement).contains(location) }
+
+        selectedStickerID = hit?.id
+        guard let hit, !hit.isLocked else { return }
+        stickerAtGestureStart = hit
+        draggingSticker = hit
+        stickerGrabOffset = NormalizedPoint(x: point.x - hit.center.x, y: point.y - hit.center.y)
+    }
+
+    private func moveSticker(to point: NormalizedPoint) {
+        guard let current = draggingSticker, !current.isLocked else { return }
+        let target = NormalizedPoint(
+            x: point.x - stickerGrabOffset.x,
+            y: point.y - stickerGrabOffset.y
+        )
+        draggingSticker = current.moved(to: target).constrained(to: design.insets)
+    }
+
+    private func resizeSelected(by delta: CGFloat, transform: SideDetailTransform, isEnded: Bool) {
+        guard let base = stickerAtGestureStart ?? selectedSticker, !base.isLocked else { return }
+        if stickerAtGestureStart == nil { stickerAtGestureStart = base }
+        let widthDelta = Double(delta * 2 / transform.canvasSize.width)
+        let resized = base.resized(width: base.frame.width + widthDelta).constrained(to: design.insets)
+        draggingSticker = resized
+        if isEnded { commitSticker() }
+    }
+
+    private func rotateSelected(towards location: CGPoint, transform: SideDetailTransform, isEnded: Bool) {
+        guard let base = stickerAtGestureStart ?? selectedSticker, !base.isLocked else { return }
+        if stickerAtGestureStart == nil { stickerAtGestureStart = base }
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let rect = placement.rect(base.frame)
+        let angle = atan2(location.y - rect.midY, location.x - rect.midX)
+        var rotated = base
+        // 오른쪽 위 handle이 기준이라 45도만큼 보정한다.
+        rotated.rotation = angle * 180 / .pi + 45
+        draggingSticker = rotated
+        if isEnded { commitSticker() }
+    }
+
+    /// 제스처가 끝났을 때만 history에 1회 남긴다.
+    private func commitSticker() {
+        defer {
+            draggingSticker = nil
+            stickerAtGestureStart = nil
+        }
+        guard let final = draggingSticker, final != stickerAtGestureStart else { return }
+        onEdit(.replaceSticker(final))
     }
 
     // MARK: - Scroll Handle
@@ -236,7 +333,7 @@ struct SideDetailCanvas: View {
 }
 
 enum EditorTool: String, CaseIterable, Identifiable {
-    case draw, erase
+    case draw, erase, sticker
 
     var id: String { rawValue }
 
@@ -244,6 +341,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         switch self {
         case .draw: "그리기"
         case .erase: "지우개"
+        case .sticker: "스티커"
         }
     }
 
@@ -251,6 +349,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         switch self {
         case .draw: "scribble"
         case .erase: "eraser"
+        case .sticker: "heart"
         }
     }
 }

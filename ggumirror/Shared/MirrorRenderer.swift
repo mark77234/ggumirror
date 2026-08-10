@@ -63,6 +63,7 @@ enum MirrorRenderer {
     static func draw(
         style: MirrorStyle,
         strokes: [DrawingStroke],
+        stickers: [StickerObject] = [],
         activeStroke: DrawingStroke? = nil,
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
@@ -103,6 +104,12 @@ enum MirrorRenderer {
         // 4. 템플릿 장식
         for doodle in style.doodles {
             drawDoodle(doodle, in: context, transform: transform, visible: visible)
+        }
+
+        // 5. 사용자 스티커 — Drawing 위에 얹힌다. zIndex 순서를 지킨다.
+        //    프레임 장식이므로 mask로 자르지 않고, 배치 제약(중심)이 위치를 책임진다.
+        for sticker in stickers.sorted(by: { $0.zIndex < $1.zIndex }) {
+            drawSticker(sticker, in: context, transform: transform, visible: visible)
         }
     }
 
@@ -166,6 +173,39 @@ enum MirrorRenderer {
         rotated.translateBy(x: center.x, y: center.y)
         rotated.rotate(by: .degrees(doodle.rotation))
         rotated.draw(symbol, in: CGRect(
+            x: -drawn.width / 2, y: -drawn.height / 2,
+            width: drawn.width, height: drawn.height
+        ))
+    }
+
+    // MARK: - Sticker
+
+    static func drawSticker(
+        _ sticker: StickerObject,
+        in context: GraphicsContext,
+        transform: MirrorViewTransform,
+        visible: CGRect
+    ) {
+        let rect = transform.rect(sticker.frame)
+        // 회전까지 고려해 넉넉히 잡고, 완전히 화면 밖일 때만 건너뛴다.
+        let reach = max(rect.width, rect.height)
+        guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
+
+        var symbol = context.resolve(Image(systemName: sticker.source.symbolName))
+        symbol.shading = .color(PaperTheme.ink)
+
+        let intrinsic = symbol.size
+        let scale = min(rect.width / intrinsic.width, rect.height / intrinsic.height)
+        let drawn = CGSize(width: intrinsic.width * scale, height: intrinsic.height * scale)
+
+        var layer = context
+        layer.opacity = sticker.opacity
+        layer.translateBy(x: rect.midX, y: rect.midY)
+        layer.rotate(by: .degrees(sticker.rotation))
+        if sticker.isFlippedHorizontally {
+            layer.scaleBy(x: -1, y: 1)
+        }
+        layer.draw(symbol, in: CGRect(
             x: -drawn.width / 2, y: -drawn.height / 2,
             width: drawn.width, height: drawn.height
         ))

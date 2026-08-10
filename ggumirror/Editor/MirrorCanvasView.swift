@@ -28,6 +28,7 @@ struct MirrorCanvasView: View {
             MirrorRenderer.draw(
                 style: design.style,
                 strokes: design.strokes,
+                stickers: design.stickers,
                 activeStroke: activeStroke,
                 hiddenStrokeIDs: hiddenStrokeIDs,
                 transform: placement,

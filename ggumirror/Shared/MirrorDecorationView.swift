@@ -17,6 +17,7 @@ struct MirrorDecorationView: View {
             MirrorRenderer.draw(
                 style: design.style,
                 strokes: design.strokes,
+                stickers: design.stickers,
                 // 카메라 preview의 resizeAspectFill과 같은 규칙.
                 transform: .aspectFilled(in: size),
                 // 중앙은 비워둔다 — 얼굴 위에 프레임 색 / 종이 / 그림이 올라가면 안 된다.

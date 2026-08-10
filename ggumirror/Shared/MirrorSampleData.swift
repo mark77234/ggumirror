@@ -298,6 +298,8 @@ struct MyMirror: Identifiable, Hashable {
     var style: MirrorStyle
     /// Editor에서 그린 획. 아직 앱이 살아 있는 동안만 유지된다.
     var strokes: [DrawingStroke] = []
+    /// Editor에서 얹은 스티커.
+    var stickers: [StickerObject] = []
 }
 
 /// 내 거울 목록과 현재 사용 중인 거울. 아직 메모리에만 있다.
@@ -344,6 +346,7 @@ final class MirrorLibrary {
         guard let index = mirrors.firstIndex(where: { $0.id == design.id }) else { return }
         mirrors[index].style = design.style
         mirrors[index].strokes = design.strokes
+        mirrors[index].stickers = design.stickers
         mirrors[index].name = design.name
     }
 
@@ -359,7 +362,8 @@ final class MirrorLibrary {
             name: "\(mirror.name) 복사본",
             origin: .made,
             style: mirror.style,
-            strokes: mirror.strokes
+            strokes: mirror.strokes,
+            stickers: mirror.stickers
         )
         mirrors.insert(copy, at: index + 1)
     }
