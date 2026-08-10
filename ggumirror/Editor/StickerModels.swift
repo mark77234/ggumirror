@@ -10,31 +10,126 @@ import SwiftUI
 
 /// 기본 제공 스티커. 지금은 개발용 placeholder이고
 /// 최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
-enum StickerSource: String, CaseIterable, Identifiable, Hashable {
-    case heart, ribbon, star, flower, sparkle, smile
+enum StickerCategory: String, CaseIterable, Identifiable, Hashable {
+    case all = "전체"
+    case heart = "하트"
+    case ribbon = "리본"
+    case sparkle = "반짝임"
+    case flower = "꽃"
+    case doodle = "두들"
 
     var id: String { rawValue }
+}
+
+/// 스티커를 어떻게 칠할지. 향후 사진 / 멀티컬러 asset을 위한 최소 구분이다.
+enum StickerRenderMode: Hashable {
+    /// 단색 template — 사용자가 색을 바꿀 수 있다.
+    case template
+    /// 원본 색을 그대로 쓴다. 사진 스티커가 여기 들어온다.
+    case original
+}
+
+/// 기본 제공 스티커. 지금은 개발용 placeholder이고
+/// 최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
+/// rawValue는 저장 식별자이므로 asset을 바꿔도 유지한다.
+enum StickerSource: String, CaseIterable, Identifiable, Hashable {
+    // 하트 / 러브
+    case heart, heartSmall, heartDouble, heartArrow
+    // 리본 / 패션
+    case ribbon, ribbonSmall, bow, tape
+    // 별 / 반짝임
+    case star, starSmall, sparkle, sparkles, moon
+    // 꽃 / 자연
+    case flower, daisy, leaf, drop
+    // 두들
+    case smile, check, exclaim, cloud, bolt, crown
+    // 장식
+    case dot, dots, scribbleLine, snow
+
+    var id: String { rawValue }
+
+    var category: StickerCategory {
+        switch self {
+        case .heart, .heartSmall, .heartDouble, .heartArrow: .heart
+        case .ribbon, .ribbonSmall, .bow, .tape: .ribbon
+        case .star, .starSmall, .sparkle, .sparkles, .moon: .sparkle
+        case .flower, .daisy, .leaf, .drop: .flower
+        default: .doodle
+        }
+    }
 
     var title: String {
         switch self {
         case .heart: "하트"
+        case .heartSmall: "작은 하트"
+        case .heartDouble: "겹하트"
+        case .heartArrow: "하트 화살"
         case .ribbon: "리본"
+        case .ribbonSmall: "작은 리본"
+        case .bow: "보우"
+        case .tape: "테이프"
         case .star: "별"
+        case .starSmall: "작은 별"
+        case .sparkle: "스파클"
+        case .sparkles: "반짝임"
+        case .moon: "달"
         case .flower: "꽃"
-        case .sparkle: "반짝임"
+        case .daisy: "데이지"
+        case .leaf: "잎"
+        case .drop: "물방울"
         case .smile: "스마일"
+        case .check: "체크"
+        case .exclaim: "느낌표"
+        case .cloud: "구름"
+        case .bolt: "번개"
+        case .crown: "왕관"
+        case .dot: "점"
+        case .dots: "점 세 개"
+        case .scribbleLine: "손그림 선"
+        case .snow: "눈꽃"
         }
     }
 
     var symbolName: String {
         switch self {
         case .heart: "heart"
+        case .heartSmall: "heart.circle"
+        case .heartDouble: "bolt.heart"
+        case .heartArrow: "arrow.up.heart"
         case .ribbon: "bookmark"
+        case .ribbonSmall: "tag"
+        case .bow: "gift"
+        case .tape: "paperclip"
         case .star: "star"
+        case .starSmall: "star.circle"
+        case .sparkle: "sparkle"
+        case .sparkles: "sparkles"
+        case .moon: "moon"
         case .flower: "camera.macro"
-        case .sparkle: "sparkles"
+        case .daisy: "fanblades"
+        case .leaf: "leaf"
+        case .drop: "drop"
         case .smile: "face.smiling"
+        case .check: "checkmark"
+        case .exclaim: "exclamationmark"
+        case .cloud: "cloud"
+        case .bolt: "bolt"
+        case .crown: "crown"
+        case .dot: "circle"
+        case .dots: "ellipsis"
+        case .scribbleLine: "scribble"
+        case .snow: "snowflake"
         }
+    }
+
+    /// 현재 placeholder는 전부 단색이라 tint를 지원한다.
+    /// 사진 / 멀티컬러 asset이 생기면 .original을 돌려주면 된다.
+    var renderMode: StickerRenderMode { .template }
+
+    var supportsTint: Bool { renderMode == .template }
+
+    static func all(in category: StickerCategory) -> [StickerSource] {
+        category == .all ? allCases : allCases.filter { $0.category == category }
     }
 }
 
@@ -50,6 +145,14 @@ struct StickerObject: Identifiable, Hashable {
     var zIndex: Int = 0
     var isLocked = false
     var isFlippedHorizontally = false
+    /// template 스티커의 색. nil이면 기본 잉크색.
+    var tintColor: Color?
+
+    /// 실제로 칠할 색. original 스티커는 tint를 무시한다.
+    var resolvedTint: Color? {
+        guard source.supportsTint else { return nil }
+        return tintColor ?? PaperTheme.ink
+    }
 
     /// 화면 폭 기준 최소 / 최대 크기. 너무 작아지거나 거울을 통째로 덮지 않게 한다.
     static let sizeRange: ClosedRange<Double> = 0.06...0.45
@@ -118,10 +221,30 @@ struct StickerObject: Identifiable, Hashable {
         ))
     }
 
-    /// 화면 좌표 hit test용 사각형. 회전은 근사로만 반영한다.
+    /// 화면 좌표 hit test용 사각형.
+    /// 회전은 정확한 polygon 대신 회전 bounding box로 근사한다 — 눈에 보이는 크기와 크게 어긋나지 않게.
+    /// 작은 스티커도 손가락으로 다시 고를 수 있도록 최소 tap target을 보장한다.
     func hitRect(in transform: MirrorViewTransform) -> CGRect {
-        transform.rect(frame).insetBy(dx: -6, dy: -6)
+        var rect = transform.rect(frame)
+        if rotation != 0 {
+            let radians = CGFloat(rotation) * .pi / 180
+            let c = abs(cos(radians))
+            let s = abs(sin(radians))
+            let width = rect.width * c + rect.height * s
+            let height = rect.width * s + rect.height * c
+            rect = CGRect(
+                x: rect.midX - width / 2, y: rect.midY - height / 2,
+                width: width, height: height
+            )
+        }
+        return rect.insetBy(
+            dx: -max(6, (Self.minimumTapTarget - rect.width) / 2),
+            dy: -max(6, (Self.minimumTapTarget - rect.height) / 2)
+        )
     }
+
+    /// 손가락으로 다시 고를 수 있는 최소 크기(pt).
+    static let minimumTapTarget: CGFloat = 44
 }
 
 // MARK: - 배치

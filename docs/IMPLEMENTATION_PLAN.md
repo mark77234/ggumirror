@@ -143,6 +143,107 @@ Phase 1의 Home은 4개만 표시:
 - Drawing / Sticker 모두 같은 viewport / pan 구조를 사용
 - 기존 SideDetailTransform을 기반으로 구현 (임시 scroll 구조를 새로 만들지 않는다)
 
+## Phase 3-3C.1 — Sticker Creator UX + 저장/보관 정책 (확정)
+
+Photo Sticker Phase 이전에 확정한 정책이다.
+
+Sticker
+
+- 기본 제공 스티커 20종 이상 + 카테고리 필터(전체 / 하트 / 리본 / 반짝임 / 꽃 / 두들)
+- `StickerSource.rawValue`는 저장 식별자다. asset을 교체해도 유지한다.
+- template 스티커는 tint 지원, 기본값 잉크색. `.original`(사진 등)은 tint 무시.
+- 색 변경은 Undo / Redo 대상이다.
+- 이동 중 촉각 피드백은 시간(0.09s) + 이동 거리(Master 26px)로 제한한다. 프레임마다 울리지 않는다.
+- `완료`로 선택 해제. 이때 한 번 더 또렷한 피드백.
+
+저장 / 보관
+
+- 저장 시 이름 입력. 최대 `MirrorStoragePolicy.maxNameLength`(24자).
+- 내가 만든 거울 → 제자리 갱신. 기본 제공 / 구매 거울 → 원본 유지 + 새 거울 생성.
+- 슬롯은 `origin == .made`만 소비한다.
+- 무료 슬롯 `MirrorStoragePolicy.freeCreatedSlots` = 3. 코드에 숫자 3을 직접 쓰지 않는다.
+- 슬롯이 가득 차면 새 거울 저장만 막고 덮어쓰기는 허용한다.
+- 확장 1회 = `MirrorStoragePolicy.slotPackSize` = 5칸.
+
+이 Phase에서 하지 않은 것 (후속)
+
+- Photo Picker / Background Removal
+- 조각 차감, StoreKit / IAP, Ledger, 가격 확정
+- 슬롯·거울의 서버 persistence
+
+## Phase 3-3C.2 — Side Workspace Centering + Sticker Refocus (확정)
+
+Editor Workspace
+
+- Left / Right Side Detail에서 밴드를 화면 가로 중앙에 놓는다.
+- 바깥 여백 = **Editor Workspace Gutter**. Editor 전용 UI 공간이고 MirrorDesign에 저장되지 않는다.
+- Gutter 크기는 magic number가 아니라 "밴드 중심 = 화면 중심"이 되는 offset으로 계산된다.
+- Pan clamp 정책 수정: 세로축은 여전히 빈 공간 금지. 가로축은 이 centering offset까지만 허용.
+- Mini Map은 Master Canvas와 실제로 겹치는 부분만 보여준다 — gutter를 디자인 영역처럼 그리지 않는다.
+- Gutter에서는 그리기 / 스티커 배치 불가 (`MirrorFrameInsets.isInsideFrameBand`).
+
+Sticker
+
+- 이미 놓은 스티커를 다시 탭하면 선택 + 필요할 때만 최소 focus.
+- Focus 조건: 스티커가 화면에 다 보이면 이동 없음. 아니면 zoom 유지 + 최소 pan.
+- 잠긴 스티커도 선택 가능(변형만 막힌다).
+- hit test는 회전 bounding box + 최소 tap target 44pt.
+- Sticker 도구에서 빈 곳 한 손가락 drag = 화면 이동. Drawing / Eraser는 기존 그대로.
+- 제스처 우선순위: handle → sticker → scroll handle → 빈 캔버스 / gutter.
+- Pan은 언제나 같은 `EditorViewportState` 하나만 쓴다. Undo History에 들어가지 않는다.
+
+Mirror Inner Corner Radius
+
+- `MirrorGeometry.innerCornerRadius` (Master 기준 30px) 하나만 정의한다.
+- `MirrorFrameInsets.mirrorAreaPath(in:)`가 단일 geometry source다.
+- Renderer / FrameMask / 그리기 제한 / 스티커 제약 / Preview / Runtime / Capture가 모두 이 하나를 쓴다.
+
+초기 라이브러리
+
+- 최초 실행 시 내 거울은 비어 있다.
+- `MirrorLibrary.defaultMirror` = 목록에 없는 초기 적용 거울. 슬롯을 쓰지 않는다.
+- 기본 단색 8종은 상점의 "기본" 카테고리 무료 템플릿으로 이동.
+- 무료 템플릿 받기는 실제로 동작한다(`MirrorLibrary.acquire`). 조각 결제 / ledger는 미구현.
+
+## Sticker Creator (후속 Phase)
+
+별도의 "스티커 만들기" 페이지. Mirror Editor 기술을 최대한 재사용한다.
+
+- 공유: Drawing tools / Brush / Color / Undo·Redo / Sticker renderer / normalized object 개념
+- 다름: Mirror의 1080 × 2340 좌표계를 강제하지 않는다. 투명 Sticker Canvas라는 별도 output format.
+- 핵심 스타일은 **사용자의 손그림**이다.
+- 최종 asset: transparent background + 사용자의 그림만. 흰 사각형 배경이 붙으면 안 된다.
+- 그린 부분의 visible bounds로 crop하고 약간의 투명 padding만 남긴다.
+- Flow(예상): 스티커 만들기 → 빈 캔버스 또는 사진 → Drawing / Text / Decoration → Crop → Preview → 이름 → 태그 → 저장
+
+두 가지 creation source가 최종적으로 같은 transparent asset이 된다.
+
+- A. 손그림: Transparent Canvas → Drawing → Crop → Sticker
+- B. 사진: Photo → Background Removal → Transparent Foreground → Sticker (Photo Sticker Phase 이후)
+
+## Sticker Marketplace (후속 Phase)
+
+- Sticker Creator → 저장 → 내 스티커 → 상점에 올리기 → 가격 설정 → Sticker Store
+- 구매자: 조각으로 구매 → Editor Sticker Library에 추가
+- 판매자: 조각 획득. 현금 출금은 MVP 정책상 없음.
+- Store에는 Mirror Template / Sticker 두 종류의 Creator Content가 생긴다. 정보구조는 Store Phase에서 설계.
+
+등록 비용
+
+- Mirror Template Publish = 20 조각.
+- **Sticker Publish Cost < Mirror Publish Cost** (확정).
+- 정확한 가격 미정. 후보 5~10 조각. UI에 숫자를 띄우거나 차감 로직을 만들지 않는다.
+
+가격 / 정산
+
+- 판매자가 개별 Sticker 가격을 0...N 조각으로 설정. 무료 Sticker 허용.
+- 판매 시 구매자 잔액 감소 / 판매자 잔액 증가.
+- Server-authoritative ledger는 Backend Phase.
+
+TODO — Sticker Pack
+
+- 장기적으로 "리본 세트" / "생일 세트" / "Y2K 세트" 같은 묶음 판매 확장 가능. 지금은 설계하지 않는다.
+
 ## Advanced Drawing Polish (후속)
 
 MVP Editor가 끝난 뒤 진행한다. 지금은 현재 renderer로 표현 가능한

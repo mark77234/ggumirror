@@ -30,9 +30,11 @@ struct RootView: View {
                 onEditMirror: { editing = $0 }
             )
             .fullScreenCover(item: $editing) { mirror in
-                EditorView(design: MirrorDesign(mirror: mirror)) { design in
-                    library.save(design)
-                }
+                EditorView(
+                    design: MirrorDesign(mirror: mirror),
+                    library: library,
+                    onSaved: { editing = nil }
+                )
             }
         }
     }

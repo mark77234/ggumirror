@@ -83,9 +83,8 @@ enum MirrorRenderer {
 
         // 2. 중앙 Mirror Area (Editor / Gallery 미리보기에서만 칠한다)
         if let mirrorAreaFill {
-            let mirror = transform.rect(style.insets.mirrorArea)
             context.fill(
-                Path(roundedRect: mirror, cornerRadius: min(10, mirror.width / 8)),
+                style.insets.mirrorAreaPath(in: transform.canvasRect),
                 with: .color(mirrorAreaFill)
             )
         }
@@ -113,10 +112,11 @@ enum MirrorRenderer {
         }
     }
 
-    /// 전체 캔버스 − 중앙 Mirror Area. even-odd로 채우면 가운데가 뚫린다.
+    /// 전체 캔버스 − 중앙 Mirror Area(모서리 둥근 사각형). even-odd로 채우면 가운데가 뚫린다.
+    /// 실제 Mirror / Capture의 투명 opening도 이 path 하나로 만들어진다.
     static func framePath(insets: MirrorFrameInsets, transform: MirrorViewTransform) -> Path {
         var path = Path(transform.canvasRect)
-        path.addRect(transform.rect(insets.mirrorArea))
+        path.addPath(insets.mirrorAreaPath(in: transform.canvasRect))
         return path
     }
 
@@ -192,7 +192,10 @@ enum MirrorRenderer {
         guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
 
         var symbol = context.resolve(Image(systemName: sticker.source.symbolName))
-        symbol.shading = .color(PaperTheme.ink)
+        // original 스티커(향후 사진 등)는 원본 색을 유지한다.
+        if let tint = sticker.resolvedTint {
+            symbol.shading = .color(tint)
+        }
 
         let intrinsic = symbol.size
         let scale = min(rect.width / intrinsic.width, rect.height / intrinsic.height)

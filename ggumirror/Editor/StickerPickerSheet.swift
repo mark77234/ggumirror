@@ -11,17 +11,19 @@ import SwiftUI
 struct StickerPickerSheet: View {
     let onPick: (StickerSource) -> Void
 
+    @State private var category: StickerCategory = .all
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("스티커")
-                    .font(InkFont.caption.weight(.semibold))
-                    .foregroundStyle(PaperTheme.secondaryInk)
+        VStack(spacing: 0) {
+            InkFilterBar(items: StickerCategory.allCases, selection: $category) { $0.rawValue }
+                .padding(.top, 14)
+                .padding(.bottom, 8)
 
+            ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(StickerSource.allCases) { source in
+                    ForEach(StickerSource.all(in: category)) { source in
                         Button {
                             onPick(source)
                         } label: {
@@ -50,10 +52,12 @@ struct StickerPickerSheet: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
     }
 }
 

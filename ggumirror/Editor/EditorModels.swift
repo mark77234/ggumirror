@@ -16,6 +16,18 @@ enum MirrorCanvas {
     static var aspectRatio: CGFloat { size.width / size.height }
 }
 
+/// 거울 자체의 geometry 상수. 화면마다 임의의 pt를 넣지 않고 여기 하나만 본다.
+enum MirrorGeometry {
+    /// 중앙 Mirror Area 안쪽 모서리 반경 (Master Canvas 1080 × 2340 기준 픽셀).
+    /// 실제 거울처럼 살짝 둥근 정도이고, capsule처럼 과하게 둥글지 않다.
+    static let innerCornerRadius: Double = 30
+
+    /// 렌더 크기로 환산한 반경. Master → renderer 변환은 항상 이 함수를 거친다.
+    static func innerCornerRadius(for canvas: CGSize) -> CGFloat {
+        CGFloat(innerCornerRadius / MirrorCanvas.size.width) * canvas.width
+    }
+}
+
 /// Master Canvas 기준 0...1 사각형. 화면 크기가 달라도 같은 자리에 렌더링된다.
 struct NormalizedRect: Hashable {
     var x: Double
@@ -61,6 +73,13 @@ struct MirrorFrameInsets: Hashable {
     /// 중앙 Mirror Area. 카메라가 비치는 영역이라 항상 투명하게 유지된다.
     var mirrorArea: NormalizedRect {
         NormalizedRect(x: left, y: top, width: 1 - left - right, height: 1 - top - bottom)
+    }
+
+    /// 중앙 Mirror Area의 실제 모양 — 안쪽 네 모서리가 둥근 사각형.
+    /// Renderer / FrameMask / Preview / Runtime / Capture가 모두 이 하나를 쓴다.
+    func mirrorAreaPath(in rect: CGRect) -> Path {
+        let area = mirrorArea.rect(in: rect.size).offsetBy(dx: rect.minX, dy: rect.minY)
+        return Path(roundedRect: area, cornerRadius: MirrorGeometry.innerCornerRadius(for: rect.size))
     }
 
     func value(for side: EditorSide) -> Double {
@@ -230,6 +249,8 @@ struct EditorViewportState: Equatable {
 struct SideDetailTransform {
     let canvasSize: CGSize
     let offset: CGPoint
+    /// 이 변환을 계산한 화면 크기. gutter / focus 계산에 쓴다.
+    let viewportSize: CGSize
     /// 지금 실제로 보이는 영역 (Master Canvas 기준 0...1). Mini Map이 이 값을 그린다.
     let visibleRect: NormalizedRect
     /// 요청한 pan 중 실제로 반영된 값. 뷰는 이 값을 되돌려 받아 저장한다.
@@ -238,6 +259,7 @@ struct SideDetailTransform {
     let appliedZoom: CGFloat
 
     init(side: EditorSide, insets: MirrorFrameInsets, viewport: CGSize, state: EditorViewportState = .init()) {
+        viewportSize = viewport
         let band = side.boundingBox(with: insets)
         let inset: CGFloat = 24
         let availableWidth = max(viewport.width - inset, 1)
@@ -267,10 +289,17 @@ struct SideDetailTransform {
 
         // pan이 0일 때의 기준 위치 — 밴드를 화면 중앙에 둔다.
         let bandRect = band.rect(in: canvasSize)
+
+        // Left / Right는 밴드가 캔버스 가장자리라 그냥 두면 화면 끝에 붙는다.
+        // 밴드를 화면 가로 중앙까지 끌어올 수 있도록 캔버스 바깥 여백(Editor Workspace Gutter)을 허용한다.
+        // 값은 geometry로 정확히 계산되며, 이 지점을 넘어가는 여백은 여전히 금지된다.
+        let centeringX: CGFloat? = side.panAxis == .vertical ? viewport.width / 2 - bandRect.midX : nil
+
         let baseX = Self.clampOffset(
             viewport.width / 2 - bandRect.midX,
             canvas: canvasSize.width, viewport: viewport.width,
-            bandMin: bandRect.minX, bandMax: bandRect.maxX
+            bandMin: bandRect.minX, bandMax: bandRect.maxX,
+            centering: centeringX
         )
         let baseY = Self.clampOffset(
             viewport.height / 2 - bandRect.midY,
@@ -281,7 +310,8 @@ struct SideDetailTransform {
         let movedX = Self.clampOffset(
             baseX + state.pan.width,
             canvas: canvasSize.width, viewport: viewport.width,
-            bandMin: bandRect.minX, bandMax: bandRect.maxX
+            bandMin: bandRect.minX, bandMax: bandRect.maxX,
+            centering: centeringX
         )
         let movedY = Self.clampOffset(
             baseY + state.pan.height,
@@ -292,12 +322,26 @@ struct SideDetailTransform {
         offset = CGPoint(x: movedX, y: movedY)
         appliedPan = CGSize(width: movedX - baseX, height: movedY - baseY)
 
-        visibleRect = NormalizedRect(
-            x: Double(-offset.x / canvasSize.width),
-            y: Double(-offset.y / canvasSize.height),
-            width: Double(min(viewport.width, canvasSize.width) / canvasSize.width),
-            height: Double(min(viewport.height, canvasSize.height) / canvasSize.height)
-        )
+        // Gutter는 Master Canvas가 아니다. 실제로 보이는 Master 영역만 담는다.
+        visibleRect = Self.visibleMaster(offset: offset, canvas: canvasSize, viewport: viewport)
+    }
+
+    /// 화면과 Master Canvas가 실제로 겹치는 부분 (0...1). Mini Map이 이 값을 그린다.
+    private static func visibleMaster(offset: CGPoint, canvas: CGSize, viewport: CGSize) -> NormalizedRect {
+        func span(offset: CGFloat, canvas: CGFloat, viewport: CGFloat) -> (Double, Double) {
+            let start = max(0, -offset)
+            let end = min(canvas, viewport - offset)
+            return (Double(start / canvas), Double(max(end - start, 0) / canvas))
+        }
+        let (x, width) = span(offset: offset.x, canvas: canvas.width, viewport: viewport.width)
+        let (y, height) = span(offset: offset.y, canvas: canvas.height, viewport: viewport.height)
+        return NormalizedRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// 지금 화면에 보이는 Editor Workspace Gutter의 폭(pt). 캔버스 좌우 바깥의 편집용 여백이다.
+    /// MirrorDesign이 아니라 편집 UI 공간이므로 Preview / Mirror / Capture에는 존재하지 않는다.
+    var workspaceGutter: CGFloat {
+        max(0, offset.x) + max(0, viewportSize.width - (offset.x + canvasSize.width))
     }
 
     /// Side별 기본 배율(zoom 1.0 기준).
@@ -367,7 +411,8 @@ struct SideDetailTransform {
         canvas: CGFloat,
         viewport: CGFloat,
         bandMin: CGFloat,
-        bandMax: CGFloat
+        bandMax: CGFloat,
+        centering: CGFloat? = nil
     ) -> CGFloat {
         // 캔버스가 화면보다 작으면 가운데 정렬 (의도된 여백)
         guard canvas > viewport else { return (viewport - canvas) / 2 }
@@ -382,6 +427,49 @@ struct SideDetailTransform {
         lower = max(lower, min(bandLower, upper))
         upper = min(upper, max(bandUpper, lower))
 
+        // 밴드를 화면 중앙에 놓기 위한 offset까지만 범위를 넓힌다.
+        // 여기서 생기는 캔버스 바깥 여백이 Editor Workspace Gutter이고, 그 이상은 나갈 수 없다.
+        if let centering {
+            lower = min(lower, centering)
+            upper = max(upper, centering)
+        }
+
         return min(upper, max(lower, value))
+    }
+
+    // MARK: - Sticker focus
+
+    /// 스티커를 편하게 잡으려면 handle 주변에 이만큼 여유가 있어야 한다.
+    static let focusMargin: CGFloat = 40
+
+    /// 선택한 스티커가 이미 충분히 보이면 nil — viewport를 건드리지 않는다.
+    /// 아니라면 **zoom은 그대로 두고** 최소한의 pan만 더한 상태를 돌려준다.
+    func focusState(on frame: NormalizedRect, from state: EditorViewportState) -> EditorViewportState? {
+        let bounds = CGRect(origin: .zero, size: viewportSize)
+        let visible = MirrorViewTransform(canvasSize: canvasSize, offset: offset).rect(frame)
+
+        // 스티커 자체가 이미 다 보이면 손대지 않는다.
+        // 캔버스 끝에 붙은 스티커는 여백을 다 확보할 수 없으므로 여백은 판단 기준이 아니다.
+        guard !bounds.contains(visible) else { return nil }
+
+        // 움직여야 한다면 handle을 잡을 여백까지 고려해서 끌어온다.
+        let rect = visible.insetBy(dx: -Self.focusMargin, dy: -Self.focusMargin)
+
+        func shift(min lo: CGFloat, max hi: CGFloat, boundsMin: CGFloat, boundsMax: CGFloat) -> CGFloat {
+            // 화면보다 큰 스티커는 가운데로만 맞춘다.
+            guard hi - lo <= boundsMax - boundsMin else { return (boundsMin + boundsMax) / 2 - (lo + hi) / 2 }
+            if lo < boundsMin { return boundsMin - lo }
+            if hi > boundsMax { return boundsMax - hi }
+            return 0
+        }
+
+        let dx = shift(min: rect.minX, max: rect.maxX, boundsMin: bounds.minX, boundsMax: bounds.maxX)
+        let dy = shift(min: rect.minY, max: rect.maxY, boundsMin: bounds.minY, boundsMax: bounds.maxY)
+        guard dx != 0 || dy != 0 else { return nil }
+
+        return EditorViewportState(
+            zoom: state.zoom,
+            pan: CGSize(width: state.pan.width + dx, height: state.pan.height + dy)
+        )
     }
 }

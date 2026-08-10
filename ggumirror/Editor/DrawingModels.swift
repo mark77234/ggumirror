@@ -109,10 +109,7 @@ struct FrameMaskShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
-        let mirror = insets.mirrorArea
-            .rect(in: rect.size)
-            .offsetBy(dx: rect.minX, dy: rect.minY)
-        path.addRect(mirror)
+        path.addPath(insets.mirrorAreaPath(in: rect))
         return path   // even-odd로 채우면 가운데가 뚫린다
     }
 
@@ -121,12 +118,30 @@ struct FrameMaskShape: Shape {
 
 extension MirrorFrameInsets {
     /// 중앙 Mirror Area 안쪽인지. 여기에는 그림이 남으면 안 된다.
+    /// Mirror Area는 모서리가 둥근 사각형이라 곡선 바깥(= 프레임 쪽)은 그릴 수 있다.
+    /// 렌더 / 마스크 / 제약이 모두 같은 geometry를 보도록 반경도 MirrorGeometry에서 온다.
     func isInsideMirrorArea(_ point: NormalizedPoint) -> Bool {
         let area = mirrorArea
-        return point.x > area.x
-            && point.x < area.x + area.width
-            && point.y > area.y
-            && point.y < area.y + area.height
+        guard point.x > area.x, point.x < area.x + area.width,
+              point.y > area.y, point.y < area.y + area.height
+        else { return false }
+
+        // Master 기준 원형 모서리를 normalized로 보면 타원이 된다.
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+        let dx = max(area.x + rx - point.x, point.x - (area.x + area.width - rx), 0)
+        let dy = max(area.y + ry - point.y, point.y - (area.y + area.height - ry), 0)
+        guard dx > 0, dy > 0 else { return true }   // 모서리 사각형 밖 = 직선 구간
+        let nx: Double = dx / rx
+        let ny: Double = dy / ry
+        return nx * nx + ny * ny <= 1
+    }
+
+    /// 실제로 칠할 수 있는 프레임 밴드인지.
+    /// Master Canvas 밖(= Editor Workspace Gutter)과 중앙 Mirror Area는 모두 제외된다.
+    func isInsideFrameBand(_ point: NormalizedPoint) -> Bool {
+        guard (0...1).contains(point.x), (0...1).contains(point.y) else { return false }
+        return !isInsideMirrorArea(point)
     }
 }
 

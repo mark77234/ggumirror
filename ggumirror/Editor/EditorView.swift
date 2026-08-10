@@ -10,7 +10,9 @@ import SwiftUI
 
 struct EditorView: View {
     @State var design: MirrorDesign
-    var onSave: (MirrorDesign) -> Void
+    /// 저장 정책(기본/구매 → 새 거울, 슬롯 제한)을 위해 라이브러리를 직접 본다.
+    var library: MirrorLibrary
+    var onSaved: () -> Void
 
     @State private var mode: EditorMode = .overview
     /// Side Detail에서 실제로 보이는 영역. Mini Map이 이 값을 그린다.
@@ -25,6 +27,10 @@ struct EditorView: View {
     @State private var history = EditorHistory()
     @State private var isPickingSticker = false
     @State private var selectedStickerID: UUID?
+    @State private var isChoosingStickerColor = false
+    @State private var isNamingMirror = false
+    @State private var draftName = ""
+    @State private var showsSlotFull = false
     /// Side별 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
     @State private var viewports: [EditorSide: EditorViewportState] = [:]
     @State private var isEditingDrawSettings = false
@@ -60,6 +66,33 @@ struct EditorView: View {
         .paperBackground()
         .fullScreenCover(isPresented: $isPreviewing) {
             EditorPreviewView(design: design)
+        }
+        .sheet(isPresented: $isNamingMirror) {
+            MirrorNameSheet(
+                name: $draftName,
+                isNewMirror: library.needsNewSlot(for: design),
+                onSave: { saveMirror() }
+            )
+            .presentationDetents([.height(260)])
+            .presentationBackground { PaperBackground() }
+        }
+        .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
+            Button("보관 공간 늘리기") { showsSlotFull = false }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("새 거울을 저장하려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.")
+        }
+        .sheet(isPresented: $isChoosingStickerColor) {
+            if let sticker = selectedSticker {
+                StickerColorSheet(
+                    color: sticker.tintColor ?? PaperTheme.ink,
+                    onPick: { color in
+                        apply(sticker) { $0.tintColor = color }
+                    }
+                )
+                .presentationDetents([.height(300)])
+                .presentationBackground { PaperBackground() }
+            }
         }
         .sheet(isPresented: $isPickingSticker) {
             StickerPickerSheet { source in
@@ -100,8 +133,8 @@ struct EditorView: View {
                 Spacer()
 
                 Button("저장") {
-                    onSave(design)
-                    dismiss()
+                    draftName = design.name
+                    isNamingMirror = true
                 }
                 .font(InkFont.body.weight(.semibold))
                 .frame(minWidth: 44, minHeight: 44)
@@ -319,6 +352,21 @@ struct EditorView: View {
         .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
     }
 
+    private func saveMirror() {
+        switch library.save(design, name: draftName) {
+        case .updated, .created:
+            isNamingMirror = false
+            onSaved()
+            dismiss()
+        case .needsMoreSlots:
+            isNamingMirror = false
+            // 이름이 비었을 수도 있고 슬롯이 없을 수도 있다.
+            if library.needsNewSlot(for: design), !library.hasFreeCreatedSlot {
+                showsSlotFull = true
+            }
+        }
+    }
+
     /// 지금 보고 있는 위치에 넣는다. Right 하단을 보고 있으면 Right 하단에 생긴다.
     private func addSticker(_ source: StickerSource) {
         guard let side = mode.side else { return }
@@ -357,8 +405,23 @@ struct EditorView: View {
             }
 
             HStack(spacing: 8) {
+                if sticker.source.supportsTint {
+                    Button {
+                        isChoosingStickerColor = true
+                    } label: {
+                        Circle()
+                            .fill(sticker.tintColor ?? PaperTheme.ink)
+                            .frame(width: 22, height: 22)
+                            .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
+                            .frame(width: 44, height: 44)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .disabled(sticker.isLocked)
+                    .accessibilityLabel("스티커 색상")
+                }
                 iconButton("복제", icon: "plus.square.on.square") { duplicate(sticker) }
-                iconButton("뒤집기", icon: "arrow.left.and.right.righttriangle.left.righttriangle.right",
+                iconButton("뒤집기", icon: "arrow.left.and.right",
                            isEnabled: !sticker.isLocked) {
                     apply(sticker) { $0.isFlippedHorizontally.toggle() }
                 }
@@ -366,11 +429,28 @@ struct EditorView: View {
                            icon: sticker.isLocked ? "lock" : "lock.open") {
                     apply(sticker) { $0.isLocked.toggle() }
                 }
-                Spacer(minLength: 0)
                 iconButton("삭제", icon: "trash") {
                     history.apply(.deleteSticker(sticker.id), to: &design.snapshot)
                     selectedStickerID = nil
                 }
+
+                Spacer(minLength: 0)
+
+                // 배치를 마치고 다음 작업으로 넘어가는 가장 눈에 띄는 컨트롤.
+                Button("완료") {
+                    EditorHaptics.placementConfirmed()
+                    selectedStickerID = nil
+                }
+                .font(InkFont.body.weight(.semibold))
+                .foregroundStyle(PaperTheme.subtleSurface)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                    shape.fill(PaperTheme.ink)
+                }
+                .buttonStyle(InkPressStyle())
+                .accessibilityLabel("스티커 배치 완료")
             }
         }
         .padding(.horizontal, 16)
@@ -577,5 +657,7 @@ private struct EditorPreviewView: View {
 }
 
 #Preview {
-    EditorView(design: MirrorDesign(mirror: MirrorLibrary().mirrors[3]), onSave: { _ in })
+    EditorView(design: MirrorDesign(mirror: MirrorLibrary().mirrors[3]),
+               library: MirrorLibrary(),
+               onSaved: {})
 }

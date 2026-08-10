@@ -149,16 +149,23 @@ struct EditorGeometryTests {
         #expect(abs((bottom.visibleRect.y + bottom.visibleRect.height) - 1) < 0.001)
     }
 
-    /// 캔버스가 화면보다 큰 축에서는 어떤 pan에서도 빈 공간이 보이면 안 된다.
-    /// 캔버스가 화면보다 작은 축은 가운데 정렬된다(의도된 여백).
-    @Test("캔버스 밖으로는 pan 되지 않는다", arguments: EditorSide.allCases)
+    /// 세로축에는 어떤 pan에서도 빈 공간이 생기면 안 된다.
+    /// 가로축은 Left / Right에서 밴드를 화면 중앙에 놓기 위한 Editor Workspace Gutter만 허용된다.
+    /// 그 이상 — pan하다 캔버스가 멀리 날아가 생기는 빈 공간 — 은 여전히 금지다.
+    @Test("의도한 workspace gutter 외에는 캔버스 밖으로 pan 되지 않는다", arguments: EditorSide.allCases)
     func panNeverShowsEmptySpace(side: EditorSide) {
         for pan in [-5000.0, -500.0, 0.0, 500.0, 5000.0] {
             let t = SideDetailTransform(side: side, insets: .standard, viewport: viewport, state: .init(pan: CGSize(width: pan, height: pan)))
 
             if t.canvasSize.width > viewport.width {
-                #expect(t.offset.x <= 0.001)
-                #expect(t.offset.x + t.canvasSize.width >= viewport.width - 0.001)
+                let band = side.boundingBox(with: .standard).rect(in: t.canvasSize)
+                // 밴드는 화면 중앙을 넘어서까지 밀려나지 않는다.
+                let allowance = side.panAxis == .vertical
+                    ? max(0, viewport.width / 2 - band.width / 2)
+                    : 0
+                #expect(t.offset.x <= allowance + 0.001)
+                #expect(t.offset.x + t.canvasSize.width >= viewport.width - allowance - 0.001)
+                #expect(t.workspaceGutter <= allowance + 0.001)
             } else {
                 #expect(abs(t.offset.x - (viewport.width - t.canvasSize.width) / 2) < 0.001)
             }
@@ -537,7 +544,7 @@ struct EditorGeometryTests {
 
     @Test("Side Detail에서도 획이 실제로 렌더된다", arguments: [1.0, 2.0, 3.0])
     func strokeActuallyRendersInSideDetail(zoom: Double) {
-        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         design.strokes = [longLeftStroke]
 
         let transform = SideDetailTransform(
@@ -556,7 +563,7 @@ struct EditorGeometryTests {
 
     @Test("Overview에서도 획이 실제로 렌더된다")
     func strokeActuallyRendersInOverview() {
-        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         design.strokes = [longLeftStroke]
 
         let size = CGSize(width: 300, height: 650)
@@ -693,7 +700,7 @@ struct EditorGeometryTests {
 
     @Test("새 도구로 그린 획도 렌더된다", arguments: EditorBrush.allCases)
     func newBrushRenders(brush: EditorBrush) {
-        var design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        var design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         design.strokes = [
             DrawingStroke(
                 points: (0...10).map { NormalizedPoint(x: 0.05, y: 0.2 + Double($0) * 0.03) },
@@ -819,9 +826,19 @@ struct EditorGeometryTests {
         #expect((pixel?.red ?? 255) < 120)
     }
 
+    /// 저장 정책 테스트용 시드.
+    /// 실제 앱의 초기 내 거울은 비어 있으므로, 필요한 거울은 테스트가 직접 만든다.
+    private func seededLibrary() -> MirrorLibrary {
+        let library = MirrorLibrary()
+        library.acquire(StoreCatalog.basics[0])      // 무료 기본 템플릿 → origin .basic
+        library.acquire(StoreCatalog.creators[0])    // Creator 템플릿 → origin .purchased
+        _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "내가 만든 거울")
+        return library
+    }
+
     @Test("모든 거울이 같은 프레임 규격을 쓴다")
     func everyMirrorSharesFrameGeometry() {
-        let library = MirrorLibrary()
+        let library = seededLibrary()
         for mirror in library.mirrors {
             #expect(mirror.style.insets == .standard)
         }
@@ -834,7 +851,7 @@ struct EditorGeometryTests {
 
     @Test("적용을 바꾸면 현재 거울이 바뀐다")
     func applyingChangesCurrentMirror() {
-        let library = MirrorLibrary()
+        let library = seededLibrary()
         let target = library.mirrors[1]
         library.apply(target)
         #expect(library.currentMirror.id == target.id)
@@ -847,7 +864,7 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: library.currentMirror)
         design.backgroundColor = BasicMirror.mint.style.frame
         design.strokes = [DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.4)], width: 0.01)]
-        library.save(design)
+        _ = library.save(design, name: "테스트 거울")
 
         let updated = MirrorDesign(mirror: library.currentMirror)
         #expect(updated.backgroundColor == BasicMirror.mint.style.frame)
@@ -874,7 +891,7 @@ struct EditorGeometryTests {
 
     @Test("스티커는 보고 있는 위치 근처에 들어간다")
     func stickerInsertsNearViewport() {
-        let design = MirrorDesign(mirror: MirrorLibrary().mirrors[0])
+        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
         // Right 하단을 보고 있는 상태
         let transform = SideDetailTransform(
             side: .right, insets: .standard, viewport: viewport,
@@ -1081,11 +1098,197 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: library.currentMirror)
         let item = sticker(.ribbon, at: NormalizedPoint(x: 0.95, y: 0.8))
         design.stickers = [item]
-        library.save(design)
+        _ = library.save(design, name: "테스트 거울")
 
         let updated = MirrorDesign(mirror: library.currentMirror)
         #expect(updated.stickers.first?.id == item.id)
         #expect(updated.stickers.first?.source == .ribbon)
+    }
+
+    // MARK: - Sticker 라이브러리 / tint
+
+    @Test("기본 스티커가 20종 이상이고 식별자가 겹치지 않는다")
+    func stickerLibraryIsLargeAndUnique() {
+        #expect(StickerSource.allCases.count >= 20)
+        #expect(Set(StickerSource.allCases.map(\.rawValue)).count == StickerSource.allCases.count)
+        #expect(Set(StickerSource.allCases.map(\.symbolName)).count == StickerSource.allCases.count)
+        #expect(StickerSource.allCases.allSatisfy { !$0.title.isEmpty })
+    }
+
+    @Test("카테고리 필터가 동작한다", arguments: StickerCategory.allCases)
+    func stickerCategoryFilters(category: StickerCategory) {
+        let filtered = StickerSource.all(in: category)
+        #expect(!filtered.isEmpty)
+        if category == .all {
+            #expect(filtered.count == StickerSource.allCases.count)
+        } else {
+            #expect(filtered.allSatisfy { $0.category == category })
+        }
+    }
+
+    @Test("template 스티커는 지정한 색으로 칠해진다")
+    func templateStickerUsesTint() {
+        var item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        item.tintColor = .red
+        #expect(item.source.supportsTint)
+        #expect(item.resolvedTint == .red)
+    }
+
+    @Test("색을 지정하지 않으면 기본 잉크색이다")
+    func stickerDefaultTintIsInk() {
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        #expect(item.resolvedTint == PaperTheme.ink)
+    }
+
+    @Test("스티커 색 변경은 되돌릴 수 있다")
+    func stickerColorIsUndoable() {
+        let item = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+        var snapshot = EditorSnapshot(stickers: [item])
+        var history = EditorHistory()
+
+        var tinted = item
+        tinted.tintColor = .blue
+        history.apply(.replaceSticker(tinted), to: &snapshot)
+        #expect(snapshot.stickers.first?.tintColor == .blue)
+
+        history.undo(&snapshot)
+        #expect(snapshot.stickers.first?.tintColor == nil)
+    }
+
+    // MARK: - Haptic rate limit
+
+    @Test("첫 접촉과 짧은 간격에는 촉각 tick이 울리지 않는다")
+    func hapticIsRateLimited() {
+        var limiter = HapticRateLimiter()
+        // 첫 호출은 기준점만 잡는다.
+        let first = limiter.shouldFire(at: NormalizedPoint(x: 0.05, y: 0.50), time: 0)
+        // 간격은 충분하지만 거의 움직이지 않았다.
+        let tooClose = limiter.shouldFire(at: NormalizedPoint(x: 0.0501, y: 0.5), time: 0.5)
+        // 많이 움직였지만 시간이 너무 짧다.
+        let tooSoon = limiter.shouldFire(at: NormalizedPoint(x: 0.20, y: 0.5), time: 0.01)
+        // 시간과 거리 모두 충분하면 울린다.
+        let fires = limiter.shouldFire(at: NormalizedPoint(x: 0.20, y: 0.5), time: 1.0)
+        // 바로 다음 프레임은 다시 막힌다.
+        let throttled = limiter.shouldFire(at: NormalizedPoint(x: 0.21, y: 0.5), time: 1.01)
+
+        #expect(!first)
+        #expect(!tooClose)
+        #expect(!tooSoon)
+        #expect(fires)
+        #expect(!throttled)
+    }
+
+    // MARK: - Save / Naming / Storage slots
+
+    @Test("이름은 앞뒤 공백을 정리하고 길이를 제한한다")
+    func nameNormalization() {
+        #expect(MirrorStoragePolicy.normalizedName("  나만의 거울  ") == "나만의 거울")
+        #expect(MirrorStoragePolicy.normalizedName("   ") == nil)
+        #expect(MirrorStoragePolicy.normalizedName("") == nil)
+        let long = String(repeating: "가", count: 60)
+        #expect(MirrorStoragePolicy.normalizedName(long)?.count == MirrorStoragePolicy.maxNameLength)
+    }
+
+    @Test("기본 거울을 꾸미면 원본은 그대로 두고 새 거울이 생긴다")
+    func savingBasicMirrorCreatesCopy() {
+        let library = seededLibrary()
+        let basic = library.mirrors.first { $0.origin == .basic }!
+        let before = library.mirrors.count
+        var design = MirrorDesign(mirror: basic)
+        design.strokes = [DrawingStroke(points: [NormalizedPoint(x: 0.05, y: 0.3)], width: 0.01)]
+
+        #expect(library.needsNewSlot(for: design))
+        let outcome = library.save(design, name: "내 첫 거울")
+        #expect(outcome == .created("내 첫 거울"))
+        #expect(library.mirrors.count == before + 1)
+        // 원본은 손대지 않는다
+        #expect(library.mirrors.first { $0.id == basic.id }?.strokes.isEmpty == true)
+        // 새 거울이 바로 적용된다
+        #expect(library.currentMirror.name == "내 첫 거울")
+        #expect(library.currentMirror.origin == .made)
+    }
+
+    @Test("구매한 거울도 원본을 덮어쓰지 않는다")
+    func savingPurchasedMirrorCreatesCopy() {
+        let library = seededLibrary()
+        let purchased = library.mirrors.first { $0.origin == .purchased }!
+        let design = MirrorDesign(mirror: purchased)
+        #expect(library.needsNewSlot(for: design))
+        let purchasedOutcome = library.save(design, name: "구매 거울 편집")
+        #expect(purchasedOutcome == .created("구매 거울 편집"))
+        #expect(library.mirrors.contains { $0.id == purchased.id && $0.origin == .purchased })
+    }
+
+    @Test("내가 만든 거울을 다시 편집하면 같은 거울이 갱신된다")
+    func savingCreatedMirrorUpdatesInPlace() {
+        let library = seededLibrary()
+        let made = library.mirrors.first { $0.origin == .made }!
+        let before = library.mirrors.count
+        var design = MirrorDesign(mirror: made)
+        design.backgroundColor = BasicMirror.mint.style.frame
+
+        #expect(!library.needsNewSlot(for: design))
+        let updatedOutcome = library.save(design, name: "이름 변경")
+        #expect(updatedOutcome == .updated("이름 변경"))
+        #expect(library.mirrors.count == before)
+        #expect(library.mirrors.first { $0.id == made.id }?.name == "이름 변경")
+    }
+
+    @Test("슬롯은 내가 만든 거울만 소비한다")
+    func onlyCreatedMirrorsConsumeSlots() {
+        let library = seededLibrary()
+        #expect(library.mirrors.count { $0.origin == .basic } == 1)
+        #expect(library.mirrors.count { $0.origin == .purchased } == 1)
+        // 받은 기본 / 구매 거울은 슬롯을 쓰지 않는다.
+        #expect(library.createdCount == 1)
+        #expect(library.createdCount == library.mirrors.count { $0.origin == .made })
+        #expect(library.createdCapacity == MirrorStoragePolicy.freeCreatedSlots)
+    }
+
+    @Test("무료 슬롯이 가득 차면 새 거울 저장이 막힌다")
+    func fullSlotsBlockNewMirror() {
+        let library = seededLibrary()
+        let basic = library.mirrors.first { $0.origin == .basic }!
+
+        while library.hasFreeCreatedSlot {
+            let outcome = library.save(MirrorDesign(mirror: basic), name: "거울")
+            #expect(outcome != .needsMoreSlots)
+        }
+        #expect(library.createdCount == library.createdCapacity)
+        let blocked = library.save(MirrorDesign(mirror: basic), name: "하나 더")
+        #expect(blocked == .needsMoreSlots)
+    }
+
+    @Test("슬롯이 가득 차도 기존 내 거울 편집은 계속 가능하다")
+    func fullSlotsStillAllowUpdates() {
+        let library = seededLibrary()
+        let basic = library.mirrors.first { $0.origin == .basic }!
+        while library.hasFreeCreatedSlot {
+            _ = library.save(MirrorDesign(mirror: basic), name: "거울")
+        }
+        let existing = library.mirrors.last { $0.origin == .made }!
+        var design = MirrorDesign(mirror: existing)
+        design.backgroundColor = BasicMirror.sky.style.frame
+        let stillEditable = library.save(design, name: "계속 편집")
+        #expect(stillEditable == .updated("계속 편집"))
+    }
+
+    @Test("슬롯 팩은 보관 공간을 늘린다")
+    func slotPackExpandsCapacity() {
+        let library = MirrorLibrary()
+        let before = library.createdCapacity
+        library.grantSlotPack()
+        #expect(library.createdCapacity == before + MirrorStoragePolicy.slotPackSize)
+    }
+
+    @Test("보관 슬롯과 조각 잔액은 서로 무관하다")
+    func slotsAreNotShards() {
+        let library = MirrorLibrary()
+        let shards = ShardWallet.temporaryBalance
+        library.grantSlotPack()
+        // 슬롯을 늘려도 조각이 차감되지 않는다 (실제 결제는 아직 없다)
+        #expect(ShardWallet.temporaryBalance == shards)
+        #expect(library.createdCapacity != shards)
     }
 
     // MARK: - 지우개
@@ -1099,5 +1302,477 @@ struct EditorGeometryTests {
 
         #expect(stroke.isHit(by: NormalizedPoint(x: 0.05, y: 0.20), radius: 20))
         #expect(!stroke.isHit(by: NormalizedPoint(x: 0.9, y: 0.9), radius: 20))
+    }
+
+    // MARK: - Editor Workspace Gutter (Side Workspace Centering)
+
+    /// 선택한 밴드의 화면상 중심 x.
+    private func bandCenterX(_ side: EditorSide) -> CGFloat {
+        let transform = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
+        let band = side.boundingBox(with: .standard).rect(in: transform.canvasSize)
+        return band.midX + transform.offset.x
+    }
+
+    @Test("Left 프레임은 기본 상태에서 화면 가로 중앙에 온다")
+    func leftBandIsCentered() {
+        #expect(abs(bandCenterX(.left) - viewport.width / 2) < 0.5)
+    }
+
+    @Test("Right 프레임은 기본 상태에서 화면 가로 중앙에 온다")
+    func rightBandIsCentered() {
+        #expect(abs(bandCenterX(.right) - viewport.width / 2) < 0.5)
+    }
+
+    @Test("Left / Right workspace는 정확히 대칭이다")
+    func leftRightWorkspaceIsSymmetric() {
+        let left = SideDetailTransform(side: .left, insets: .standard, viewport: viewport)
+        let right = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        #expect(abs(left.workspaceGutter - right.workspaceGutter) < 0.5)
+        #expect(left.workspaceGutter > 0)
+        // gutter는 캔버스 바깥쪽에만 생긴다.
+        #expect(left.offset.x > 0)                                      // 왼쪽 바깥
+        #expect(right.offset.x + right.canvasSize.width < viewport.width)   // 오른쪽 바깥
+    }
+
+    @Test("Workspace Gutter는 MirrorDesign이 아니다")
+    func workspaceGutterIsNotPartOfDesign() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        #expect(transform.workspaceGutter > 0)
+
+        // Mini Map이 보는 영역은 항상 Master Canvas 안쪽이다.
+        #expect(transform.visibleRect.x >= -0.0001)
+        #expect(transform.visibleRect.x + transform.visibleRect.width <= 1.0001)
+
+        // Gutter 위치는 Master 좌표계 밖으로 나간다 — 저장할 수 있는 좌표가 아니다.
+        let gutterPoint = CGPoint(x: viewport.width - 2, y: viewport.height / 2)
+        #expect(transform.masterPoint(from: gutterPoint).x > 1)
+
+        // 디자인 데이터에는 gutter라는 개념 자체가 없다.
+        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        #expect(design.insets == .standard)
+    }
+
+    @Test("Gutter에서는 그리기가 시작되지 않는다")
+    func gutterTouchCannotCreateDrawing() {
+        let insets = MirrorFrameInsets.standard
+        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 1.08, y: 0.5)))   // 오른쪽 gutter
+        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: -0.08, y: 0.5)))  // 왼쪽 gutter
+        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: 0.5)))    // 중앙 Mirror Area
+        #expect(insets.isInsideFrameBand(NormalizedPoint(x: 0.05, y: 0.5)))    // 실제 프레임 밴드
+    }
+
+    @Test("Gutter는 스티커 위치가 될 수 없다")
+    func gutterCannotBecomeStickerPosition() {
+        let insets = MirrorFrameInsets.standard
+        let placed = sticker(at: NormalizedPoint(x: 0.05, y: 0.5))
+            .moved(to: NormalizedPoint(x: 1.4, y: 0.5))
+            .constrained(to: insets)
+        #expect(placed.center.x <= 1.0001)
+        #expect(placed.center.x >= -0.0001)
+    }
+
+    @Test("맞춤은 중앙 배치 기본 상태로 되돌린다")
+    func fitReturnsToCenteredSideLayout() {
+        for side in [EditorSide.left, .right] {
+            let panned = SideDetailTransform(
+                side: side, insets: .standard, viewport: viewport,
+                state: .init(zoom: 2, pan: CGSize(width: -400, height: 300))
+            )
+            #expect(panned.appliedPan != .zero || panned.appliedZoom != 1)
+
+            // 맞춤 = 기본 EditorViewportState
+            let fitted = SideDetailTransform(side: side, insets: .standard, viewport: viewport)
+            #expect(fitted.appliedPan == .zero)
+            #expect(abs(bandCenterX(side) - viewport.width / 2) < 0.5)
+        }
+    }
+
+    @Test("Pan / Zoom 후에도 Master 좌표 변환이 유효하다")
+    func panZoomRetainsValidMasterMapping() {
+        for zoom in [0.7, 1.0, 2.4] {
+            let transform = SideDetailTransform(
+                side: .right, insets: .standard, viewport: viewport,
+                state: .init(zoom: CGFloat(zoom), pan: CGSize(width: -120, height: -260))
+            )
+            let screen = CGPoint(x: 90, y: 300)
+            let master = transform.masterPoint(from: screen)
+            let back = transform.screenPoint(from: master)
+            #expect(abs(back.x - screen.x) < 0.001)
+            #expect(abs(back.y - screen.y) < 0.001)
+        }
+    }
+
+    @Test("실제 Mirror는 Editor workspace gutter의 영향을 받지 않는다")
+    func runtimeUnaffectedByWorkspaceGutter() {
+        let size = CGSize(width: 300, height: 650)
+        let runtime = MirrorViewTransform.aspectFilled(in: size)
+        // 카메라 위에서는 캔버스가 화면을 완전히 덮는다 — 빈 여백이 없다.
+        #expect(runtime.canvasRect.minX <= 0.001)
+        #expect(runtime.canvasRect.maxX >= size.width - 0.001)
+        #expect(runtime.canvasRect.minY <= 0.001)
+        #expect(runtime.canvasRect.maxY >= size.height - 0.001)
+
+        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        let edge = runtimePixel(design: design, at: NormalizedPoint(x: 0.02, y: 0.5), size: size)
+        #expect((edge?.alpha ?? 0) > 200)   // 프레임이 그대로 칠해진다
+    }
+
+    @Test("Capture 결과도 workspace gutter의 영향을 받지 않는다")
+    func captureUnaffectedByWorkspaceGutter() {
+        let size = CGSize(width: 300, height: 650)
+        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        let image = MirrorCapture.compose(frame: nil, design: design, size: size)
+        #expect(image != nil)
+        #expect(abs((image?.size.width ?? 0) - size.width) < 1)
+        #expect(abs((image?.size.height ?? 0) - size.height) < 1)
+    }
+
+    // MARK: - Sticker 재선택 / Focus
+
+    /// 화면 좌표 hit test. Editor의 beginStickerTouch와 같은 규칙이다.
+    private func hitSticker(
+        _ stickers: [StickerObject],
+        at location: CGPoint,
+        transform: SideDetailTransform
+    ) -> StickerObject? {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        return stickers
+            .sorted { $0.zIndex > $1.zIndex }
+            .first { $0.hitRect(in: placement).contains(location) }
+    }
+
+    @Test("스티커를 탭하면 그 스티커가 선택된다")
+    func stickerTapSelectsObject() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let center = placement.rect(target.frame)
+
+        #expect(hitSticker([target], at: CGPoint(x: center.midX, y: center.midY), transform: transform)?.id == target.id)
+        #expect(hitSticker([target], at: CGPoint(x: center.midX, y: center.midY - 400), transform: transform) == nil)
+    }
+
+    @Test("완료로 선택을 푼 뒤 다시 탭하면 같은 스티커가 선택된다")
+    func doneThenReselectWorks() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let point = CGPoint(x: placement.rect(target.frame).midX, y: placement.rect(target.frame).midY)
+
+        var selected: UUID? = target.id
+        selected = nil                                   // "완료"
+        #expect(selected == nil)
+        selected = hitSticker([target], at: point, transform: transform)?.id
+        #expect(selected == target.id)
+    }
+
+    @Test("재선택해도 스티커 상태는 그대로다")
+    func reselectShowsSameStickerState() {
+        var target = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        target.rotation = 24
+        target.opacity = 0.6
+        target.tintColor = .red
+        target.isFlippedHorizontally = true
+
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let rect = placement.rect(target.frame)
+        let found = hitSticker([target], at: CGPoint(x: rect.midX, y: rect.midY), transform: transform)
+
+        #expect(found == target)
+    }
+
+    @Test("잠긴 스티커도 다시 선택할 수 있다")
+    func lockedStickerCanBeSelected() {
+        var locked = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        locked.isLocked = true
+
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        let rect = placement.rect(locked.frame)
+
+        let found = hitSticker([locked], at: CGPoint(x: rect.midX, y: rect.midY), transform: transform)
+        #expect(found?.id == locked.id)
+        #expect(found?.isLocked == true)
+    }
+
+    @Test("화면 밖으로 나간 스티커는 zoom을 유지한 채 최소한만 끌어온다")
+    func partiallyOffscreenStickerAppliesMinimalFocus() {
+        let state = EditorViewportState(zoom: 1.6)
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        // 아래쪽 멀리 있는 스티커
+        let far = sticker(at: NormalizedPoint(x: 0.95, y: 0.95))
+
+        let focused = transform.focusState(on: far.frame, from: state)
+        #expect(focused != nil)
+        #expect(focused?.zoom == state.zoom)             // zoom은 절대 바꾸지 않는다
+
+        let after = SideDetailTransform(
+            side: .right, insets: .standard, viewport: viewport, state: focused ?? state
+        )
+        let placement = MirrorViewTransform(canvasSize: after.canvasSize, offset: after.offset)
+        let rect = placement.rect(far.frame)
+        #expect(rect.midY >= 0 && rect.midY <= viewport.height)
+
+        // 최소 이동 — 한 번 끌어온 뒤에는 더 움직이지 않는다.
+        let applied = EditorViewportState(zoom: after.appliedZoom, pan: after.appliedPan)
+        #expect(after.focusState(on: far.frame, from: applied) == nil)
+    }
+
+    @Test("이미 충분히 보이는 스티커는 화면을 움직이지 않는다")
+    func fullyVisibleStickerDoesNotMoveViewport() {
+        let state = EditorViewportState()
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        // 기본 화면 중앙 근처
+        let master = transform.masterPoint(from: CGPoint(x: viewport.width / 2, y: viewport.height / 2))
+        let visible = sticker(at: master, width: 0.1)
+
+        #expect(transform.focusState(on: visible.frame, from: state) == nil)
+    }
+
+    @Test("다른 스티커를 고르면 이전 선택은 풀린다")
+    func selectingADeselectsB() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        var a = sticker(at: NormalizedPoint(x: 0.95, y: 0.44))
+        var b = sticker(at: NormalizedPoint(x: 0.95, y: 0.56))
+        a.zIndex = 1
+        b.zIndex = 2
+
+        let rectA = placement.rect(a.frame)
+        let rectB = placement.rect(b.frame)
+        var selected = hitSticker([a, b], at: CGPoint(x: rectB.midX, y: rectB.midY), transform: transform)?.id
+        #expect(selected == b.id)
+        selected = hitSticker([a, b], at: CGPoint(x: rectA.midX, y: rectA.midY), transform: transform)?.id
+        #expect(selected == a.id)
+        #expect(selected != b.id)
+    }
+
+    @Test("Focus는 스티커 데이터를 바꾸지 않는다")
+    func stickerDataUnchangedByFocus() {
+        let state = EditorViewportState(zoom: 1.6)
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: state)
+        let target = sticker(at: NormalizedPoint(x: 0.95, y: 0.95))
+        let before = target
+
+        _ = transform.focusState(on: target.frame, from: state)
+        #expect(target == before)
+    }
+
+    @Test("회전하거나 작은 스티커도 눈에 보이는 곳을 누르면 잡힌다")
+    func rotatedAndSmallStickersStayTappable() {
+        let transform = SideDetailTransform(side: .right, insets: .standard, viewport: viewport)
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+
+        var rotated = sticker(at: NormalizedPoint(x: 0.95, y: 0.5))
+        rotated.rotation = 45
+        let plain = rotated.frame
+        // 회전하면 시각적 bounds가 커지므로 tap target도 커져야 한다.
+        #expect(rotated.hitRect(in: placement).width > placement.rect(plain).width)
+
+        let tiny = sticker(at: NormalizedPoint(x: 0.95, y: 0.5), width: StickerObject.sizeRange.lowerBound)
+        let target = tiny.hitRect(in: placement)
+        #expect(target.width >= StickerObject.minimumTapTarget - 0.001)
+        #expect(target.height >= StickerObject.minimumTapTarget - 0.001)
+    }
+
+    @Test("스티커 도구의 한 손가락 Pan은 같은 viewport state를 쓴다")
+    func oneFingerPanUsesSameViewportState() {
+        let start = EditorViewportState()
+        var next = start
+        next.pan.height -= 160                       // 빈 공간에서 한 손가락으로 끌어올림
+
+        let moved = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: next)
+        let base = SideDetailTransform(side: .right, insets: .standard, viewport: viewport, state: start)
+        #expect(moved.offset.y < base.offset.y)
+        // Mini Map / Scroll Handle이 같은 값을 즉시 따라간다.
+        #expect(moved.verticalProgress > base.verticalProgress)
+        #expect(moved.appliedZoom == base.appliedZoom)
+    }
+
+    // MARK: - 초기 라이브러리 / 상점 기본 템플릿
+
+    @Test("최초 실행 시 내 거울은 비어 있다")
+    func initialMyMirrorsIsEmpty() {
+        let library = MirrorLibrary()
+        #expect(library.mirrors.isEmpty)
+        #expect(library.createdCount == 0)
+        #expect(library.createdCapacity == MirrorStoragePolicy.freeCreatedSlots)
+    }
+
+    @Test("내 거울이 비어 있어도 기본 거울이 그대로 그려진다")
+    func initialDefaultMirrorStillRenders() {
+        let library = MirrorLibrary()
+        #expect(library.currentMirror.id == MirrorLibrary.defaultMirror.id)
+
+        let design = MirrorDesign(mirror: library.currentMirror)
+        #expect(design.insets == .standard)
+        let pixel = runtimePixel(design: design, at: NormalizedPoint(x: 0.02, y: 0.5))
+        #expect((pixel?.alpha ?? 0) > 200)
+    }
+
+    @Test("기본 거울은 슬롯을 쓰지 않는다")
+    func defaultMirrorConsumesNoSlot() {
+        let library = MirrorLibrary()
+        #expect(library.createdCount == 0)
+        #expect(library.hasFreeCreatedSlot)
+        // 목록에도 들어가지 않는다.
+        #expect(!library.mirrors.contains { $0.id == MirrorLibrary.defaultMirror.id })
+    }
+
+    @Test("상점의 기본 단색 템플릿 8종은 항상 무료다")
+    func basicStoreTemplatesAreFree() {
+        #expect(StoreCatalog.basics.count == BasicMirror.allCases.count)
+        #expect(StoreCatalog.basics.count == 8)
+        for template in StoreCatalog.basics {
+            #expect(template.price == 0)
+            #expect(template.isBasic)
+            #expect(template.matches(.basic))
+            #expect(template.matches(.free))
+            #expect(template.style.insets == .standard)
+        }
+    }
+
+    @Test("무료 기본 템플릿을 받으면 내 거울에 추가된다")
+    func acquiringBasicAddsToMyMirrors() {
+        let library = MirrorLibrary()
+        let template = StoreCatalog.basics[0]
+        library.acquire(template)
+
+        #expect(library.mirrors.count == 1)
+        #expect(library.mirrors[0].id == template.id)
+        #expect(library.mirrors[0].origin == .basic)
+        // 두 번 받아도 중복되지 않는다.
+        library.acquire(template)
+        #expect(library.mirrors.count == 1)
+    }
+
+    @Test("받은 기본 템플릿은 제작 슬롯을 소비하지 않는다")
+    func acquiredBasicConsumesNoCreatedSlot() {
+        let library = MirrorLibrary()
+        for template in StoreCatalog.basics { library.acquire(template) }
+        #expect(library.mirrors.count == 8)
+        #expect(library.createdCount == 0)
+        #expect(library.hasFreeCreatedSlot)
+    }
+
+    // MARK: - 중앙 Mirror Area 안쪽 모서리
+
+    /// 안쪽 모서리 기준점에서 (dx, dy)만큼 안쪽으로 들어간 점.
+    private func nearInnerCorner(_ corner: (x: Double, y: Double), dx: Double, dy: Double) -> NormalizedPoint {
+        let area = MirrorFrameInsets.standard.mirrorArea
+        return NormalizedPoint(
+            x: corner.x == 0 ? area.x + dx : area.x + area.width - dx,
+            y: corner.y == 0 ? area.y + dy : area.y + area.height - dy
+        )
+    }
+
+    @Test("중앙 Mirror Area의 안쪽 모서리는 둥글다")
+    func mirrorAreaCornerIsRounded() {
+        let insets = MirrorFrameInsets.standard
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+
+        // 모서리 꼭짓점 바로 안쪽은 곡선 바깥 = 아직 프레임이다.
+        #expect(!insets.isInsideMirrorArea(nearInnerCorner((0, 0), dx: rx * 0.1, dy: ry * 0.1)))
+        // 곡선 안쪽으로 충분히 들어가면 Mirror Area다.
+        #expect(insets.isInsideMirrorArea(nearInnerCorner((0, 0), dx: rx * 1.5, dy: ry * 1.5)))
+        // 반경이 과하게 크지 않다 (capsule 금지).
+        #expect(MirrorGeometry.innerCornerRadius < MirrorCanvas.size.width * 0.05)
+        #expect(MirrorGeometry.innerCornerRadius > 0)
+    }
+
+    @Test("안쪽 네 모서리가 같은 반경을 쓴다")
+    func allFourInnerCornersUseSameRadius() {
+        let insets = MirrorFrameInsets.standard
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+
+        for corner in [(x: 0.0, y: 0.0), (x: 1.0, y: 0.0), (x: 0.0, y: 1.0), (x: 1.0, y: 1.0)] {
+            #expect(!insets.isInsideMirrorArea(nearInnerCorner(corner, dx: rx * 0.1, dy: ry * 0.1)))
+            #expect(insets.isInsideMirrorArea(nearInnerCorner(corner, dx: rx * 1.5, dy: ry * 1.5)))
+        }
+    }
+
+    @Test("둥근 FrameMask가 그리기를 정확히 막는다")
+    func roundedFrameMaskBlocksDrawing() {
+        let insets = MirrorFrameInsets.standard
+        // 직선 구간 안쪽 = 그릴 수 없다
+        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: 0.5)))
+        #expect(!insets.isInsideFrameBand(NormalizedPoint(x: 0.5, y: insets.top + 0.01)))
+        // 모서리 곡선 바깥 = 프레임이라 그릴 수 있다
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+        #expect(insets.isInsideFrameBand(nearInnerCorner((0, 0), dx: rx * 0.1, dy: ry * 0.1)))
+    }
+
+    @Test("실제 Mirror의 투명 구멍도 둥근 사각형이다")
+    func runtimeUsesRoundedOpening() {
+        let size = CGSize(width: 300, height: 650)
+        let design = MirrorDesign(mirror: MirrorLibrary.defaultMirror)
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+
+        // 모서리 곡선 바깥은 프레임이 칠해져 있다
+        let corner = runtimePixel(
+            design: design,
+            at: nearInnerCorner((0, 0), dx: rx * 0.15, dy: ry * 0.15),
+            size: size
+        )
+        #expect((corner?.alpha ?? 0) > 180)
+
+        // 가운데는 그대로 투명하다
+        let center = runtimePixel(design: design, at: NormalizedPoint(x: 0.5, y: 0.5), size: size)
+        #expect((center?.alpha ?? 255) < 20)
+    }
+
+    @Test("Capture도 같은 둥근 구멍 geometry를 쓴다")
+    func captureUsesRoundedOpening() {
+        // Capture는 화면과 같은 MirrorDecorationView를 합성한다 — geometry가 갈라질 수 없다.
+        let rect = CGRect(x: 0, y: 0, width: 300, height: 650)
+        let path = MirrorFrameInsets.standard.mirrorAreaPath(in: rect)
+        let area = MirrorFrameInsets.standard.mirrorArea.rect(in: rect.size)
+
+        #expect(abs(path.boundingRect.width - area.width) < 0.5)
+        #expect(abs(path.boundingRect.height - area.height) < 0.5)
+        // 사각형 꼭짓점은 둥근 사각형 밖이다.
+        #expect(!path.contains(CGPoint(x: area.minX + 0.5, y: area.minY + 0.5)))
+        #expect(path.contains(CGPoint(x: area.midX, y: area.midY)))
+    }
+
+    @Test("Preview / Runtime의 모서리 반경은 같은 Master 값에서 나온다")
+    func previewGeometryMatchesRuntime() {
+        let small = CGSize(width: 150, height: 325)
+        let large = CGSize(width: 300, height: 650)
+        let a = MirrorGeometry.innerCornerRadius(for: small)
+        let b = MirrorGeometry.innerCornerRadius(for: large)
+        #expect(abs(b - a * 2) < 0.001)
+        #expect(abs(a - CGFloat(MirrorGeometry.innerCornerRadius) * small.width / MirrorCanvas.size.width) < 0.001)
+    }
+
+    @Test("스티커 제약도 둥근 Mirror Area를 따른다")
+    func stickerConstraintUsesRoundedMirrorArea() {
+        let insets = MirrorFrameInsets.standard
+        let rx = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.width
+        let ry = MirrorGeometry.innerCornerRadius / MirrorCanvas.size.height
+
+        // 곡선 바깥(= 프레임)에 있는 중심은 그대로 유지된다.
+        let corner = nearInnerCorner((0, 0), dx: rx * 0.1, dy: ry * 0.1)
+        let kept = sticker(at: corner).constrained(to: insets)
+        #expect(abs(kept.center.x - corner.x) < 0.0001)
+        #expect(abs(kept.center.y - corner.y) < 0.0001)
+
+        // 곡선 안쪽(= 카메라)에 있는 중심은 밴드로 밀려난다.
+        let inside = sticker(at: NormalizedPoint(x: 0.5, y: 0.5)).constrained(to: insets)
+        #expect(!insets.isInsideMirrorArea(inside.center))
+    }
+
+    @Test("프레임 두께는 여전히 108 / 180으로 고정이다")
+    func frameThicknessUnchanged() {
+        #expect(MirrorFrameInsets.standard.left == 108.0 / 1080.0)
+        #expect(MirrorFrameInsets.standard.right == 108.0 / 1080.0)
+        #expect(abs(MirrorFrameInsets.standard.top - 180.0 / 2340.0) < 0.0001)
+        #expect(abs(MirrorFrameInsets.standard.bottom - 180.0 / 2340.0) < 0.0001)
+        #expect(MirrorLibrary.defaultMirror.style.insets == .standard)
     }
 }

@@ -22,9 +22,13 @@ struct HomeView: View {
             case .home:
                 homeTab
             case .store:
-                StoreView()
+                StoreView(library: library)
             case .mine:
-                MyMirrorsView(library: library, onEditMirror: onEditMirror)
+                MyMirrorsView(
+                    library: library,
+                    onEditMirror: onEditMirror,
+                    onBrowseStore: { tab = .store }
+                )
             }
 
             InkTabBar(selection: $tab)

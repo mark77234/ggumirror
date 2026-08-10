@@ -9,7 +9,8 @@ import SwiftUI
 
 // MARK: - 기본 거울
 
-/// PRODUCT.md의 기본 거울 8종. 단색 프레임 + 종이 질감만 쓴다.
+/// 단색 기본 거울 8종. 단색 프레임 + 종이 질감만 쓴다.
+/// 이제 "내 거울에 미리 들어 있는 것"이 아니라 **상점의 무료 기본 템플릿**이다.
 enum BasicMirror: String, CaseIterable, Identifiable {
     case white, black, cream, softPink, lavender, sky, mint, gray
 
@@ -61,6 +62,7 @@ enum StoreTag: String, CaseIterable, Identifiable {
 
 enum StoreCategory: String, CaseIterable, Identifiable {
     case all = "전체"
+    case basic = "기본"
     case featured = "추천"
     case popular = "인기"
     case new = "신규"
@@ -73,11 +75,14 @@ struct MirrorTemplate: Identifiable, Hashable {
     let id: String
     let name: String
     let creator: String
-    /// 조각 가격. 0이면 무료.
+    /// 조각 가격. 0이면 무료. 공식 기본 템플릿은 항상 0이다.
     let price: Int
     let tags: [StoreTag]
     let categories: Set<String>
     let style: MirrorStyle
+
+    /// 공식 단색 기본 템플릿인지. 받아도 슬롯을 쓰지 않고 항상 무료다.
+    var isBasic: Bool { id.hasPrefix(StoreCatalog.basicPrefix) }
 
     func matches(_ category: StoreCategory) -> Bool {
         switch category {
@@ -89,8 +94,26 @@ struct MirrorTemplate: Identifiable, Hashable {
 }
 
 enum StoreCatalog {
+    static let basicPrefix = "basic-"
+
+    /// 단색 기본 템플릿 8종. 공식 제공이라 항상 무료다.
+    static let basics: [MirrorTemplate] = BasicMirror.allCases.map { basic in
+        MirrorTemplate(
+            id: basicPrefix + basic.id,
+            name: basic.name,
+            creator: "꾸미러",
+            price: 0,
+            tags: [.minimal],
+            categories: [StoreCategory.basic.rawValue],
+            style: basic.style
+        )
+    }
+
+    /// 상점 전체 목록. 기본 템플릿이 먼저, 그다음 Creator 템플릿.
+    static var samples: [MirrorTemplate] { basics + creators }
+
     /// 손그림 ink / doodle / sticker / journaling 감성의 샘플 템플릿.
-    static let samples: [MirrorTemplate] = [
+    static let creators: [MirrorTemplate] = [
         MirrorTemplate(
             id: "ribbon-heart",
             name: "리본 하트",
@@ -302,6 +325,28 @@ struct MyMirror: Identifiable, Hashable {
     var stickers: [StickerObject] = []
 }
 
+/// 사용자 제작 거울 보관 정책. 기본 제공 / 구매 거울은 슬롯을 쓰지 않는다.
+/// 추가 슬롯은 향후 조각으로 구매한다 — 실제 가격은 아직 정하지 않았다(TBD).
+enum MirrorStoragePolicy {
+    static let freeCreatedSlots = 3
+    static let slotPackSize = 5
+    /// 이름 입력 제한.
+    static let maxNameLength = 24
+
+    static func normalizedName(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(maxNameLength))
+    }
+}
+
+/// 저장 결과. 슬롯이 없으면 조용히 실패하지 않고 이유를 돌려준다.
+enum MirrorSaveOutcome: Equatable {
+    case updated(String)
+    case created(String)
+    case needsMoreSlots
+}
+
 /// 내 거울 목록과 현재 사용 중인 거울. 아직 메모리에만 있다.
 @Observable
 @MainActor
@@ -309,45 +354,90 @@ final class MirrorLibrary {
     private(set) var mirrors: [MyMirror]
     var currentID: String
 
+    /// 앱을 처음 설치한 사용자가 바로 거울을 쓸 수 있게 하는 기본값.
+    /// My Mirrors 목록에 들어가지 않고, 슬롯도 쓰지 않으며, 구매 이력으로도 치지 않는다.
+    static let defaultMirror = MyMirror(
+        id: "default-mirror",
+        name: "기본 거울",
+        origin: .basic,
+        style: BasicMirror.cream.style
+    )
+
     init() {
-        var items = BasicMirror.allCases.map {
-            MyMirror(id: $0.id, name: $0.name, origin: .basic, style: $0.style)
-        }
-        items.append(contentsOf: [
-            MyMirror(
-                id: "made-star",
-                name: "내 별 낙서",
-                origin: .made,
-                style: StoreCatalog.samples[4].style
-            ),
-            MyMirror(
-                id: "bought-ribbon",
-                name: "리본 하트",
-                origin: .purchased,
-                style: StoreCatalog.samples[0].style
-            ),
-            MyMirror(
-                id: "listed-bunny",
-                name: "버니 스케치",
-                origin: .listed,
-                style: StoreCatalog.samples[2].style
-            )
-        ])
-        mirrors = items
-        currentID = BasicMirror.softPink.id
+        // 최초 실행 시 내 거울은 비어 있다. 상점에서 받거나 직접 만들면 그때 채워진다.
+        mirrors = []
+        currentID = Self.defaultMirror.id
     }
 
     var currentMirror: MyMirror {
-        mirrors.first { $0.id == currentID } ?? mirrors[0]
+        mirrors.first { $0.id == currentID } ?? Self.defaultMirror
     }
 
-    /// Editor에서 저장한 결과를 반영한다. 아직 메모리에만 남는다.
-    func save(_ design: MirrorDesign) {
-        guard let index = mirrors.firstIndex(where: { $0.id == design.id }) else { return }
-        mirrors[index].style = design.style
-        mirrors[index].strokes = design.strokes
-        mirrors[index].stickers = design.stickers
-        mirrors[index].name = design.name
+    /// 사용자가 직접 만든 거울 수. 기본 제공 / 구매 / 판매 중은 세지 않는다.
+    var createdCount: Int { mirrors.count { $0.origin == .made } }
+
+    /// 추가 슬롯 구매분. 아직 실제 결제는 없다.
+    private(set) var purchasedCreatedSlots = 0
+
+    var createdCapacity: Int { MirrorStoragePolicy.freeCreatedSlots + purchasedCreatedSlots }
+    var hasFreeCreatedSlot: Bool { createdCount < createdCapacity }
+
+    /// 향후 조각 결제가 붙을 자리. 지금은 호출되지 않는다.
+    func grantSlotPack() {
+        purchasedCreatedSlots += MirrorStoragePolicy.slotPackSize
+    }
+
+    /// Editor 저장.
+    /// - 사용자가 만든 거울을 다시 편집하면 그 거울을 갱신한다(슬롯 추가 소모 없음).
+    /// - 기본 제공 / 구매 거울을 꾸미면 원본은 두고 "내가 만든 거울"을 새로 만든다(슬롯 1개 필요).
+    @discardableResult
+    func save(_ design: MirrorDesign, name rawName: String) -> MirrorSaveOutcome {
+        guard let name = MirrorStoragePolicy.normalizedName(rawName) else { return .needsMoreSlots }
+
+        if let index = mirrors.firstIndex(where: { $0.id == design.id }), mirrors[index].origin == .made {
+            mirrors[index].style = design.style
+            mirrors[index].strokes = design.strokes
+            mirrors[index].stickers = design.stickers
+            mirrors[index].name = name
+            currentID = mirrors[index].id
+            return .updated(name)
+        }
+
+        guard hasFreeCreatedSlot else { return .needsMoreSlots }
+
+        let copy = MyMirror(
+            id: "made-\(UUID().uuidString)",
+            name: name,
+            origin: .made,
+            style: design.style,
+            strokes: design.strokes,
+            stickers: design.stickers
+        )
+        mirrors.append(copy)
+        currentID = copy.id
+        return .created(name)
+    }
+
+    /// 이 디자인을 저장하면 새 슬롯이 필요한지.
+    func needsNewSlot(for design: MirrorDesign) -> Bool {
+        guard let mirror = mirrors.first(where: { $0.id == design.id }) else { return true }
+        return mirror.origin != .made
+    }
+
+    /// 상점에서 템플릿을 받아 내 거울에 넣는다.
+    /// 받은 템플릿은 사용자 제작 슬롯을 쓰지 않는다 — origin이 .made가 아니기 때문이다.
+    /// 실제 조각 차감 / 서버 ledger는 향후 Store Phase.
+    @discardableResult
+    func acquire(_ template: MirrorTemplate) -> MyMirror {
+        if let existing = mirrors.first(where: { $0.id == template.id }) { return existing }
+        let mirror = MyMirror(
+            id: template.id,
+            name: template.name,
+            origin: template.isBasic ? .basic : .purchased,
+            style: template.style
+        )
+        mirrors.append(mirror)
+        return mirror
     }
 
     func apply(_ mirror: MyMirror) {
@@ -368,9 +458,10 @@ final class MirrorLibrary {
         mirrors.insert(copy, at: index + 1)
     }
 
+    /// 받은 기본 템플릿도 지울 수 있다 — 상점에서 다시 무료로 받으면 된다.
+    /// 마지막 거울을 지우면 목록이 비고, 기본 거울로 돌아간다.
     func delete(_ mirror: MyMirror) {
-        guard mirror.origin != .basic else { return }   // 기본 거울은 지울 수 없다
         mirrors.removeAll { $0.id == mirror.id }
-        if currentID == mirror.id { currentID = BasicMirror.white.id }
+        if currentID == mirror.id { currentID = Self.defaultMirror.id }
     }
 }

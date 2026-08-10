@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TemplateDetailView: View {
     let template: MirrorTemplate
+    var library: MirrorLibrary?
 
     @State private var notice: String?
 
@@ -92,10 +93,14 @@ struct TemplateDetailView: View {
             }
             .buttonStyle(InkPressStyle())
 
+            // 무료 템플릿은 지금 바로 받을 수 있다. 조각 결제는 아직 없다.
             Button {
-                notice = template.price == 0
-                    ? "받기는 다음 업데이트에서 열려요."
-                    : "조각으로 받기는 다음 업데이트에서 열려요."
+                guard template.price == 0, let library else {
+                    notice = "조각으로 받기는 다음 업데이트에서 열려요."
+                    return
+                }
+                library.acquire(template)
+                notice = "\(template.name)을(를) 내 거울에 담았어요."
             } label: {
                 Text(template.price == 0 ? "무료로 받기" : "조각으로 받기")
                     .font(InkFont.body)

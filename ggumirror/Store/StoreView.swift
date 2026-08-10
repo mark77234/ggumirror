@@ -9,6 +9,8 @@
 import SwiftUI
 
 struct StoreView: View {
+    var library: MirrorLibrary?
+
     @State private var category: StoreCategory = .all
     @State private var tag: TagFilter = .all
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -27,7 +29,7 @@ struct StoreView: View {
                 gallery
             }
             .navigationDestination(for: MirrorTemplate.self) { template in
-                TemplateDetailView(template: template)
+                TemplateDetailView(template: template, library: library)
             }
             .toolbar(.hidden, for: .navigationBar)
         }

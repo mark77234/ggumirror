@@ -11,6 +11,8 @@ import SwiftUI
 struct MyMirrorsView: View {
     @Bindable var library: MirrorLibrary
     var onEditMirror: (MyMirror) -> Void
+    /// 아직 아무 거울도 없을 때 상점으로 보낸다.
+    var onBrowseStore: () -> Void = {}
 
     @State private var filter: MyMirrorFilter = .all
     @State private var actionTarget: MyMirror?
@@ -31,6 +33,14 @@ struct MyMirrorsView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 14)
+
+            Text("내가 만든 거울 \(library.createdCount) / \(library.createdCapacity)")
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+                .accessibilityLabel("내가 만든 거울 \(library.createdCount)개, 최대 \(library.createdCapacity)개")
 
             InkFilterBar(items: MyMirrorFilter.allCases, selection: $filter) { $0.rawValue }
                 .padding(.bottom, 14)
@@ -61,7 +71,9 @@ struct MyMirrorsView: View {
 
     private var gallery: some View {
         ScrollView {
-            if mirrors.isEmpty {
+            if library.mirrors.isEmpty {
+                emptyState
+            } else if mirrors.isEmpty {
                 Text("아직 이 조건에 맞는 거울이 없어요.")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.secondaryInk)
@@ -83,6 +95,38 @@ struct MyMirrorsView: View {
         }
         .scrollIndicators(.hidden)
         .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+    }
+
+    /// 처음 설치하면 내 거울은 비어 있다. 빈 화면 대신 다음에 할 일을 보여준다.
+    /// "새 거울 만들기"는 아직 없는 기능이라 버튼으로 내지 않는다.
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            MirrorIcon(size: 62)
+
+            VStack(spacing: 6) {
+                Text("아직 저장한 거울이 없어요")
+                    .font(InkFont.cardTitle)
+                    .foregroundStyle(PaperTheme.ink)
+                Text("상점에서 거울을 받아보거나 직접 만들어보세요")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button("상점 둘러보기") { onBrowseStore() }
+                .font(InkFont.body.weight(.semibold))
+                .foregroundStyle(PaperTheme.subtleSurface)
+                .padding(.horizontal, 22)
+                .frame(minHeight: 48)
+                .background {
+                    UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                }
+                .buttonStyle(InkPressStyle())
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
+        .padding(.top, 56)
     }
 }
 

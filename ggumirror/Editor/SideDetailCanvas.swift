@@ -35,6 +35,10 @@ struct SideDetailCanvas: View {
     @State private var draggingSticker: StickerObject?
     @State private var stickerAtGestureStart: StickerObject?
     @State private var stickerGrabOffset = NormalizedPoint(x: 0, y: 0)
+    /// 스티커 도구에서 빈 곳을 한 손가락으로 끌 때의 직전 위치.
+    @State private var oneFingerPanAnchor: CGPoint?
+    /// 이동 중 촉각 피드백. 프레임마다 울리지 않도록 시간 + 거리로 제한한다.
+    @State private var hapticLimiter = HapticRateLimiter()
     /// 제스처 힌트는 한 번 이해하면 다시 보여주지 않는다.
     @AppStorage("editorGestureHintSeen") private var hasSeenGestureHint = false
     @State private var didInteract = false
@@ -72,7 +76,7 @@ struct SideDetailCanvas: View {
                 .allowsHitTesting(false)
 
                 EditorCanvasGestureOverlay(
-                    onTouch: { handleTouch($0, transform: transform) },
+                    onTouch: { handleTouch($0, transform: transform, viewportSize: proxy.size) },
                     onNavigate: { navigate($0, transform: transform, viewportSize: proxy.size) }
                 )
 
@@ -117,7 +121,7 @@ struct SideDetailCanvas: View {
 
     // MARK: - 한 손가락
 
-    private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform) {
+    private func handleTouch(_ phase: CanvasTouchPhase, transform: SideDetailTransform, viewportSize: CGSize) {
         switch phase {
         case .began(let location):
             dismissGestureHint()
@@ -125,24 +129,33 @@ struct SideDetailCanvas: View {
             switch tool {
             case .draw: extendStroke(to: point)
             case .erase: erase(at: point, transform: transform)
-            case .sticker: beginStickerTouch(at: location, point: point, transform: transform)
+            case .sticker:
+                beginStickerTouch(at: location, point: point, transform: transform, viewportSize: viewportSize)
             }
         case .moved(let location):
             let point = transform.masterPoint(from: location)
             switch tool {
             case .draw: extendStroke(to: point)
             case .erase: erase(at: point, transform: transform)
-            case .sticker: moveSticker(to: point)
+            case .sticker:
+                // 스티커를 잡았으면 이동, 빈 곳에서 시작했으면 화면을 민다.
+                if draggingSticker != nil {
+                    moveSticker(to: point)
+                } else {
+                    panWithOneFinger(to: location, viewportSize: viewportSize)
+                }
             }
         case .ended, .cancelled:
+            oneFingerPanAnchor = nil
             // 취소여도 유효한 작업이면 저장한다. 사용자가 그린 선이 이유 없이 사라지지 않게.
             commitActiveWork()
         }
     }
 
     private func extendStroke(to point: NormalizedPoint) {
-        // 중앙 Mirror Area에는 그리지 않는다. 두께는 design의 frameInsets에서 온다.
-        guard !design.insets.isInsideMirrorArea(point) else { return }
+        // 프레임 밴드 위에서만 그린다.
+        // 중앙 Mirror Area(둥근 모서리 포함)와 캔버스 바깥 Workspace Gutter는 모두 제외된다.
+        guard design.insets.isInsideFrameBand(point) else { return }
 
         if var stroke = activeStroke {
             guard let last = stroke.points.last,
@@ -164,7 +177,7 @@ struct SideDetailCanvas: View {
     }
 
     private func erase(at point: NormalizedPoint, transform: SideDetailTransform) {
-        guard !design.insets.isInsideMirrorArea(point) else { return }
+        guard design.insets.isInsideFrameBand(point) else { return }
         // 화면 반경을 Master 반경으로 환산하므로 확대해도 체감 반경이 같다.
         let radius = transform.masterLength(fromScreen: eraserScreenRadius)
         let hits = design.strokes
@@ -207,18 +220,84 @@ struct SideDetailCanvas: View {
         return design.stickers.first { $0.id == selectedStickerID }
     }
 
-    /// 위에 있는 스티커부터 hit test 한다. 빈 곳을 누르면 선택이 풀린다.
-    private func beginStickerTouch(at location: CGPoint, point: NormalizedPoint, transform: SideDetailTransform) {
+    /// 위에 있는 스티커부터 hit test 한다.
+    /// 스티커를 누르면 선택(잠겨 있어도 선택은 된다) + 필요할 때만 최소 focus.
+    /// 빈 곳을 누르면 선택이 풀리고 그 자리에서 한 손가락 Pan이 시작된다.
+    private func beginStickerTouch(
+        at location: CGPoint,
+        point: NormalizedPoint,
+        transform: SideDetailTransform,
+        viewportSize: CGSize
+    ) {
         let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
         let hit = design.stickers
             .sorted { $0.zIndex > $1.zIndex }
             .first { $0.hitRect(in: placement).contains(location) }
 
+        // 선택은 항상 하나만. 다른 스티커를 고르면 이전 선택은 자동으로 풀린다.
         selectedStickerID = hit?.id
-        guard let hit, !hit.isLocked else { return }
+
+        guard let hit else {
+            oneFingerPanAnchor = location
+            return
+        }
+        oneFingerPanAnchor = nil
+
+        // 일부만 보이는 스티커는 zoom을 유지한 채 최소한만 끌어온다.
+        let shift = focus(on: hit, transform: transform, viewportSize: viewportSize)
+
+        guard !hit.isLocked else { return }
         stickerAtGestureStart = hit
         draggingSticker = hit
-        stickerGrabOffset = NormalizedPoint(x: point.x - hit.center.x, y: point.y - hit.center.y)
+        hapticLimiter.reset()
+        EditorHaptics.prepare()
+        // focus로 화면이 움직인 만큼 잡은 지점을 보정한다. 손가락 아래에서 스티커가 튀지 않게.
+        stickerGrabOffset = NormalizedPoint(
+            x: point.x - hit.center.x - shift.x,
+            y: point.y - hit.center.y - shift.y
+        )
+    }
+
+    /// 이미 충분히 보이면 아무것도 하지 않는다. 움직였다면 Master 기준 이동량을 돌려준다.
+    /// 스티커 데이터는 절대 건드리지 않는다 — viewport state만 바뀐다.
+    private func focus(
+        on sticker: StickerObject,
+        transform: SideDetailTransform,
+        viewportSize: CGSize
+    ) -> NormalizedPoint {
+        guard let focused = transform.focusState(on: sticker.frame, from: viewport) else {
+            return NormalizedPoint(x: 0, y: 0)
+        }
+        let next = SideDetailTransform(
+            side: side,
+            insets: design.insets,
+            viewport: viewportSize,
+            state: focused
+        )
+        viewport = EditorViewportState(zoom: next.appliedZoom, pan: next.appliedPan)
+        return NormalizedPoint(
+            x: Double((next.offset.x - transform.offset.x) / next.canvasSize.width),
+            y: Double((next.offset.y - transform.offset.y) / next.canvasSize.height)
+        )
+    }
+
+    /// 스티커 도구에서 빈 곳을 한 손가락으로 끌면 화면이 움직인다.
+    /// 두 손가락 Pan / Pinch / Scroll Handle / 맞춤과 완전히 같은 viewport state를 쓴다.
+    private func panWithOneFinger(to location: CGPoint, viewportSize: CGSize) {
+        guard let anchor = oneFingerPanAnchor else { return }
+        oneFingerPanAnchor = location
+
+        var next = viewport
+        next.pan.width += location.x - anchor.x
+        next.pan.height += location.y - anchor.y
+
+        let clamped = SideDetailTransform(
+            side: side,
+            insets: design.insets,
+            viewport: viewportSize,
+            state: next
+        )
+        viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 
     private func moveSticker(to point: NormalizedPoint) {
@@ -227,7 +306,11 @@ struct SideDetailCanvas: View {
             x: point.x - stickerGrabOffset.x,
             y: point.y - stickerGrabOffset.y
         )
-        draggingSticker = current.moved(to: target).constrained(to: design.insets)
+        let updated = current.moved(to: target).constrained(to: design.insets)
+        if hapticLimiter.shouldFire(at: updated.center, time: ProcessInfo.processInfo.systemUptime) {
+            EditorHaptics.movementTick()
+        }
+        draggingSticker = updated
     }
 
     private func resizeSelected(by delta: CGFloat, transform: SideDetailTransform, isEnded: Bool) {
@@ -259,6 +342,7 @@ struct SideDetailCanvas: View {
             stickerAtGestureStart = nil
         }
         guard let final = draggingSticker, final != stickerAtGestureStart else { return }
+        EditorHaptics.placementConfirmed()
         onEdit(.replaceSticker(final))
     }
 
