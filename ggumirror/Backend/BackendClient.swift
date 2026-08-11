@@ -14,15 +14,16 @@ import Foundation
 
 /// API 주소. 여러 파일에 흩뿌리지 않고 여기 한 곳에서만 정한다.
 ///
-/// **가짜 production URL을 만들지 않는다.** Cloud Run 주소가 아직 없으므로
-/// release 빌드에는 주소가 없고, 그 상태에서 서버 로그인은 "지금은 안 된다"로 실패한다.
-/// 배포 Phase에서 `production`에 실제 주소를 넣으면 그때부터 동작한다.
+/// 서버 정보는 주소 하나뿐이다 — GCP project id나 Firestore 이야기를 client에 넣지 않는다.
 nonisolated enum BackendEnvironment {
     /// 개발용. 시뮬레이터에서 로컬 서버(`uvicorn --port 8080`)에 붙는다.
+    ///
+    /// 실기기에서 로컬 서버를 쓰려면 Mac의 LAN 주소가 필요하다.
+    /// 이제 production이 HTTPS로 떠 있으므로 실기기 확인은 그쪽을 쓰는 게 낫다.
     static let development = URL(string: "http://127.0.0.1:8080")!
 
-    /// 아직 없다. 배포 Phase에서 채운다.
-    static let production: URL? = nil
+    /// Cloud Run (asia-northeast3). 꾸미러 전용 GCP project에 있다.
+    static let production = URL(string: "https://ggumirror-api-cmyv4amroa-du.a.run.app")!
 
     static var current: URL? {
         #if DEBUG

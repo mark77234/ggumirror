@@ -473,9 +473,15 @@ struct ServerAuthTests {
 
     // MARK: - 주소 / 응답 해석
 
-    @Test("가짜 production URL을 만들어두지 않았다")
-    func noFakeProductionURL() {
-        #expect(BackendEnvironment.production == nil)
+    @Test("production은 배포된 HTTPS 주소다")
+    func productionURLIsDeployedHTTPS() {
+        // I-1에서 Cloud Run에 배포했다. release 빌드에서도 주소가 있다.
+        #expect(BackendEnvironment.current != nil)
+        #expect(BackendEnvironment.production.scheme == "https")
+        // client에는 주소만 있다 — GCP project id / Firestore 이야기가 없다.
+        let text = BackendEnvironment.production.absoluteString
+        #expect(!text.contains("opicmobile"))
+        #expect(!text.contains("firestore"))
     }
 
     @Test("서버 주소가 없으면 요청하지 않고 실패한다")

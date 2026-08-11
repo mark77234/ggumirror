@@ -888,6 +888,14 @@ picker 두 칸 · 배치 · 2.2배 확대까지 눈으로 봤다. 탭 이동 흐
 실제 Marketplace(서버 listing · 구매 · 판매자 정산) · 스티커 등록 비용 확정 ·
 내 스티커를 거울에 "바로 적용"하는 지름길.
 
+## Backend Hosting (원칙)
+
+꾸미러 production backend는 **꾸미러 전용 GCP project**에 있다.
+다른 제품의 project와 resource를 공유하지 않는다.
+
+Client가 아는 것은 **API 주소 하나**뿐이다(`BackendEnvironment`).
+GCP project id · Firestore database · service account 같은 서버 사정을 client에 넣지 않는다.
+
 ## Phase B-2B — Server User Identity + Session (확정)
 
 Apple 로그인이 이제 **꾸미러 서버 계정**으로 이어진다.
