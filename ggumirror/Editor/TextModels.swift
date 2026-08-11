@@ -255,15 +255,20 @@ struct TextLayout {
     /// 줄 높이 (Master 픽셀).
     let lineHeight: CGFloat
 
+    /// 이 레이아웃이 어떤 캔버스 기준인가. 정규화 크기가 이 값을 본다.
+    let canvas: CanvasKind
+
     var normalizedSize: CGSize {
         CGSize(
-            width: size.width / MirrorCanvas.size.width,
-            height: size.height / MirrorCanvas.size.height
+            width: size.width / canvas.size.width,
+            height: size.height / canvas.size.height
         )
     }
 
-    static func of(_ object: TextObject) -> TextLayout {
-        let pixelSize = CGFloat(object.fontSize) * MirrorCanvas.size.width
+    /// 글자 크기는 **캔버스 폭 기준 정규화 값**이라 캔버스가 바뀌면 픽셀 크기도 함께 바뀐다.
+    /// 거울과 스티커가 같은 렌더 코드를 쓰되 결과 비율이 어긋나지 않게 하는 지점이다.
+    static func of(_ object: TextObject, canvas: CanvasKind = .mirror) -> TextLayout {
+        let pixelSize = CGFloat(object.fontSize) * canvas.size.width
         let font = object.style.font(ofSize: pixelSize)
         let lines = object.text.isEmpty ? [""] : object.text.components(separatedBy: .newlines)
 
@@ -278,7 +283,8 @@ struct TextLayout {
             lines: lines,
             lineSizes: sizes,
             size: CGSize(width: max(width, pixelSize * 0.4), height: height),
-            lineHeight: lineHeight
+            lineHeight: lineHeight,
+            canvas: canvas
         )
     }
 

@@ -11,8 +11,12 @@ import SwiftUI
 
 struct StickerPickerSheet: View {
     let onPick: (StickerSource) -> Void
-    /// 사진 1장 선택. 배경 제거와 진행 표시는 Editor가 맡는다.
+    /// 사진 1장 선택. 배경 제거와 진행 표시는 부르는 화면이 맡는다.
     var onPickPhoto: (PhotosPickerItem) -> Void = { _ in }
+    /// "내 사진으로 만들기" 줄을 보여줄지. Sticker Creator는 자체 사진 도구가 있어 숨긴다.
+    var showsPhotoEntry = true
+    /// "+ 스티커 만들기" 줄. Mirror Editor에서만 보여준다(Creator 안에서 또 열지 않는다).
+    var onCreateSticker: (() -> Void)?
 
     @State private var category: DoodleCategory = .all
     @State private var photoItem: PhotosPickerItem?
@@ -20,9 +24,17 @@ struct StickerPickerSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            photoEntry
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+            if showsPhotoEntry {
+                photoEntry
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+            }
+
+            if let onCreateSticker {
+                createEntry(onCreateSticker)
+                    .padding(.horizontal, 20)
+                    .padding(.top, showsPhotoEntry ? 10 : 16)
+            }
 
             InkFilterBar(items: DoodleCategory.allCases, selection: $category) { $0.rawValue }
                 .padding(.top, 14)
@@ -70,6 +82,39 @@ struct StickerPickerSheet: View {
             photoItem = nil
             onPickPhoto(newValue)
         }
+    }
+
+    /// 스티커 만들기 진입점. 아직 "내 스티커" 목록은 없다 — Creator로 들어가는 문만 있다.
+    private func createEntry(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("스티커 만들기")
+                        .font(InkFont.body.weight(.semibold))
+                    Text("직접 그리거나 사진으로 만들어요")
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(.footnote, weight: .bold))
+            }
+            .foregroundStyle(PaperTheme.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 44)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                shape
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("스티커 만들기")
     }
 
     /// 사진 스티커 진입점. 기본 제공 스티커보다 먼저 눈에 들어오게 위에 둔다.

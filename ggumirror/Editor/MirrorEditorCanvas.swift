@@ -81,7 +81,7 @@ struct MirrorEditorCanvas: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let transform = EditorCanvasTransform(viewport: proxy.size, state: viewport)
+            let transform = EditorCanvasTransform(viewport: proxy.size, state: viewport, canvas: design.canvas)
 
             ZStack {
                 // 뷰는 항상 viewport 크기다. 확대/이동은 그리는 좌표에만 반영한다.
@@ -420,7 +420,7 @@ struct MirrorEditorCanvas: View {
         guard let focused = transform.focusState(on: frame, from: viewport) else {
             return NormalizedPoint(x: 0, y: 0)
         }
-        let next = EditorCanvasTransform(viewport: viewportSize, state: focused)
+        let next = EditorCanvasTransform(viewport: viewportSize, state: focused, canvas: design.canvas)
         viewport = EditorViewportState(zoom: next.appliedZoom, pan: next.appliedPan)
         return NormalizedPoint(
             x: Double((next.offset.x - transform.offset.x) / next.canvasSize.width),
@@ -438,7 +438,7 @@ struct MirrorEditorCanvas: View {
         next.pan.width += location.x - anchor.x
         next.pan.height += location.y - anchor.y
 
-        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next)
+        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next, canvas: design.canvas)
         viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 
@@ -566,14 +566,14 @@ struct MirrorEditorCanvas: View {
                 max(viewport.zoom * navigation.scaleDelta, EditorViewportState.zoomRange.lowerBound),
                 EditorViewportState.zoomRange.upperBound
             )
-            let zoomed = EditorCanvasTransform(viewport: viewportSize, state: next)
+            let zoomed = EditorCanvasTransform(viewport: viewportSize, state: next, canvas: design.canvas)
             let moved = zoomed.screenPoint(from: anchor)
             next.pan.width += navigation.center.x - moved.x
             next.pan.height += navigation.center.y - moved.y
         }
 
         // 배율이 바뀌면 pan 범위도 달라지므로 항상 다시 clamp된 값을 저장한다.
-        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next)
+        let clamped = EditorCanvasTransform(viewport: viewportSize, state: next, canvas: design.canvas)
         viewport = EditorViewportState(zoom: clamped.appliedZoom, pan: clamped.appliedPan)
     }
 }

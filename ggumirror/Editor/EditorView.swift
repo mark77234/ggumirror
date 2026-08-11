@@ -55,6 +55,10 @@ struct EditorView: View {
     /// 보기 상태(zoom + pan). Editor session UI state이고 저장되지 않는다.
     @State private var viewport = EditorViewportState()
     @State private var isEditingDrawSettings = false
+    /// 내가 만드는 스티커. 이번 Phase에서는 Creator로 들어가는 문만 있다.
+    @State private var stickerLibrary = StickerLibrary.live
+    @State private var isChoosingStickerStart = false
+    @State private var creatorRequest: StickerCreatorRequest?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -106,6 +110,10 @@ struct EditorView: View {
                 onPickPhoto: { item in
                     isPickingSticker = false
                     makePhotoSticker(from: item)
+                },
+                onCreateSticker: {
+                    isPickingSticker = false
+                    isChoosingStickerStart = true
                 }
             )
         }
@@ -165,6 +173,31 @@ struct EditorView: View {
         }
         .inkBottomSheet(isPresented: $isChoosingBackground) {
             BackgroundColorSheet(color: $design.backgroundColor)
+        }
+        // 스티커 만들기: 빈 캔버스 / 사진으로 시작. 커스텀 다이얼로그를 쓴다.
+        .inkDialog(
+            "스티커 만들기",
+            message: "빈 캔버스에서 그리거나, 사진에서 배경을 지워 시작할 수 있어요.",
+            isPresented: $isChoosingStickerStart
+        ) {
+            [
+                InkDialogAction("빈 캔버스에서 만들기", role: .primary) {
+                    creatorRequest = StickerCreatorRequest(startsWithPhoto: false)
+                },
+                InkDialogAction("사진으로 시작하기") {
+                    creatorRequest = StickerCreatorRequest(startsWithPhoto: true)
+                },
+                InkDialogAction("취소"),
+            ]
+        }
+        .fullScreenCover(item: $creatorRequest) { request in
+            StickerCreatorView(
+                design: .blankSticker(id: UUID().uuidString, name: stickerLibrary.suggestedName),
+                library: stickerLibrary,
+                context: .createNew,
+                startsWithPhoto: request.startsWithPhoto,
+                onSaved: { creatorRequest = nil }
+            )
         }
     }
 

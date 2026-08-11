@@ -214,8 +214,14 @@ struct StickerObject: Identifiable, Hashable {
 
     /// Master Canvas는 세로로 길어서, 화면상 비율을 유지하려면 높이를 보정해야 한다.
     /// aspectRatio는 artwork의 가로 / 세로. 사진 스티커는 원본 비율을 그대로 쓴다.
-    static func height(for width: Double, aspectRatio: Double) -> Double {
-        width / max(aspectRatio, 0.0001) * MirrorCanvas.size.width / MirrorCanvas.size.height
+    static func height(
+        for width: Double,
+        aspectRatio: Double,
+        canvas: CanvasKind = .mirror
+    ) -> Double {
+        // 정규화 높이는 캔버스 비율에 따라 달라진다 — 정사각 스티커 캔버스에서
+        // 거울 비율(0.46)을 쓰면 스티커가 납작해진다.
+        width / max(aspectRatio, 0.0001) * canvas.size.width / canvas.size.height
     }
 
     /// 정사각 스티커용 단축. 기본 제공 스티커가 쓴다.
@@ -300,8 +306,11 @@ enum StickerPlacement {
         in design: MirrorDesign,
         visibleRect: NormalizedRect
     ) -> StickerObject {
-        let width = 0.16
-        let height = StickerObject.height(for: width, aspectRatio: source.aspectRatio)
+        // 스티커 캔버스는 정사각형이라 같은 정규화 폭이 더 크게 보인다. 조금 작게 넣는다.
+        let width = design.canvas == .sticker ? 0.30 : 0.16
+        let height = StickerObject.height(
+            for: width, aspectRatio: source.aspectRatio, canvas: design.canvas
+        )
         let viewportCenter = NormalizedPoint(
             x: visibleRect.x + visibleRect.width / 2,
             y: visibleRect.y + visibleRect.height / 2

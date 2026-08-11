@@ -77,6 +77,7 @@ enum MirrorRenderer {
         hiddenStrokeIDs: Set<UUID> = [],
         transform: MirrorViewTransform,
         mirrorAreaFill: Color? = glass,
+        canvas: CanvasKind = .mirror,
         in context: GraphicsContext,
         viewport: CGSize
     ) {
@@ -85,13 +86,16 @@ enum MirrorRenderer {
 
         // 1. 프레임 배경 + 종이 결 — 프레임 영역 안에서만 그린다.
         //    중앙은 손대지 않으므로 카메라 영상이 그대로 비친다.
-        var paper = context
-        paper.clip(to: frame, style: FrameMaskShape.fillStyle)
-        paper.fill(frame, with: .color(style.frame), style: FrameMaskShape.fillStyle)
-        drawGrain(in: paper, transform: transform, visible: visible)
+        //    **스티커 캔버스는 바탕을 그리지 않는다** — 최종 PNG가 완전히 투명해야 한다.
+        if canvas.drawsBackground {
+            var paper = context
+            paper.clip(to: frame, style: FrameMaskShape.fillStyle)
+            paper.fill(frame, with: .color(style.frame), style: FrameMaskShape.fillStyle)
+            drawGrain(in: paper, transform: transform, visible: visible)
+        }
 
         // 2. 중앙 Mirror Area (Editor / Gallery 미리보기에서만 칠한다)
-        if let mirrorAreaFill {
+        if canvas.drawsBackground, let mirrorAreaFill {
             context.fill(
                 style.insets.mirrorAreaPath(in: transform.canvasRect),
                 with: .color(mirrorAreaFill)
@@ -124,7 +128,7 @@ enum MirrorRenderer {
             } + stickers.map { sticker in
                 ((sticker.zIndex, 1), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
             } + texts.map { text in
-                ((text.zIndex, 2), { drawText(text, in: context, transform: transform, visible: visible) })
+                ((text.zIndex, 2), { drawText(text, in: context, transform: transform, visible: visible, canvas: canvas) })
             }
         for object in objects.sorted(by: { $0.order < $1.order }) {
             object.draw()
@@ -156,7 +160,8 @@ enum MirrorRenderer {
         _ object: TextObject,
         in context: GraphicsContext,
         transform: MirrorViewTransform,
-        visible: CGRect
+        visible: CGRect,
+        canvas: CanvasKind
     ) {
         guard !object.text.isEmpty else { return }
         let rect = transform.rect(object.frame)
@@ -164,9 +169,9 @@ enum MirrorRenderer {
         let reach = max(rect.width, rect.height)
         guard rect.insetBy(dx: -reach / 2, dy: -reach / 2).intersects(visible) else { return }
 
-        let layout = TextLayout.of(object)
+        let layout = TextLayout.of(object, canvas: canvas)
         // Master 픽셀 → 화면 픽셀 배율. 한 번만 구해 모든 줄에 같이 쓴다.
-        let scale = transform.canvasSize.width / MirrorCanvas.size.width
+        let scale = transform.canvasSize.width / canvas.size.width
         let font = Font(object.style.font(ofSize: CGFloat(object.fontSize) * transform.canvasSize.width))
 
         var layer = context

@@ -747,6 +747,60 @@ Store 템플릿 24장 · 카메라 · Mirror geometry · Backend · 조각 econo
 - A. 손그림: Transparent Canvas → Drawing → Crop → Sticker
 - B. 사진: Photo → Background Removal → Transparent Foreground → Sticker (Photo Sticker Phase 이후)
 
+## Phase V-5A — Sticker Creator Core (확정)
+
+사용자가 스티커를 만들고, 투명 PNG로 굽고, 다시 편집할 수 있게 했다.
+**Sticker Store / My Stickers / 판매 / 구매는 하지 않았다 — V-5B다.**
+
+### 새 편집 엔진을 만들지 않았다
+
+핵심 결정: 스티커 캔버스는 **거울 캔버스와 다른 것이 크기와 바탕뿐**이다.
+그래서 `MirrorDesign`에 `canvas: CanvasKind`(mirror / sticker) 한 칸만 더하고,
+비율에 의존하는 지점 세 곳만 캔버스를 받게 일반화했다(기본값은 `.mirror`라 기존 호출부는 그대로):
+
+- `EditorCanvasTransform(viewport:state:canvas:)`
+- `StickerObject.height(for:aspectRatio:canvas:)`
+- `TextLayout.of(_:canvas:)`
+
+그대로 재사용한 것: `EditorSnapshot` · `EditorHistory` · `EditorEdit` · `MirrorEditorCanvas` ·
+`EditorGesturePolicy` · `MirrorRenderer` · 모든 도구 시트 · `PhotoStickerMaker`(Vision 배경 제거) ·
+`PhotoStickerAssetStore` · 두들 42종 · 글꼴 11종 · 붓 5종.
+
+### 새로 만든 것
+
+| 파일 | 내용 |
+|---|---|
+| `Editor/StickerCanvas.swift` | `CanvasKind` · 1024² 규격 · 투명 체크무늬 |
+| `Editor/StickerProject.swift` | 프로젝트 모델 · 저장 context · 이름 정책 |
+| `Editor/StickerRenderer.swift` | 1024² RGBA 투명 PNG |
+| `Editor/StickerProjectStore.swift` | 저장소(schemaVersion 1) + `StickerLibrary` |
+| `Editor/StickerCreatorView.swift` | Creator 화면 |
+
+### 저장
+
+거울과 **파일을 나눴다**: `sticker-projects.json`(자체 schemaVersion 1) + `UserStickerAssets/<id>.png`.
+거울 `mirror-library.json`은 schemaVersion **3 그대로**다 — 스티커가 생겼다고 올리지 않았다.
+atomic write · 깨진 파일 격리 · 미래 버전 보호는 `MirrorStore`와 같은 규칙을 따른다.
+PNG는 JSON에 base64로 넣지 않는다(테스트로 고정).
+
+### 편집 = 같은 스티커
+
+My Mirrors에서 겪은 "고쳤는데 새 항목이 생기는" 버그를 처음부터 만들지 않았다.
+`StickerSaveContext.editExisting`은 같은 id · 이름 · 만든 날짜를 유지하고,
+새 id는 `createNew` / `duplicate`만 만든다. 취소는 사본만 버린다.
+
+### 눈으로 확인하고 잡은 것
+
+체크포인트 4장을 렌더해 보니 **사진 레이어가 하나도 안 보였다.** 렌더러는
+`PhotoStickerAssetStore.shared`에서 사진을 찾는데 테스트 하네스가 별도 인스턴스에 등록했기 때문이다.
+앱 코드는 `.shared`를 쓰므로 제품 버그는 아니었지만, **"주변이 투명하다"만 보던 테스트가
+사진이 안 그려진 것을 통과시켰다.** 사진이 실제로 그려지는지 확인하도록 테스트를 고쳤다.
+
+### V-5B pending
+
+내 스티커 목록 화면 · 거울 Editor에서 내 스티커 고르기 · 삭제 UX · Sticker Store ·
+Publish Draft · 실제 등록 / 구매 / 정산.
+
 ## Sticker Marketplace (후속 Phase)
 
 - Sticker Creator → 저장 → 내 스티커 → 상점에 올리기 → 가격 설정 → Sticker Store

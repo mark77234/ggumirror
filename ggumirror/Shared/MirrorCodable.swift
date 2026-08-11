@@ -289,3 +289,74 @@ extension MyMirror {
         }
     }
 }
+
+// MARK: - 스티커 프로젝트
+
+/// 스티커 캔버스는 저장할 때 거울과 같은 부품(style / strokes / stickers / texts)을 쓴다.
+/// 새 저장 형식을 따로 만들지 않았다 — `canvas` 한 칸만 더 적는다.
+extension MirrorDesign: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, style, strokes, stickers, texts, importedArtworks, canvas
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            mirror: MyMirror(
+                id: try container.decode(String.self, forKey: .id),
+                name: try container.decode(String.self, forKey: .name),
+                origin: .made,
+                style: try container.decode(MirrorStyle.self, forKey: .style),
+                strokes: try container.decodeIfPresent([DrawingStroke].self, forKey: .strokes) ?? [],
+                stickers: try container.decodeIfPresent([StickerObject].self, forKey: .stickers) ?? [],
+                texts: try container.decodeIfPresent([TextObject].self, forKey: .texts) ?? [],
+                importedArtworks: try container.decodeIfPresent(
+                    [ImportedArtworkObject].self, forKey: .importedArtworks
+                ) ?? []
+            )
+        )
+        // 모르는 값이면 거울로 읽는다 — 파일 전체를 버리지 않는다.
+        canvas = try container.decodeOrDefault(CanvasKind.self, forKey: .canvas, default: .mirror)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(style, forKey: .style)
+        try container.encode(strokes, forKey: .strokes)
+        try container.encode(stickers, forKey: .stickers)
+        try container.encode(texts, forKey: .texts)
+        try container.encode(importedArtworks, forKey: .importedArtworks)
+        try container.encode(canvas, forKey: .canvas)
+    }
+}
+
+extension StickerProject: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, createdAt, updatedAt, design, finalAssetID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            name: try container.decode(String.self, forKey: .name),
+            createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(),
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
+            design: try container.decode(MirrorDesign.self, forKey: .design),
+            // 완성 PNG는 파일에 있고 여기에는 참조만 들어온다.
+            finalAssetID: try container.decodeIfPresent(UUID.self, forKey: .finalAssetID)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(design, forKey: .design)
+        try container.encodeIfPresent(finalAssetID, forKey: .finalAssetID)
+    }
+}

@@ -101,6 +101,9 @@ struct MirrorDesign: Identifiable, Hashable {
     var texts: [TextObject] = []
     /// 외부 그림 앱에서 가져온 전체 캔버스 디자인. 위치/크기를 갖지 않는 고정 레이어다.
     var importedArtworks: [ImportedArtworkObject] = []
+    /// 거울인가 스티커인가. 비율에 의존하는 계산만 이 값을 본다.
+    /// 저장된 거울은 이 값이 없으므로 기본이 `.mirror`다.
+    var canvas: CanvasKind = .mirror
 
     /// 스티커(사진 포함) / 텍스트 / 외부 디자인을 **하나의 순서**로 본 zIndex 범위.
     /// 새 장식은 맨 위에, 새 외부 디자인은 맨 아래에 들어간다.
@@ -177,8 +180,13 @@ struct EditorCanvasTransform {
     /// 캔버스 둘레에 남기는 여백. 가장자리 장식도 손가락으로 잡을 수 있게 한다.
     static let edgeInset: CGFloat = 24
 
-    init(viewport: CGSize, state: EditorViewportState = .init()) {
+    /// 어떤 캔버스를 담고 있는가. 길이 환산이 이 값을 본다.
+    private let canvasKind: CanvasKind
+
+    init(viewport: CGSize, state: EditorViewportState = .init(), canvas: CanvasKind = .mirror) {
         viewportSize = viewport
+        canvasKind = canvas
+        let master = canvas.size
 
         // zoom 1 = 거울 한 장이 통째로 들어오는 배율.
         let available = CGSize(
@@ -186,18 +194,15 @@ struct EditorCanvasTransform {
             height: max(viewport.height - Self.edgeInset, 1)
         )
         let base = min(
-            available.width / MirrorCanvas.size.width,
-            available.height / MirrorCanvas.size.height
+            available.width / master.width,
+            available.height / master.height
         )
         let zoom = min(max(state.zoom, EditorViewportState.zoomRange.lowerBound),
                        EditorViewportState.zoomRange.upperBound)
         appliedZoom = zoom
 
         let scale = base * zoom
-        canvasSize = CGSize(
-            width: MirrorCanvas.size.width * scale,
-            height: MirrorCanvas.size.height * scale
-        )
+        canvasSize = CGSize(width: master.width * scale, height: master.height * scale)
 
         // 맞춤 위치 = 화면 중앙 정렬.
         let baseX = (viewport.width - canvasSize.width) / 2
@@ -247,7 +252,7 @@ struct EditorCanvasTransform {
 
     /// 화면 길이 → Master Canvas 픽셀 길이. 지우개 반경 환산에 쓴다.
     func masterLength(fromScreen length: CGFloat) -> Double {
-        Double(length / canvasSize.width) * MirrorCanvas.size.width
+        Double(length / canvasSize.width) * canvasKind.size.width
     }
 
     /// 스티커를 편하게 잡으려면 handle 주변에 이만큼 여유가 있어야 한다.
