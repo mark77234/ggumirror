@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- xcconfig에서 온다. GENERATE_INFOPLIST_FILE이 나머지 키를 여기에 합친다. -->
+	<key>GGUMIRROR_APP_ENV</key>
+	<string>$(APP_ENV)</string>
+	<key>GGUMIRROR_BACKEND_BASE_URL</key>
+	<string>$(BACKEND_BASE_URL)</string>
+</dict>
+</plist>

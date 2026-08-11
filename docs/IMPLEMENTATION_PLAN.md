@@ -959,6 +959,29 @@ Auth Gate에 실제 publish / purchase를 연결하지 않았다 — foundation�
 
 **B-3 Shard Ledger.** 그 전에 Infra Phase(실제 Cloud Run 배포)가 필요하다.
 
+## Client Build Configuration (현재 디버깅 정책)
+
+주소를 코드에서 뺐다. `Config/*.xcconfig` → `Config/Info.plist` → `AppConfig`.
+
+| | APP_ENV | BACKEND_BASE_URL |
+|---|---|---|
+| Debug | `development` | 꾸미러 production API |
+| Release | `production` | 꾸미러 production API |
+
+두 환경의 URL이 **지금은 같다.** 실기기에서 Debug 빌드로 실제 Apple 로그인을
+디버깅하려면 그래야 한다 — `127.0.0.1`은 iPhone에서 iPhone 자신이라 서버에 닿지 못하고,
+Release로 바꾸면 `#if DEBUG` 로그(`[Auth]` / `[Backend]`)가 사라진다.
+`APP_ENV`는 구분해서 유지하므로 나중에 환경별로 갈라야 할 때 바로 쓸 수 있다.
+
+로컬 backend가 필요해지면 `Config/Local.xcconfig`(gitignored)로 Debug만 override한다.
+
+**custom `INFOPLIST_KEY_<key>`는 동작하지 않는다** — Xcode가 아는 키만 generated plist에
+넣는다(실제 빌드로 확인). 그래서 두 값만 담은 부분 `Config/Info.plist`를 쓰고
+`GENERATE_INFOPLIST_FILE = YES`가 나머지를 합친다.
+
+xcconfig는 `//`를 주석으로 읽으므로 URL을 그대로 적으면 잘린다.
+`SLASH = /` + `URL_SCHEME = https:$(SLASH)$(SLASH)`로 조립한다(치환이 주석 처리 뒤에 일어난다).
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

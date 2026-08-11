@@ -1,2 +1,6 @@
 .DS_Store
 xcuserdata/
+
+# 개인 build config override (Debug에만 적용). 기본 Debug/Release config는 추적한다.
+Config/Local.xcconfig
+Config/*.local.xcconfig

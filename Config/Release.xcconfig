@@ -1,0 +1,6 @@
+#include "Base.xcconfig"
+
+APP_ENV = production
+
+// production은 override를 허용하지 않는다 — Local.xcconfig를 include하지 않는다.
+BACKEND_BASE_URL = $(URL_SCHEME)$(GGUMIRROR_API_HOST)

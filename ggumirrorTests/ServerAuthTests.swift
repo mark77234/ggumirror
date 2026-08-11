@@ -473,13 +473,12 @@ struct ServerAuthTests {
 
     // MARK: - 주소 / 응답 해석
 
-    @Test("production은 배포된 HTTPS 주소다")
-    func productionURLIsDeployedHTTPS() {
-        // I-1에서 Cloud Run에 배포했다. release 빌드에서도 주소가 있다.
-        #expect(BackendEnvironment.current != nil)
-        #expect(BackendEnvironment.production.scheme == "https")
+    @Test("backend 주소는 빌드 설정에서 온다")
+    func backendURLComesFromConfig() {
+        // 주소는 Config/*.xcconfig에만 있다. 자세한 검증은 AppConfigTests.
+        #expect(AppConfig.backendBaseURL.scheme == "https")
         // client에는 주소만 있다 — GCP project id / Firestore 이야기가 없다.
-        let text = BackendEnvironment.production.absoluteString
+        let text = AppConfig.backendBaseURL.absoluteString
         #expect(!text.contains("opicmobile"))
         #expect(!text.contains("firestore"))
     }

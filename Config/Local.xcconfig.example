@@ -1,0 +1,10 @@
+// 개인 override 예시. 복사해서 `Config/Local.xcconfig`로 쓴다 (gitignored).
+// Debug 빌드에만 적용된다. Release는 이 파일을 읽지 않는다.
+//
+// **여기에 secret을 넣지 않는다.** iOS 앱 bundle에 들어가는 값은 secret이 될 수 없다.
+// token · private key · service account · Authorization 헤더 값을 두지 않는다.
+//
+// 로컬 backend에 붙는 예 (Mac의 LAN 주소. 실기기에서는 127.0.0.1이 동작하지 않는다):
+//
+//   GGUMIRROR_API_HOST = 192.0.2.10:8080
+//   URL_SCHEME = http:$(SLASH)$(SLASH)

@@ -1,0 +1,17 @@
+// 두 환경이 공유하는 값.
+//
+// xcconfig는 `//`를 주석으로 읽는다. URL을 그대로 적으면 `https:` 뒤가 잘린다.
+// 그래서 슬래시를 변수로 만들어 조립한다 — 치환은 주석 처리 뒤에 일어나므로 안전하다.
+SLASH = /
+URL_SCHEME = https:$(SLASH)$(SLASH)
+
+// 꾸미러 전용 Cloud Run (GCP project: ggumirror-prod, asia-northeast3).
+// **public URL이므로 secret이 아니다.** commit해도 된다.
+GGUMIRROR_API_HOST = ggumirror-api-cmyv4amroa-du.a.run.app
+
+// Info.plist로 넘긴다. Swift는 AppConfig를 통해서만 읽는다.
+//
+// `INFOPLIST_KEY_<custom>`은 동작하지 않는다 — Xcode가 아는 키만 generated plist에 넣는다
+// (실제로 빌드해서 확인했다). 그래서 두 값만 담은 부분 plist를 쓰고,
+// GENERATE_INFOPLIST_FILE = YES가 나머지 키를 여기에 합친다.
+INFOPLIST_FILE = Config/Info.plist

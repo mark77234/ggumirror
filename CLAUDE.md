@@ -169,6 +169,35 @@ Locked Camera Capture Extension은 Apple sandbox 때문에
 
 자세한 계획은 docs/IMPLEMENTATION_PLAN.md의 C-1 Prep 참고.
 
+## Build Configuration (현재 정책)
+
+서버 주소는 **코드에 없다.** `Config/*.xcconfig` → `Config/Info.plist` → `AppConfig`로 온다.
+Swift에서 쓰는 곳은 `AppConfig.backendBaseURL` 한 곳뿐이고,
+`BackendClient`는 Bundle을 직접 읽지 않는다.
+
+| | APP_ENV | BACKEND_BASE_URL |
+|---|---|---|
+| Debug | `development` | 꾸미러 production API |
+| Release | `production` | 꾸미러 production API |
+
+**현재는 Debug도 production API를 쓴다.** 실기기 Debug 빌드로 실제 Apple 로그인을
+디버깅하기 위한 정책이다 — Xcode console에서 `[Auth]` / `[Backend]` 로그를 보면서
+실제 서버 응답을 확인할 수 있다. `127.0.0.1`은 실기기에서 iPhone 자신을 가리켜 쓸 수 없다.
+
+로컬 backend가 필요해지면 `Config/Local.xcconfig`(gitignored)로 **Debug만** override한다.
+`Config/Local.xcconfig.example`가 예시다. Release는 이 파일을 읽지 않는다.
+
+`Config/Base.xcconfig` · `Debug.xcconfig` · `Release.xcconfig` · `Info.plist`는 **추적한다** —
+fresh clone에서 그대로 빌드돼야 한다. Cloud Run public URL은 secret이 아니다.
+
+client build config에 넣어도 되는 것: `APP_ENV` · `BACKEND_BASE_URL` ·
+(향후) public SDK key. **넣지 않는 것**: GCP project id · Firestore 정보 ·
+service account · private key · client secret · token · nonce.
+앱 bundle에 들어가는 값은 secret이 될 수 없다.
+
+`[Backend]` 로그는 `[Auth]`와 같은 규칙이다 — DEBUG 빌드에만, **분류와 status만.**
+요청/응답 본문 · token · nonce · 식별자 · 이메일은 찍지 않는다.
+
 ## Git / Verification
 
 기능 완료 후 commit 전:

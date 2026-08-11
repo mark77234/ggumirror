@@ -10,34 +10,10 @@
 
 import Foundation
 
-// MARK: - 주소
-
-/// API 주소. 여러 파일에 흩뿌리지 않고 여기 한 곳에서만 정한다.
-///
-/// 서버 정보는 주소 하나뿐이다 — GCP project id나 Firestore 이야기를 client에 넣지 않는다.
-nonisolated enum BackendEnvironment {
-    /// 개발용. 시뮬레이터에서 로컬 서버(`uvicorn --port 8080`)에 붙는다.
-    ///
-    /// 실기기에서 로컬 서버를 쓰려면 Mac의 LAN 주소가 필요하다.
-    /// 이제 production이 HTTPS로 떠 있으므로 실기기 확인은 그쪽을 쓰는 게 낫다.
-    static let development = URL(string: "http://127.0.0.1:8080")!
-
-    /// Cloud Run (asia-northeast3). 꾸미러 전용 GCP project에 있다.
-    static let production = URL(string: "https://ggumirror-api-cmyv4amroa-du.a.run.app")!
-
-    static var current: URL? {
-        #if DEBUG
-        development
-        #else
-        production
-        #endif
-    }
-}
-
 // MARK: - 오류
 
 nonisolated enum BackendError: Error, Equatable {
-    /// 서버 주소가 아직 없다(release + 미배포).
+    /// 주소 없이 client를 만든 경우. 정상 앱에서는 일어나지 않는다(`AppConfig`가 항상 준다).
     case notConfigured
     /// Apple credential이 거부됐거나 세션이 유효하지 않다.
     case unauthorized
@@ -50,7 +26,7 @@ nonisolated enum BackendError: Error, Equatable {
     var message: String {
         switch self {
         case .notConfigured:
-            "서버 로그인은 아직 준비 중이에요. 꾸미기는 그대로 쓸 수 있어요."
+            "서버에 연결할 수 없어요. 앱을 다시 시작해 주세요."
         case .unauthorized:
             "로그인 정보를 확인하지 못했어요. 다시 시도해 주세요."
         case .unavailable:
@@ -69,6 +45,28 @@ nonisolated enum BackendError: Error, Equatable {
     }
 }
 
+// MARK: - 서버가 실제로 보내는 모양
+
+/// `POST /auth/apple` 성공 응답. **서버의 wire format 그대로**다.
+///
+/// `ServerSession`은 Keychain에 넣는 우리 모델이라 모양이 다르다(`userId` flat).
+/// 서버가 `user` 객체 안에 id를 담아 보내므로, 둘을 억지로 같게 만들지 않고 여기서 옮긴다.
+/// 이 둘을 같은 타입으로 쓰려다 실기기에서 `decode failure`가 났다.
+private nonisolated struct AppleSignInResponse: Decodable {
+    let accessToken: String
+    let tokenType: String
+    let expiresAt: Date
+    let user: User
+
+    struct User: Decodable {
+        let id: String
+    }
+
+    var session: ServerSession {
+        ServerSession(accessToken: accessToken, expiresAt: expiresAt, userID: user.id)
+    }
+}
+
 // MARK: - Client
 
 /// 테스트가 실제 network 없이 흐름을 확인할 수 있도록 protocol을 하나 둔다.
@@ -80,10 +78,12 @@ nonisolated protocol AuthBackend: Sendable {
 
 /// nonisolated — MainActor 밖에서도 만들고 쓸 수 있다.
 nonisolated struct BackendClient: AuthBackend {
+    /// 기본값은 빌드 설정에서 온다(`AppConfig`). **여기에 주소를 적지 않는다.**
+    /// 테스트는 원하는 주소를 넣어 쓴다.
     var baseURL: URL?
     var session: URLSession = .shared
 
-    init(baseURL: URL? = BackendEnvironment.current, session: URLSession = .shared) {
+    init(baseURL: URL? = AppConfig.backendBaseURL, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.session = session
     }
@@ -101,9 +101,12 @@ nonisolated struct BackendClient: AuthBackend {
             body: JSONEncoder.backend.encode(Body(identityToken: identityToken, nonce: nonce))
         )
         do {
-            return try JSONDecoder.backend.decode(ServerSession.self, from: data)
+            let response = try JSONDecoder.backend.decode(AppleSignInResponse.self, from: data)
+            BackendLog.event("POST /auth/apple decode success")
+            return response.session
         } catch {
-            // 200인데 우리가 모르는 모양이다. 로그인됐다고 하지 않는다.
+            // 200인데 우리가 모르는 모양이다. **로그인됐다고 하지 않는다.**
+            BackendLog.event("POST /auth/apple decode failure \(BackendLog.category(error))")
             throw BackendError.unexpected(status: 200)
         }
     }
@@ -112,10 +115,12 @@ nonisolated struct BackendClient: AuthBackend {
     func verify(accessToken: String) async throws -> String {
         struct Payload: Decodable { let id: String }
         let data = try await send("users/me", method: "GET", accessToken: accessToken)
-        guard let payload = try? JSONDecoder.backend.decode(Payload.self, from: data) else {
+        do {
+            return try JSONDecoder.backend.decode(Payload.self, from: data).id
+        } catch {
+            BackendLog.event("GET /users/me decode failure \(BackendLog.category(error))")
             throw BackendError.unexpected(status: 200)
         }
-        return payload.id
     }
 
     func logout(accessToken: String) async throws {
@@ -144,22 +149,60 @@ nonisolated struct BackendClient: AuthBackend {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
+        BackendLog.event("\(method) /\(path) started")
+
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch {
             // 네트워크 자체가 안 됐다. 서버가 거부한 것이 아니다.
+            BackendLog.event("\(method) /\(path) network failure")
             throw BackendError.unavailable
         }
 
-        guard let http = response as? HTTPURLResponse else { throw BackendError.unavailable }
+        guard let http = response as? HTTPURLResponse else {
+            BackendLog.event("\(method) /\(path) not an HTTP response")
+            throw BackendError.unavailable
+        }
+        BackendLog.event("\(method) /\(path) status=\(http.statusCode)")
+
         switch http.statusCode {
         case 200..<300: return data
         case 401, 403: throw BackendError.unauthorized
         case 500..<600: throw BackendError.unavailable
         default: throw BackendError.unexpected(status: http.statusCode)
         }
+    }
+}
+
+// MARK: - 로그
+
+/// **분류와 status만** 남긴다. 요청/응답 본문 · token · nonce · 식별자 · 이메일은 절대 찍지 않는다.
+/// `AuthLog`와 같은 규칙이고 DEBUG 빌드에만 나온다.
+nonisolated enum BackendLog {
+    static func event(_ message: String) {
+        #if DEBUG
+        print("[Backend] \(message)")
+        #endif
+    }
+
+    /// decode 실패의 **종류만**. 어떤 key가 비었는지까지는 담지만
+    /// 값(본문 · token · 식별자)은 절대 담지 않는다.
+    static func category(_ error: any Error) -> String {
+        guard let error = error as? DecodingError else { return "type=unknown" }
+        return switch error {
+        case .keyNotFound(let key, _): "type=keyNotFound key=\(key.stringValue)"
+        case .typeMismatch(_, let context): "type=typeMismatch at=\(path(context))"
+        case .valueNotFound(_, let context): "type=valueNotFound at=\(path(context))"
+        case .dataCorrupted(let context): "type=dataCorrupted at=\(path(context))"
+        @unknown default: "type=unknown"
+        }
+    }
+
+    private static func path(_ context: DecodingError.Context) -> String {
+        let keys = context.codingPath.map(\.stringValue)
+        return keys.isEmpty ? "root" : keys.joined(separator: ".")
     }
 }
 

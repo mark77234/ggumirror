@@ -24,6 +24,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		12C0F1A0310000000000B001 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		12C0F1A1310000000000B002 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		12C0F1A2310000000000B003 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		12C0F1A3310000000000B004 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		12C0F1A5310000000000B006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		12E5F2D330274DA6004E6173 /* ggumirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ggumirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		12E5F2E230274DA8004E6173 /* ggumirrorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ggumirrorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		12E5F2EC30274DA8004E6173 /* ggumirrorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ggumirrorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -111,9 +116,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		12C0F1A4310000000000B005 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				12C0F1A0310000000000B001 /* Base.xcconfig */,
+				12C0F1A1310000000000B002 /* Debug.xcconfig */,
+				12C0F1A2310000000000B003 /* Release.xcconfig */,
+				12C0F1A3310000000000B004 /* Local.xcconfig.example */,
+				12C0F1A5310000000000B006 /* Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		12E5F2CA30274DA6004E6173 = {
 			isa = PBXGroup;
 			children = (
+				12C0F1A4310000000000B005 /* Config */,
 				12E5F2D530274DA6004E6173 /* ggumirror */,
 				12E5F2E530274DA8004E6173 /* ggumirrorTests */,
 				12E5F2EF30274DA8004E6173 /* ggumirrorUITests */,
@@ -431,6 +449,7 @@
 		};
 		12E5F2F730274DA8004E6173 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 12C0F1A1310000000000B002 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -467,6 +486,7 @@
 		};
 		12E5F2F830274DA8004E6173 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 12C0F1A2310000000000B003 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
