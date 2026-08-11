@@ -505,7 +505,7 @@ struct MirrorEditorCanvas: View {
         guard let base = stickerAtGestureStart ?? selectedSticker, !base.isLocked else { return }
         if stickerAtGestureStart == nil { stickerAtGestureStart = base }
         let widthDelta = Double(delta * 2 / transform.canvasSize.width)
-        let resized = base.resized(width: base.frame.width + widthDelta).constrained()
+        let resized = base.resized(width: base.frame.width + widthDelta, canvas: design.canvas).constrained()
         draggingSticker = resized
         if isEnded { commitSticker() }
     }

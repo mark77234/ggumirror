@@ -205,8 +205,12 @@ struct StickerObject: Identifiable, Hashable {
         return tintColor ?? PaperTheme.ink
     }
 
-    /// 화면 폭 기준 최소 / 최대 크기. 너무 작아지거나 거울을 통째로 덮지 않게 한다.
-    static let sizeRange: ClosedRange<Double> = 0.06...0.45
+    /// 화면 폭 기준 **최소** 크기. 0 / 음수 / NaN이 되는 것만 막는다.
+    ///
+    /// **최대 크기는 두지 않는다.** 사용자는 스티커를 캔버스보다 몇 배로도 키울 수 있고,
+    /// 캔버스를 넘어가는 것도 정상이다 — 잘리는 것은 캔버스 경계에서만 일어난다.
+    /// (viewport 확대 1…4와는 완전히 별개다. 그건 보기 배율이고 이건 오브젝트 크기다.)
+    static let minimumWidth: Double = 0.02
 
     var center: NormalizedPoint {
         NormalizedPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
@@ -229,11 +233,18 @@ struct StickerObject: Identifiable, Hashable {
         height(for: width, aspectRatio: 1)
     }
 
-    /// 중심을 유지한 채 폭을 바꾼다. 종횡비는 항상 유지된다.
-    func resized(width: Double) -> StickerObject {
+    /// 중심을 유지한 채 폭을 바꾼다. **종횡비는 언제나 유지된다** —
+    /// 높이는 원본 비율에서 다시 계산하므로 폭과 높이가 따로 늘어날 길이 없다.
+    ///
+    /// - Parameter canvas: 어떤 캔버스에 놓인 스티커인가. 정사각 스티커 캔버스에서
+    ///   거울 비율(0.46)로 높이를 구하면 스티커가 납작해진다 — 이게 찌그러짐의 원인이었다.
+    func resized(width: Double, canvas: CanvasKind = .mirror) -> StickerObject {
         var copy = self
-        let clamped = min(max(width, Self.sizeRange.lowerBound), Self.sizeRange.upperBound)
-        let height = Self.height(for: clamped, aspectRatio: source.aspectRatio)
+        // 위쪽 한계는 없다. 아래쪽만 붙잡고, 계산이 깨진 값은 지금 크기를 유지한다.
+        guard width.isFinite else { return self }
+        let clamped = max(width, Self.minimumWidth)
+        let height = Self.height(for: clamped, aspectRatio: source.aspectRatio, canvas: canvas)
+        guard height.isFinite, height > 0 else { return self }
         let middle = center
         copy.frame = NormalizedRect(
             x: middle.x - clamped / 2,
@@ -259,6 +270,17 @@ struct StickerObject: Identifiable, Hashable {
     /// 스티커는 캔버스 어디에나 놓을 수 있다 — 카메라 영역도 포함이다.
     /// 화면 밖으로 완전히 사라지지 않도록 **중심**만 Master Canvas 안에 붙잡는다.
     func constrained() -> StickerObject {
+        // 크기가 깨진 값이면(NaN / 무한 / 0) 최소 크기로 되돌린다.
+        // 렌더러 · 저장 · hit test가 전부 이 값을 믿기 때문에 여기서 한 번 걸러낸다.
+        guard frame.width.isFinite, frame.height.isFinite,
+              frame.width >= Self.minimumWidth, frame.height > 0,
+              center.x.isFinite, center.y.isFinite
+        else {
+            return resized(width: Self.minimumWidth).moved(to: NormalizedPoint(
+                x: center.x.isFinite ? min(max(center.x, 0), 1) : 0.5,
+                y: center.y.isFinite ? min(max(center.y, 0), 1) : 0.5
+            ))
+        }
         let middle = center
         return moved(to: NormalizedPoint(
             x: min(max(middle.x, 0), 1),

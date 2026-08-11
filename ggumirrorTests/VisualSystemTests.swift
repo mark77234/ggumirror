@@ -295,7 +295,8 @@ struct VisualSystemTests {
         #expect(newSize(drag: 20) > base.fontSize)
         // 스티커보다 과민하지 않다 — 같은 거리에서 전체 범위 대비 변화 폭을 비교한다.
         let textSpan = TextPolicy.fontSizeRange.upperBound - TextPolicy.fontSizeRange.lowerBound
-        let stickerSpan = StickerObject.sizeRange.upperBound - StickerObject.sizeRange.lowerBound
+        // 스티커에는 최대 제한이 없으므로(V-5B) 예전 범위(0.06…0.45)를 기준 폭으로 쓴다.
+        let stickerSpan = 0.45 - 0.06
         let textShare = (newSize(drag: 40) - base.fontSize) / textSpan
         let stickerShare = Double(40 * 2 / canvasWidth) / stickerSpan
         #expect(abs(textShare - stickerShare) < 0.05)

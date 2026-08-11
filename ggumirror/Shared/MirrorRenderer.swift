@@ -122,13 +122,23 @@ enum MirrorRenderer {
         //    외부 디자인 / 스티커(사진 포함) / 텍스트를 **하나의 zIndex 순서**로 함께 그린다.
         //    선택 hit test도 정확히 같은 규칙을 뒤집어 쓴다 (DecorationLayer.renderRank).
         //    rank: zIndex가 같으면 외부 디자인(0) < 스티커(1) < 텍스트(2).
+        // 오브젝트는 **캔버스 경계에서만** 잘린다. 캔버스보다 큰 스티커를 억지로 줄이지 않는다 —
+        // 넘어간 부분만 잘리고 안쪽은 그대로 그려진다. Editor / 미리보기 / 실제 Mirror /
+        // Capture / 스티커 최종 PNG가 모두 같은 규칙을 쓴다.
+        var objectLayer = context
+        objectLayer.clip(to: Path(transform.canvasRect))
+
         let objects: [(order: (Int, Int), draw: () -> Void)] =
             importedArtworks.map { artwork in
-                ((artwork.zIndex, 0), { drawImportedArtwork(artwork, in: context, transform: transform) })
+                ((artwork.zIndex, 0), { drawImportedArtwork(artwork, in: objectLayer, transform: transform) })
             } + stickers.map { sticker in
-                ((sticker.zIndex, 1), { drawSticker(sticker, in: context, transform: transform, visible: visible) })
+                ((sticker.zIndex, 1), {
+                    drawSticker(sticker, in: objectLayer, transform: transform, visible: visible)
+                })
             } + texts.map { text in
-                ((text.zIndex, 2), { drawText(text, in: context, transform: transform, visible: visible, canvas: canvas) })
+                ((text.zIndex, 2), {
+                    drawText(text, in: objectLayer, transform: transform, visible: visible, canvas: canvas)
+                })
             }
         for object in objects.sorted(by: { $0.order < $1.order }) {
             object.draw()

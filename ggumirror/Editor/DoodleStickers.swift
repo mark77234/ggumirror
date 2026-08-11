@@ -146,9 +146,18 @@ enum DoodleInk {
         accent: Color? = nil,
         context: GraphicsContext
     ) {
+        // **정사각형 안에만 그린다.** 좌표는 0…1 단위 상자 기준이라 rect가 찌그러지면
+        // x와 y가 다른 배율로 늘어나 디자인이 눌린다. 어떤 rect가 와도 왜곡되지 않게
+        // 짧은 변에 맞춰 가운데 정렬한다(aspect fit).
         let box = min(rect.width, rect.height)
+        guard box.isFinite, box > 0 else { return }
+        let square = CGRect(
+            x: rect.midX - box / 2,
+            y: rect.midY - box / 2,
+            width: box, height: box
+        )
         for stroke in strokes {
-            let path = stroke.path(in: rect)
+            let path = stroke.path(in: square)
             if stroke.isFilled {
                 // 채움은 강조색이 있으면 그것으로. 없으면 잉크.
                 context.fill(path, with: .color(accent ?? tint))

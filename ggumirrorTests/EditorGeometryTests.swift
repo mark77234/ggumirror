@@ -711,8 +711,9 @@ struct EditorGeometryTests {
         let originalRatio = base.frame.width / base.frame.height
         #expect(abs(ratio - originalRatio) < 0.0001)
 
-        #expect(base.resized(width: 0.0001).frame.width == StickerObject.sizeRange.lowerBound)
-        #expect(base.resized(width: 9).frame.width == StickerObject.sizeRange.upperBound)
+        // 최소 크기는 지키고, **최대 크기 제한은 없다**(V-5B에서 제거).
+        #expect(base.resized(width: 0.0001).frame.width == StickerObject.minimumWidth)
+        #expect(base.resized(width: 9).frame.width == 9)
         // 중심은 유지된다
         #expect(abs(bigger.center.x - base.center.x) < 0.0001)
     }
@@ -1250,7 +1251,7 @@ struct EditorGeometryTests {
 
         // 축소해서 화면상 아주 작아진 스티커
         let small = MirrorViewTransform(canvasSize: CGSize(width: 200, height: 433), offset: .zero)
-        let tiny = sticker(at: NormalizedPoint(x: 0.5, y: 0.5), width: StickerObject.sizeRange.lowerBound)
+        let tiny = sticker(at: NormalizedPoint(x: 0.5, y: 0.5), width: StickerObject.minimumWidth)
         let tinyRect = small.rect(tiny.frame)
         #expect(tinyRect.width < StickerObject.minimumTapTarget)
         let edge = StickerObject.minimumTapTarget / 2 - 1
@@ -1772,8 +1773,10 @@ struct EditorGeometryTests {
         #expect(item.opacity == 0.5)
         #expect(item.isLocked)
 
-        // 크기 범위 제한은 기본 스티커와 동일
-        #expect(item.resized(width: 5).frame.width == StickerObject.sizeRange.upperBound)
+        // 사진 스티커도 최대 제한이 없다. 비율은 원본 그대로 유지된다.
+        let huge = item.resized(width: 5)
+        #expect(huge.frame.width == 5)
+        #expect(abs(huge.frame.width / huge.frame.height - item.frame.width / item.frame.height) < 0.0001)
 
         // 카메라 영역 한가운데도 그대로 유효한 자리다.
         let inCamera = sticker(source, at: NormalizedPoint(x: 0.5, y: 0.5)).constrained()

@@ -801,6 +801,43 @@ My Mirrors에서 겪은 "고쳤는데 새 항목이 생기는" 버그를 처음�
 내 스티커 목록 화면 · 거울 Editor에서 내 스티커 고르기 · 삭제 UX · Sticker Store ·
 Publish Draft · 실제 등록 / 구매 / 정산.
 
+## Phase V-5B (진행) — Sticker resize 수정 + 최대 크기 제한 제거
+
+거울 꾸미기와 스티커 만들기 **양쪽에** 적용했다. 한쪽만 고치면 실패다.
+
+### 찌그러짐 원인
+
+`StickerObject.resized(width:)`가 높이를 `height(for:aspectRatio:)`로 다시 구할 때
+**캔버스를 받지 않아 언제나 거울 비율(1080:2340)을 썼다.** 정사각 스티커 캔버스에서
+크기를 조절하면 높이가 폭의 0.46배로 계산돼 스티커가 납작해졌다.
+→ `resized(width:canvas:)`로 캔버스를 넘긴다.
+
+제스처 자체는 이미 uniform이었다 — `alongWidth`가 스칼라 하나를 넘기고 높이는 파생값이다.
+V-1의 rotation-aware projection은 그대로 유지된다.
+
+함께 막은 것: `DoodleInk.draw`가 rect의 width / height를 각각 배율로 쓰고 있었다.
+frame이 정사각이 아니면 두들이 늘어난다 → **짧은 변에 맞춰(aspect fit)** 그리게 했다.
+지금 데이터는 항상 정사각 frame이라 보이는 크기는 달라지지 않는다.
+
+### 최대 크기 제한 제거
+
+`StickerObject.sizeRange = 0.06...0.45` → `minimumWidth = 0.02`(하한만).
+전수 조사 결과 스티커 크기 상한은 이 한 곳뿐이었다(`maxScale` / `maxWidth` 등은 없었다).
+`resized`에서 상한 clamp를 없애고, 저장 단계에도 clamp가 없음을 테스트로 고정했다.
+
+- 캔버스보다 2 · 3 · 5배로 키울 수 있고 캔버스를 넘어가도 된다
+- 넘어간 부분만 캔버스 경계에서 잘린다 — 렌더러가 오브젝트를 캔버스로 클립한다
+  (예전에는 오브젝트가 클립되지 않아 Editor 크롬 위로 새어 나갈 수 있었다)
+- viewport 확대(1…4)는 오브젝트 크기를 묶지 않는다
+- NaN / 무한 / 0 / 음수는 `resized`와 `constrained`가 걸러낸다
+
+### 마이그레이션
+
+**없다.** schemaVersion을 올리지 않았다(거울 3, 스티커 1 그대로).
+기존 저장 데이터는 이미 0.45 이하라 보이는 크기가 그대로다 — 새 크기 조절부터 상한이 없어진다.
+
+기존 테스트 5곳이 `sizeRange`를 참조하고 있어 새 정책에 맞게 고쳤다(삭제 0).
+
 ## Sticker Marketplace (후속 Phase)
 
 - Sticker Creator → 저장 → 내 스티커 → 상점에 올리기 → 가격 설정 → Sticker Store
