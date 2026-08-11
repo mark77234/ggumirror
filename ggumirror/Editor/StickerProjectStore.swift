@@ -35,6 +35,12 @@ struct PersistedStickerProjects: Codable {
     var projects: [StickerProject] = []
 }
 
+/// 스티커 등록 준비 정보. **거울 등록 준비와 파일을 나눈다** — 서로의 형식을 건드리지 않는다.
+struct PersistedStickerDrafts: Codable {
+    var schemaVersion = StickerSchema.current
+    var drafts: [StickerPublishDraft] = []
+}
+
 enum StickerStoreLoad: Equatable {
     case empty
     case loaded([StickerProject])
@@ -60,6 +66,7 @@ final class StickerProjectStore: Sendable {
     var projectsURL: URL { root.appending(path: "sticker-projects.json") }
     var damagedURL: URL { root.appending(path: "sticker-projects-damaged.json") }
     var assetsDirectory: URL { root.appending(path: "UserStickerAssets", directoryHint: .isDirectory) }
+    var draftsURL: URL { root.appending(path: "sticker-publish-drafts.json") }
 
     func assetURL(_ id: UUID) -> URL {
         assetsDirectory.appending(path: "\(id.uuidString).png")
@@ -117,6 +124,32 @@ final class StickerProjectStore: Sendable {
         }
     }
 
+    // MARK: 등록 준비
+
+    /// 못 읽으면 빈 목록으로 시작한다. 다시 쓸 수 있는 정보라 격리까지 하지 않는다.
+    func loadDrafts() -> [StickerPublishDraft] {
+        guard let data = try? Data(contentsOf: draftsURL) else { return [] }
+        do {
+            return try JSONDecoder().decode(PersistedStickerDrafts.self, from: data).drafts
+        } catch {
+            #if DEBUG
+            print("[StickerProjectStore] 등록 준비 정보를 읽지 못했다: \(error)")
+            #endif
+            return []
+        }
+    }
+
+    func saveDrafts(_ drafts: [StickerPublishDraft]) {
+        guard let data = try? JSONEncoder().encode(PersistedStickerDrafts(drafts: drafts)) else { return }
+        let url = draftsURL
+        let directory = root
+        queue.async {
+            let fileManager = FileManager()
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     // MARK: 완성 PNG
 
     func writeAsset(_ data: Data, id: UUID) {
@@ -154,10 +187,10 @@ final class StickerProjectStore: Sendable {
 
 // MARK: - 라이브러리
 
-/// 내가 만든 스티커 목록. 앱 전체에서 이것 하나가 진실이다.
+/// 내가 만든 스티커 목록. **앱 전체에서 이것 하나가 진실이다.**
 ///
-/// 이번 Phase에서는 Creator가 저장하는 것까지다 —
-/// My Stickers 화면 · Mirror picker 연동 · 상점은 V-5B다.
+/// `@Observable`이라 저장하면 내 스티커 화면과 Mirror Editor picker가 즉시 갱신된다 —
+/// 앱을 다시 켤 필요가 없다. 화면마다 배열을 따로 들고 있지 않는다.
 @Observable
 @MainActor
 final class StickerLibrary {
@@ -190,6 +223,10 @@ final class StickerLibrary {
         }
 
         guard !isReadOnly else { return }
+        // 사라진 스티커의 준비 정보는 들고 있을 이유가 없다.
+        drafts = store.loadDrafts().filter { draft in
+            projects.contains { $0.id == draft.stickerProjectID }
+        }
         store.collectAssetGarbage(keeping: Set(projects.compactMap(\.finalAssetID)))
     }
 
@@ -241,10 +278,76 @@ final class StickerLibrary {
         return projects.first { $0.id == project.id }
     }
 
+    /// 복제. **새 id · 새 완성 PNG**를 만든다. 원본은 그대로 둔다.
+    @discardableResult
+    func duplicate(_ project: StickerProject) -> StickerProject? {
+        guard !isReadOnly else { return nil }
+        let name = StickerProjectPolicy.copyName(of: project.name, existing: projects.map(\.name))
+        var design = project.design
+        design.name = name
+        // save가 새 id를 만들고 PNG도 새로 굽는다 — finalAssetID를 물려받지 않는다.
+        return save(design, name: name, context: .createNew)
+    }
+
+    /// 목록에서 지운다.
+    ///
+    /// **이미 거울에 놓인 스티커는 지우지 않는다.** 거울은 배치 시점에 구운
+    /// 불변 스냅샷(사진 asset)을 따로 갖고 있어서 이 목록과 수명이 분리돼 있다.
     func delete(_ project: StickerProject) {
         projects.removeAll { $0.id == project.id }
+        drafts.removeAll { $0.stickerProjectID == project.id }
         persist()
+        store?.saveDrafts(drafts)
+        // 여기서 지우는 것은 **내 스티커 목록의 완성 PNG**뿐이다(UserStickerAssets).
+        // 거울이 쓰는 스냅샷은 PhotoStickerAssets에 있고 거울 GC만 건드린다.
         store?.collectAssetGarbage(keeping: Set(projects.compactMap(\.finalAssetID)))
+    }
+
+    // MARK: - 거울에 놓기
+
+    /// 거울에 놓을 **불변 스냅샷**을 만든다.
+    ///
+    /// 지금 완성 PNG를 사진 asset으로 **복사해** 둔다. 그래서:
+    /// - 나중에 원본 스티커를 고쳐도 이미 놓인 거울은 그대로다
+    /// - 목록에서 스티커를 지워도 거울은 깨지지 않는다
+    ///
+    /// 새 `StickerSource` case를 만들지 않았다 — `.photo`가 이미
+    /// "id로 참조하는 불변 bitmap + 비율"이고, 거울 저장 형식 · GC · 렌더 · 크기 조절이
+    /// 전부 그대로 동작한다(거울 schemaVersion 3 유지).
+    func placementSnapshot(for project: StickerProject) -> StickerSource? {
+        guard let image = finalImage(for: project) else { return nil }
+        return PhotoStickerAssetStore.shared.register(image)
+    }
+
+    /// 완성 PNG. 파일에 있으면 읽고, 없으면 지금 다시 굽는다.
+    func finalImage(for project: StickerProject) -> CGImage? {
+        if let assetID = project.finalAssetID, let image = store?.readAsset(assetID) {
+            return image
+        }
+        return StickerRenderer.render(project.design)
+    }
+
+    // MARK: - 등록 준비
+
+    /// 상점에 올리기 전에 채워 둔 판매 정보. 실제 등록도 조각 차감도 없다.
+    private(set) var drafts: [StickerPublishDraft] = []
+
+    func draft(for projectID: String) -> StickerPublishDraft? {
+        drafts.first { $0.stickerProjectID == projectID }
+    }
+
+    /// 스티커 하나에 준비 정보 하나. 같은 스티커면 덮어쓴다.
+    func saveDraft(_ draft: StickerPublishDraft) {
+        guard !isReadOnly else { return }
+        var updated = draft
+        updated.updatedAt = Date()
+        if let index = drafts.firstIndex(where: { $0.stickerProjectID == draft.stickerProjectID }) {
+            updated.id = drafts[index].id
+            drafts[index] = updated
+        } else {
+            drafts.append(updated)
+        }
+        store?.saveDrafts(drafts)
     }
 
     private func persist() {

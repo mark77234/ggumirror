@@ -1,0 +1,106 @@
+//
+//  StickerPublishDraft.swift
+//  ggumirror
+//
+//  스티커를 상점에 올리기 전에 채우는 판매 정보.
+//
+//  **등록 준비까지다.** 실제 등록 / 조각 차감 / listing / 판매는 없다.
+//  서버도 ledger도 없는 상태에서 "등록 완료"처럼 보이는 가짜 상태를 만들지 않는다.
+//  거울 등록 준비(`MirrorPublishDraft`)와 파일도 모델도 따로 둔다.
+//
+
+import Foundation
+
+// MARK: - 정책
+
+enum StickerPublishPolicy {
+    static let maxTitleLength = 24
+    static let maxDescriptionLength = 200
+    /// 판매자가 정하는 가격. 0(무료)도 허용한다.
+    static let priceRange = 0...999
+
+    /// 스티커 등록 비용은 **아직 정하지 않았다.**
+    ///
+    /// 거울의 20 조각을 그대로 가져오지 않는다 — 스티커는 거울보다 작은 콘텐츠라
+    /// 같은 값일 이유가 없다. 확정되지 않은 비용을 화면에 숫자로 보여주지 않는다.
+    static let feeInShards: Int? = nil
+
+    static func normalizedTitle(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func normalizedDescription(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Draft
+
+struct StickerPublishDraft: Identifiable, Hashable, Codable {
+    var id = UUID()
+    /// 어떤 스티커를 올릴지. 디자인 복사본을 들고 있지 않다.
+    var stickerProjectID: String
+    var title = ""
+    var description = ""
+    var priceInShards = 0
+    /// 사진이 함께 공개될 수 있다는 안내를 확인했는지.
+    var didAcknowledgePhotoPrivacy = false
+    /// 사용할 권리가 있는 콘텐츠만 올린다는 안내를 확인했는지.
+    var didAcknowledgeRights = false
+    var updatedAt = Date()
+}
+
+// MARK: - 검사
+
+enum StickerPublishIssue: String, Equatable, CaseIterable {
+    case stickerMissing
+    case titleRequired
+    case titleTooLong
+    case descriptionTooLong
+    case priceOutOfRange
+    case photoPrivacyNotAcknowledged
+    case rightsNotAcknowledged
+
+    var message: String {
+        switch self {
+        case .stickerMissing: "스티커를 찾지 못했어요."
+        case .titleRequired: "제목을 입력해 주세요."
+        case .titleTooLong: "제목은 \(StickerPublishPolicy.maxTitleLength)자까지예요."
+        case .descriptionTooLong: "설명은 \(StickerPublishPolicy.maxDescriptionLength)자까지예요."
+        case .priceOutOfRange: "가격은 0부터 \(StickerPublishPolicy.priceRange.upperBound) 조각까지예요."
+        case .photoPrivacyNotAcknowledged: "사진 공개 안내를 확인해 주세요."
+        case .rightsNotAcknowledged: "콘텐츠 권리 안내를 확인해 주세요."
+        }
+    }
+}
+
+enum StickerPublishValidator {
+    /// 등록 준비를 마칠 수 있는지. 비어 있으면 통과다.
+    static func issues(for draft: StickerPublishDraft, project: StickerProject?) -> [StickerPublishIssue] {
+        guard let project else { return [.stickerMissing] }
+
+        var issues: [StickerPublishIssue] = []
+        if let title = StickerPublishPolicy.normalizedTitle(draft.title) {
+            if title.count > StickerPublishPolicy.maxTitleLength { issues.append(.titleTooLong) }
+        } else {
+            issues.append(.titleRequired)
+        }
+        if StickerPublishPolicy.normalizedDescription(draft.description).count
+            > StickerPublishPolicy.maxDescriptionLength {
+            issues.append(.descriptionTooLong)
+        }
+        if !StickerPublishPolicy.priceRange.contains(draft.priceInShards) {
+            issues.append(.priceOutOfRange)
+        }
+        // 사진이 들어 있으면 그 이미지가 함께 공개될 수 있다.
+        if !project.photoAssetIDs.isEmpty, !draft.didAcknowledgePhotoPrivacy {
+            issues.append(.photoPrivacyNotAcknowledged)
+        }
+        // 권리 확인은 사진이 없어도 필요하다 — 그린 것도 남의 것일 수 있다.
+        if !draft.didAcknowledgeRights {
+            issues.append(.rightsNotAcknowledged)
+        }
+        return issues
+    }
+}

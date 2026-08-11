@@ -114,6 +114,12 @@ struct EditorView: View {
                 onCreateSticker: {
                     isPickingSticker = false
                     isChoosingStickerStart = true
+                },
+                stickers: stickerLibrary,
+                onPickUserSticker: { source in
+                    // 배치 시점의 불변 스냅샷이 넘어온다. 사진 스티커와 같은 경로로 놓인다.
+                    addSticker(source)
+                    isPickingSticker = false
                 }
             )
         }
@@ -196,7 +202,11 @@ struct EditorView: View {
                 library: stickerLibrary,
                 context: .createNew,
                 startsWithPhoto: request.startsWithPhoto,
-                onSaved: { creatorRequest = nil }
+                onSaved: {
+                    creatorRequest = nil
+                    // 만들고 나면 picker의 "내 스티커"로 돌아온다 — 방금 만든 것이 맨 앞에 있다.
+                    isPickingSticker = true
+                }
             )
         }
     }

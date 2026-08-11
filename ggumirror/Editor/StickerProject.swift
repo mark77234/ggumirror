@@ -27,6 +27,15 @@ enum StickerProjectPolicy {
         return "\(base) \(index)"
     }
 
+    /// 복제할 때 붙이는 이름. 이미 있으면 번호를 늘린다.
+    static func copyName(of name: String, existing names: [String]) -> String {
+        let base = "\(name) 복사본"
+        guard names.contains(base) else { return base }
+        var index = 2
+        while names.contains("\(base) \(index)") { index += 1 }
+        return "\(base) \(index)"
+    }
+
     static func normalizedName(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -112,4 +121,7 @@ extension MirrorDesign {
 struct StickerCreatorRequest: Identifiable {
     let id = UUID()
     var startsWithPhoto = false
+    /// 편집할 스티커. nil이면 빈 캔버스에서 새로 만든다.
+    var design: MirrorDesign?
+    var context: StickerSaveContext = .createNew
 }

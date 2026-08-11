@@ -838,6 +838,56 @@ frame이 정사각이 아니면 두들이 늘어난다 → **짧은 변에 맞�
 
 기존 테스트 5곳이 `sizeRange`를 참조하고 있어 새 정책에 맞게 고쳤다(삭제 0).
 
+## Phase V-5B — My Stickers + Sticker Store 연결 (확정)
+
+Creator를 실제 사용자 흐름에 연결했다. **Marketplace Backend는 여전히 pending이다.**
+
+### 새로 만든 것
+
+| 파일 | 내용 |
+|---|---|
+| `Store/StickerStoreView.swift` | 상점의 스티커 칸 — 만들기 · 내 스티커 2열 · 스티커 상점(빈 상태) |
+| `Store/PublishStickerView.swift` | 스티커 등록 준비 |
+| `Editor/StickerPublishDraft.swift` | Draft 모델 · 정책 · 검사 |
+
+`StoreView`에 `StoreSection`(거울/스티커) 전환을 더했다. Bottom Tab은 그대로 3개다.
+
+### 배치 스냅샷 — 새 case도 schema bump도 없다
+
+내 스티커를 거울에 놓을 때 **완성 PNG를 사진 asset으로 복사**한다.
+`.photo`가 이미 "불변 bitmap 참조 + 비율"이므로 새 `StickerSource` case가 필요 없었고,
+거울 저장 형식은 **3 그대로**다(억지 bump 없음). 그 결과:
+
+- 원본을 고쳐도 이미 놓인 거울은 그대로 (테스트로 픽셀 비교까지 확인)
+- 목록에서 지워도 거울은 깨지지 않음
+- 새로 놓으면 최신 디자인
+- GC가 분리됨 — 라이브러리 삭제는 `UserStickerAssets`만, 거울 스냅샷은 `PhotoStickerAssets`에서 거울 참조로만 관리
+
+남은 한 가지: 레이어 목록에서 이 스냅샷의 이름이 "내 사진"으로 보인다(`.photo` 재사용의 대가).
+이름만을 위해 schema를 올릴 이유가 없어 그대로 뒀다.
+
+### 즉시 갱신
+
+`StickerLibrary`(@Observable) 하나가 진실이다. 화면마다 배열을 따로 두지 않으므로
+저장하면 상점의 내 스티커와 Editor picker가 같이 갱신된다. 앱 재실행이 필요 없다.
+
+### 등록 준비
+
+`sticker-publish-drafts.json`(schemaVersion 1). 거울 등록 준비와 파일도 모델도 분리.
+**등록 비용은 `nil`(미정)** — 거울의 20 조각을 가져오지 않는다. 조각 변화 0, listing 0.
+권리 확인은 필수, 사진이 있으면 공개 안내 확인도 필수.
+
+### 확인하지 못한 것
+
+시뮬레이터 UI를 직접 조작하는 도구를 쓸 수 없어(아래 참고) 화면은
+`UIHostingController` 렌더로 확인했다 — 상점 거울/스티커 · 빈 상태 · 내 스티커 4개 2열 ·
+picker 두 칸 · 배치 · 2.2배 확대까지 눈으로 봤다. 탭 이동 흐름 자체는 실기기 확인이 필요하다.
+
+### pending
+
+실제 Marketplace(서버 listing · 구매 · 판매자 정산) · 스티커 등록 비용 확정 ·
+내 스티커를 거울에 "바로 적용"하는 지름길.
+
 ## Sticker Marketplace (후속 Phase)
 
 - Sticker Creator → 저장 → 내 스티커 → 상점에 올리기 → 가격 설정 → Sticker Store

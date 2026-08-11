@@ -8,9 +8,20 @@
 
 import SwiftUI
 
+/// 상점 안의 두 칸. **새 Bottom Tab을 만들지 않는다** — 상점 내부만 나눈다.
+enum StoreSection: String, CaseIterable, Identifiable, Hashable {
+    case mirror = "거울"
+    case sticker = "스티커"
+
+    var id: String { rawValue }
+}
+
 struct StoreView: View {
     var library: MirrorLibrary?
+    /// 내가 만든 스티커. 저장하면 이 화면이 바로 갱신된다(@Observable).
+    var stickers: StickerLibrary = .live
 
+    @State private var section: StoreSection = .mirror
     @State private var category: StoreCategory = .all
     @State private var tag: TagFilter = .all
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -25,9 +36,18 @@ struct StoreView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 header
-                filters
-                gallery
+                sectionSwitch
+
+                switch section {
+                case .mirror:
+                    // 거울 상점은 그대로다 — 템플릿 24개 · 갈래 · 가격 · 무료 수령 전부 유지.
+                    filters
+                    gallery
+                case .sticker:
+                    StickerStoreView(library: stickers, mirrors: library)
+                }
             }
+            .animation(InkMotion.modal, value: section)
             .navigationDestination(for: MirrorTemplate.self) { template in
                 TemplateDetailView(template: template, library: library)
             }
@@ -64,6 +84,36 @@ struct StoreView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 14)
+    }
+
+    /// 거울 / 스티커 전환. 시스템 세그먼트 대신 잉크 칩 두 개를 쓴다.
+    private var sectionSwitch: some View {
+        HStack(spacing: 8) {
+            ForEach(StoreSection.allCases) { item in
+                let isActive = section == item
+                Button {
+                    section = item
+                } label: {
+                    Text(item.rawValue)
+                        .font(InkFont.button)
+                        .foregroundStyle(isActive ? PaperTheme.paper : PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                        .background {
+                            let shape = UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                            shape
+                                .fill(isActive ? PaperTheme.ink : PaperTheme.subtleSurface)
+                                .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
+                .accessibilityLabel(item.rawValue)
+                .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
     }
 
     private var filters: some View {
