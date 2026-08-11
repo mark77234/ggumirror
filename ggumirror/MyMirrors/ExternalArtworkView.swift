@@ -18,7 +18,7 @@ struct ExternalArtworkView: View {
     /// 사용자가 "이 디자인 사용"을 눌렀을 때. asset은 이미 보관된 상태다.
     var onUse: (ImportedArtworkObject) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
 
     @State private var guideURL: URL?
     @State private var photoItem: PhotosPickerItem?
@@ -54,15 +54,15 @@ struct ExternalArtworkView: View {
             guard case .success(let url) = result else { return }
             load(url)
         }
-        .alert(
+        .inkDialog(
             problem?.title ?? "",
-            isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } }),
-            presenting: problem
-        ) { _ in
-            Button("다시 선택") { problem = nil }
-            Button("취소", role: .cancel) { problem = nil }
-        } message: { problem in
-            Text(problem.message)
+            message: problem?.message,
+            isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })
+        ) {
+            [
+                InkDialogAction("취소"),
+                InkDialogAction("다시 선택", role: .primary),
+            ]
         }
     }
 

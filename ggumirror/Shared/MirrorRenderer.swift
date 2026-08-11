@@ -276,6 +276,18 @@ enum MirrorRenderer {
         let artwork: GraphicsContext.ResolvedImage
 
         switch sticker.source {
+        case .doodle(let doodle):
+            // 두들은 이미지가 아니라 Path다 — 어느 배율에서나 같은 선이 나온다.
+            // picker 미리보기도 같은 함수(`DoodleInk.draw`)를 쓴다.
+            DoodleInk.draw(
+                doodle.strokes,
+                in: CGRect(x: -rect.width / 2, y: -rect.height / 2, width: rect.width, height: rect.height),
+                tint: sticker.resolvedTint ?? PaperTheme.ink,
+                accent: doodle.accent?.color,
+                context: layer
+            )
+            return
+
         case .builtIn(let builtIn):
             var symbol = context.resolve(Image(systemName: builtIn.symbolName))
             // original 스티커(사진 등)는 원본 색을 유지한다.

@@ -644,6 +644,93 @@ Capability
 
 다음: **Backend Foundation** → Apple server verification + Server User.
 
+## Phase V-3 — Focused UI / Editor Polish (확정)
+
+네 가지만 손봤다. **앱 전체 아이콘 교체 / 종이 texture 추가 / 전체 redesign은 이 Phase에 없다.**
+
+### A. 제품 아이콘 둘 (`Shared/InkProductIcons.swift`)
+
+- `MirrorIcon` / `ShardIcon`을 직접 그린 손그림으로 교체. `MirrorFrameShape` ·
+  `MirrorReflectionShape` · `ShardShape` · `ShardReflectionShape` 모두 `Shape`다.
+- 나머지 아이콘은 건드리지 않았다. 정의만 `InkComponents.swift`에서 옮겨 왔고
+  타입 이름을 그대로 둬서 사용처(8곳)는 수정이 필요 없었다.
+- 조각은 **네 번 다시 그렸다** — 깃발 / 커서 / 왕관 / 다이아몬드로 읽혀서.
+  실패 원인과 결론은 DESIGN.md "제품 아이콘"에 적어 뒀다.
+
+### B. Bottom Sheet · Dialog (`Shared/InkModal.swift`)
+
+- 시스템 `.sheet` 13곳, `.confirmationDialog` 2곳, `.alert` 7곳 → `inkBottomSheet` / `inkDialog`.
+- `presentationDetents` → `InkSheetSize`. `paperSheet()`는 삭제했다.
+- 등장·퇴장은 `InkMotion` 한 곳(easeInOut 0.26초). spring 없음.
+- `fullScreenCover` 2곳(Editor 진입 · 미리보기)은 그대로다 — 전체 화면이라 시스템 크롬이 없다.
+
+**중간에 잡은 버그**: 비율 시트에서 `maxHeight`(비율) 뒤에 `maxHeight: .infinity`가 걸려
+카드가 화면 전체를 차지하고 내용이 위로 붙었다(아래 빈 종이). 높이를 한 번만 주도록 고치고
+`fractionSheetSitsAtTheBottom` 회귀 테스트를 붙였다.
+
+### C. 내 거울 `꾸미기` = 기존 거울 수정
+
+- 원인: `HomeView`가 `MirrorEditorContext.duplicate`를 넘겨서 저장할 때마다 새 거울이 생겼다.
+  저장 로직은 이미 `.editCurrent`에서 제자리 갱신을 지원하고 있었다 — **routing만 틀렸다.**
+- `.editCurrent`로 바꿔 같은 id / 이름 / origin / 슬롯을 유지한다.
+- `save`가 currentID를 덮어쓰지 않게 했다. 쓰지 않는 거울을 고쳐도 적용은 그대로다.
+- `복제`(`MirrorLibrary.duplicate`)와 `+ 거울 만들기`(`.createNew`)는 그대로 새 거울을 만든다.
+- `.duplicate` context는 남아 있다 — Editor의 "○○ 복사본" 이름 프리필과 테스트가 쓴다.
+
+### D. Draw / Hand 컨트롤 색
+
+- 원인: 컨트롤 배경이 `shape.overlay(shape.stroke(...))`로 **채워지지 않은 Shape**였다.
+  채우지 않은 Shape는 시스템 primary로 칠해져서 라이트 모드에서 검은 배경 + 검은 아이콘이 됐다.
+  앱 전체에서 이 패턴은 이 한 곳뿐이었다.
+- `.fill(PaperTheme.subtleSurface)` + 고정 semantic 색으로 고쳤다.
+  선택 = 잉크 면 + 종이 아이콘 / 비선택 = 종이 면 + 잉크 아이콘.
+- **colorScheme 분기를 만들지 않았다.** 앱 전체 다크 모드 지원도 이 Phase의 일이 아니다.
+
+### 이 Phase에서 하지 않은 것
+
+앱 전체 아이콘 교체 · 종이 texture · 전체 redesign · 다크 모드 대응 · Backend ·
+Apple 서버 검증 · 실제 상점 등록 / 구매 · Store artwork · 폰트 · 카메라 · Mirror geometry.
+
+## Phase V-4 — Doodle Sticker & Product Icon (확정)
+
+기본 제공 스티커를 **손그림 두들 42종으로 전면 교체**하고, 제품 아이콘 네 개를 같은 펜으로 다시 그렸다.
+앱 전체 아이콘 교체 / 종이 texture / redesign은 이 Phase에 없다.
+
+### 구조
+
+- `Editor/DoodleStickers.swift` — `DoodleStroke`(획) · `DoodleInk`(펜) · `DoodleAccent` · `DoodleCategory` · `DoodleStickerView`
+- `Editor/DoodleStickerCatalog.swift` — 42종의 좌표. 그림의 전부가 이 파일 숫자다
+- `Shared/DoodleProductIcons.swift` — 거울 · 조각 · 홈 · 상점 + 예전 이름(`MirrorIcon` / `ShardIcon`)
+
+**PNG로 굽지 않았다.** picker 미리보기 · 실제 거울 · Capture가 `DoodleInk.draw` 한 함수를 지나므로
+미리보기와 결과가 다를 수 없고, 어느 배율에서나 선이 뭉개지지 않는다.
+renderer는 이미지 대신 Path를 그리는 분기 하나만 늘었다.
+
+### Legacy 호환 (중요)
+
+- `StickerSource`에 `.doodle` case를 더했다. `.builtIn`은 **legacy로 남긴다** —
+  picker에 없고 새로 만들 수 없지만 예전 거울은 계속 그려진다
+- 저장 형식 **2 → 3**. v1 · v2 파일은 그대로 읽히고, 예전 앱은 새 파일을 `tooNew`로 보호한다
+- `kind`가 없던 시절의 파일도 `builtIn`으로 읽힌다
+
+### 눈으로 확인하고 다시 그린 것
+
+스냅샷을 뽑아보고 **10종을 다시 그렸다** — 꽃(씨앗) · 데이지(해와 구분 안 됨 → 포도알) ·
+구름(조약돌) · 불꽃(아몬드) · 클립(타원) · 핀(막대사탕) · 케이크(떠 있는 점) ·
+풍선(테두리 없는 원) · 날개하트 · 테이프(배터리).
+원인과 규칙은 DESIGN.md "그릴 때 걸린 함정"에 남겼다.
+
+### 함께 고친 버그 (이전 Phase 회귀)
+
+커스텀 시트 안에서 `@Environment(\.dismiss)`를 쓰면 시트가 아니라 **뒤에 있는 Editor**가 닫혔다
+("텍스트 추가 → 취소"가 홈으로 나가는 증상). 커스텀 모달만 닫는 `\.inkModalDismiss`를 만들고
+시트 내용 7곳을 옮겼다. 구조 테스트로 재발을 막는다.
+
+### 이 Phase에서 하지 않은 것
+
+앱 전체 SF Symbol 교체 · 버튼/시트/다이얼로그 redesign · 폰트 · 종이 texture ·
+Store 템플릿 24장 · 카메라 · Mirror geometry · Backend · 조각 economy.
+
 ## Sticker Creator (후속 Phase)
 
 별도의 "스티커 만들기" 페이지. Mirror Editor 기술을 최대한 재사용한다.

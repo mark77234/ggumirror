@@ -68,10 +68,12 @@ struct SettingsView: View {
         .paperBackground()
         .navigationTitle("설정")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("준비 중", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(notice ?? "")
+        .inkDialog(
+            "준비 중",
+            message: notice,
+            isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+        ) {
+            [InkDialogAction("확인", role: .primary)]
         }
     }
 

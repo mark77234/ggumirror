@@ -17,7 +17,7 @@ struct LayersSheet: View {
     /// 줄을 누르면 Canvas에서 그 오브젝트를 고른다.
     let onSelect: (DecorationLayer) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
     @State private var layers: [DecorationLayer] = []
 
     var body: some View {
@@ -154,6 +154,11 @@ private struct LayerRow: View {
             }
         case .sticker(let object):
             switch object.source {
+            case .doodle(let doodle):
+                DoodleStickerView(
+                    sticker: doodle, size: 22,
+                    tint: object.resolvedTint ?? PaperTheme.ink
+                )
             case .builtIn(let builtIn):
                 Image(systemName: builtIn.symbolName)
                     .font(.system(size: 18, weight: .light))

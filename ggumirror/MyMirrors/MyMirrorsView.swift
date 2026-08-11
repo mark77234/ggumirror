@@ -58,56 +58,76 @@ struct MyMirrorsView: View {
 
             gallery
         }
-        .confirmationDialog(
-            actionTarget?.name ?? "",
-            isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
-            titleVisibility: .visible,
-            presenting: actionTarget
-        ) { mirror in
-            Button("적용") { library.apply(mirror) }
-            Button("꾸미기") { onEditMirror(mirror) }
-            Button("복제") { library.duplicate(mirror) }
-            // 상점에서 받은 거울을 그대로 되파는 흐름은 만들지 않는다.
-            if MirrorPublishPolicy.isEligible(mirror) {
-                Button("상점에 올리기") { publishTarget = mirror }
+        // 거울 하나를 골랐을 때의 동작 목록. `꾸미기`는 이 거울을 고치고, `복제`만 새 거울을 만든다.
+        .inkDialog(isPresented: Binding(
+            get: { actionTarget != nil },
+            set: { if !$0 { actionTarget = nil } }
+        )) {
+            if let mirror = actionTarget {
+                InkDialogBody(
+                    title: mirror.name,
+                    message: nil,
+                    actions: actions(for: mirror),
+                    onAction: { actionTarget = nil }
+                )
             }
-            if mirror.origin != .basic {
-                Button("삭제", role: .destructive) { library.delete(mirror) }
-            }
-            Button("닫기", role: .cancel) {}
         }
-        .alert("준비 중", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(notice ?? "")
+        .inkDialog(
+            "준비 중",
+            message: notice,
+            isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+        ) {
+            [InkDialogAction("확인", role: .primary)]
         }
-        .confirmationDialog("새 거울 만들기", isPresented: $isChoosingCreateStyle, titleVisibility: .visible) {
-            Button("꾸미러에서 만들기") { onCreateMirror(.blank) }
-            Button("외부에서 만들기") { isImportingArtwork = true }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("빈 거울에서 시작하거나, 그림 앱에서 만든 디자인을 가져올 수 있어요.")
+        .inkDialog(
+            "새 거울 만들기",
+            message: "빈 거울에서 시작하거나, 그림 앱에서 만든 디자인을 가져올 수 있어요.",
+            isPresented: $isChoosingCreateStyle
+        ) {
+            [
+                InkDialogAction("꾸미러에서 만들기", role: .primary) { onCreateMirror(.blank) },
+                InkDialogAction("외부에서 만들기") { isImportingArtwork = true },
+                InkDialogAction("취소"),
+            ]
         }
-        .sheet(item: $publishTarget) { mirror in
+        .inkBottomSheet(item: $publishTarget, size: .fraction(0.92)) { mirror in
             PublishMirrorView(mirror: mirror, library: library)
-                .presentationDetents([.large])
-                .paperSheet()
         }
-        .sheet(isPresented: $isImportingArtwork) {
+        .inkBottomSheet(isPresented: $isImportingArtwork, size: .fraction(0.92)) {
             ExternalArtworkView { artwork in
                 var design = MirrorDesign.blank
                 design.importedArtworks = [artwork]
                 onCreateMirror(design)
             }
-            .presentationDetents([.large])
-            .paperSheet()
         }
-        .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
-            Button("보관 공간 늘리기") { showsSlotFull = false }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("새 거울을 만들려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.")
+        .inkDialog(
+            "거울 보관 공간이 가득 찼어요",
+            message: "새 거울을 만들려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.",
+            isPresented: $showsSlotFull
+        ) {
+            [
+                InkDialogAction("취소"),
+                InkDialogAction("보관 공간 늘리기", role: .primary),
+            ]
         }
+    }
+
+    /// 거울 하나에 대해 할 수 있는 것. `꾸미기`는 수정, `복제`만 새 거울을 만든다.
+    private func actions(for mirror: MyMirror) -> [InkDialogAction] {
+        var actions = [
+            InkDialogAction("적용", role: .primary) { library.apply(mirror) },
+            InkDialogAction("꾸미기") { onEditMirror(mirror) },
+            InkDialogAction("복제") { library.duplicate(mirror) },
+        ]
+        // 상점에서 받은 거울을 그대로 되파는 흐름은 만들지 않는다.
+        if MirrorPublishPolicy.isEligible(mirror) {
+            actions.append(InkDialogAction("상점에 올리기") { publishTarget = mirror })
+        }
+        if mirror.origin != .basic {
+            actions.append(InkDialogAction("삭제", role: .destructive) { library.delete(mirror) })
+        }
+        actions.append(InkDialogAction("닫기"))
+        return actions
     }
 
     /// 거울이 있든 없든 항상 여기서 새 거울을 시작할 수 있다.

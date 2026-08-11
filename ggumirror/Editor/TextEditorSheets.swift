@@ -14,7 +14,7 @@ struct TextInputSheet: View {
     let isNew: Bool
     let onCommit: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
     @FocusState private var isFocused: Bool
 
     private var trimmed: String {
@@ -90,7 +90,7 @@ struct TextFontSheet: View {
     let style: TextFontStyle
     let onPick: (TextFontStyle) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
 
     /// 이름만 늘어놓지 않는다. 각 줄이 **그 글꼴로** 쓰여 있어 눈으로 고른다.
     private let sample = "오늘도 예쁘게"

@@ -172,55 +172,7 @@ struct InkChip: View {
 
 // MARK: - 조각 (currency)
 
-/// 깨진 5각형 거울 파편 + 반사선 2개 + 잉크 아웃라인 (DESIGN.md).
-struct ShardShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        // 16 x 16 기준 좌표를 rect 크기로 맞춘다.
-        let unit = min(rect.width, rect.height) / 16
-        func point(_ x: Double, _ y: Double) -> CGPoint {
-            CGPoint(x: rect.minX + x * unit, y: rect.minY + y * unit)
-        }
-
-        var path = Path()
-        path.move(to: point(10.2, 1.2))
-        path.addLine(to: point(14.6, 6.4))
-        path.addLine(to: point(8.9, 14.7))
-        path.addLine(to: point(1.6, 9.9))
-        path.addLine(to: point(4.7, 5.1))
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// 조각 아이콘. 파편 외곽선 + 반사선 2개.
-struct ShardIcon: View {
-    var size: CGFloat = 15
-
-    var body: some View {
-        ZStack {
-            ShardShape()
-                .fill(PaperTheme.subtleSurface)
-            ShardShape()
-                .stroke(PaperTheme.ink, style: StrokeStyle(lineWidth: 1.35, lineJoin: .round))
-            reflections
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-
-    private var reflections: some View {
-        GeometryReader { geometry in
-            let unit = min(geometry.size.width, geometry.size.height) / 16
-            Path { path in
-                path.move(to: CGPoint(x: 6.5 * unit, y: 5.6 * unit))
-                path.addLine(to: CGPoint(x: 9.7 * unit, y: 9.9 * unit))
-                path.move(to: CGPoint(x: 4.9 * unit, y: 8.1 * unit))
-                path.addLine(to: CGPoint(x: 6.7 * unit, y: 10.5 * unit))
-            }
-            .stroke(PaperTheme.ink, style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
-        }
-    }
-}
+// ShardShape / ShardIcon은 Shared/InkProductIcons.swift로 옮겼다 (제품 아이콘 두 개를 한곳에서 본다).
 
 /// "12 조각"처럼 가격 / 잔액을 보여준다. 재화 이름은 항상 "조각".
 struct ShardAmount: View {
@@ -380,24 +332,7 @@ struct InkAvatar: View {
 
 // MARK: - Mirror glyph
 
-/// 세로형 거울 실루엣. "거울 보기"와 "내 거울"이 같은 아이콘을 쓴다.
-struct MirrorIcon: View {
-    var size: CGFloat
-    var tint: Color = PaperTheme.ink
-
-    var body: some View {
-        let width = size * 0.60
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.24)
-                .stroke(tint, lineWidth: max(size * 0.075, 1.2))
-                .frame(width: width, height: size)
-            RoundedRectangle(cornerRadius: size * 0.15)
-                .stroke(tint.opacity(0.55), lineWidth: max(size * 0.05, 1))
-                .frame(width: width * 0.56, height: size * 0.70)
-        }
-        .frame(width: size, height: size)
-    }
-}
+// MirrorIcon은 Shared/InkProductIcons.swift로 옮겼다.
 
 /// 아이콘 자리에 SF Symbol이나 거울 아이콘을 같은 방식으로 넣기 위한 최소 추상화.
 enum InkGlyph: Hashable {

@@ -70,22 +70,24 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $isPreviewing) {
             EditorPreviewView(design: design)
         }
-        .sheet(isPresented: $isNamingMirror) {
+        .inkBottomSheet(isPresented: $isNamingMirror) {
             MirrorNameSheet(
                 name: $draftName,
                 isNewMirror: true,
                 onSave: { saveMirror() }
             )
-            .presentationDetents([.height(260)])
-            .paperSheet()
         }
-        .alert("거울 보관 공간이 가득 찼어요", isPresented: $showsSlotFull) {
-            Button("보관 공간 늘리기") { showsSlotFull = false }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("새 거울을 저장하려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.")
+        .inkDialog(
+            "거울 보관 공간이 가득 찼어요",
+            message: "새 거울을 저장하려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.",
+            isPresented: $showsSlotFull
+        ) {
+            [
+                InkDialogAction("취소"),
+                InkDialogAction("보관 공간 늘리기", role: .primary),
+            ]
         }
-        .sheet(isPresented: $isChoosingStickerColor) {
+        .inkBottomSheet(isPresented: $isChoosingStickerColor) {
             if let sticker = selectedSticker {
                 StickerColorSheet(
                     color: sticker.tintColor ?? PaperTheme.ink,
@@ -93,11 +95,9 @@ struct EditorView: View {
                         apply(sticker) { $0.tintColor = color }
                     }
                 )
-                .presentationDetents([.height(300)])
-                .paperSheet()
             }
         }
-        .sheet(isPresented: $isPickingSticker) {
+        .inkBottomSheet(isPresented: $isPickingSticker, size: .fraction(0.62)) {
             StickerPickerSheet(
                 onPick: { source in
                     addSticker(source)
@@ -108,77 +108,63 @@ struct EditorView: View {
                     makePhotoSticker(from: item)
                 }
             )
-            .presentationDetents([.medium])
-            .paperSheet()
         }
         .overlay {
             if isMakingPhotoSticker { photoProgress }
         }
-        .alert(
+        .inkDialog(
             "사진에서 피사체를 찾지 못했어요",
-            isPresented: Binding(get: { photoFallback != nil }, set: { if !$0 { photoFallback = nil } }),
-            presenting: photoFallback
-        ) { fallback in
-            Button("다시 고르기") {
-                photoFallback = nil
-                isPickingSticker = true
-            }
-            Button("원본 그대로 넣기") { addOriginalPhoto(fallback) }
-            Button("취소", role: .cancel) { photoFallback = nil }
-        } message: { _ in
-            Text("배경을 지우지 못했어요. 다른 사진을 고르거나 원본을 그대로 넣을 수 있어요.")
+            message: "배경을 지우지 못했어요. 다른 사진을 고르거나 원본을 그대로 넣을 수 있어요.",
+            isPresented: Binding(get: { photoFallback != nil }, set: { if !$0 { photoFallback = nil } })
+        ) {
+            // 버튼을 누르기 전에 값을 잡아 둔다 — 닫히면서 photoFallback이 비워진다.
+            let fallback = photoFallback
+            return [
+                InkDialogAction("다시 고르기", role: .primary) { isPickingSticker = true },
+                InkDialogAction("원본 그대로 넣기") {
+                    guard let fallback else { return }
+                    addOriginalPhoto(fallback)
+                },
+                InkDialogAction("취소"),
+            ]
         }
         // Editor를 떠나면 진행 중인 변환을 정리한다.
         .onDisappear {
             photoTask?.cancel()
             photoTask = nil
         }
-        .sheet(isPresented: $isReplacingArtwork) {
+        .inkBottomSheet(isPresented: $isReplacingArtwork, size: .fraction(0.9)) {
             ExternalArtworkView(showsGuide: false, onUse: { replaceArtwork($0) })
-                .presentationDetents([.large])
-                .paperSheet()
         }
-        .sheet(isPresented: $isShowingLayers) {
+        .inkBottomSheet(isPresented: $isShowingLayers, size: .fraction(0.72)) {
             LayersSheet(
                 design: design,
                 onReorder: { history.apply(.reorderDecorations(frontToBack: $0), to: &design.snapshot) },
                 onSelect: { select($0) }
             )
-            .presentationDetents([.medium, .large])
-            .paperSheet()
         }
-        .sheet(isPresented: $isEditingText) {
+        .inkBottomSheet(isPresented: $isEditingText) {
             TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
-                .presentationDetents([.height(320)])
-                .paperSheet()
         }
-        .sheet(isPresented: $isChoosingTextColor) {
+        .inkBottomSheet(isPresented: $isChoosingTextColor) {
             if let text = selectedText {
                 StickerColorSheet(color: text.color) { color in
                     apply(text) { $0.color = color }
                 }
-                .presentationDetents([.height(300)])
-                .paperSheet()
             }
         }
-        .sheet(isPresented: $isChoosingTextFont) {
+        .inkBottomSheet(isPresented: $isChoosingTextFont, size: .fraction(0.72)) {
             if let text = selectedText {
                 TextFontSheet(style: text.style) { style in
                     apply(text) { $0.style = style }
                 }
-                .presentationDetents([.medium, .large])
-                .paperSheet()
             }
         }
-        .sheet(isPresented: $isEditingDrawSettings) {
+        .inkBottomSheet(isPresented: $isEditingDrawSettings, size: .fraction(0.66)) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
-                .presentationDetents([.medium, .large])
-                .paperSheet()
         }
-        .sheet(isPresented: $isChoosingBackground) {
+        .inkBottomSheet(isPresented: $isChoosingBackground) {
             BackgroundColorSheet(color: $design.backgroundColor)
-                .presentationDetents([.height(320), .medium])
-                .paperSheet()
         }
     }
 
@@ -335,7 +321,12 @@ struct EditorView: View {
         .padding(2)
         .background {
             let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
-            shape.overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.6))
+            // **fill을 반드시 준다.** 채우지 않은 Shape는 상속된 foreground(시스템 primary)로
+            // 칠해져서, 라이트 모드에서 검은 배경 + 검은 아이콘이 되어 컨트롤이 사라졌다.
+            // 꾸미러는 시스템 appearance를 따르지 않는다 — 고정된 종이/잉크 색만 쓴다.
+            shape
+                .fill(PaperTheme.subtleSurface)
+                .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
         }
     }
 
@@ -347,11 +338,13 @@ struct EditorView: View {
         } label: {
             Image(systemName: mode.icon)
                 .font(InkFont.body)
-                .foregroundStyle(isActive ? PaperTheme.subtleSurface : PaperTheme.ink)
+                // 선택 = 잉크 면 + 종이색 아이콘 / 비선택 = 종이 면 + 잉크 아이콘.
+                // 두 조합 모두 대비가 크고, 시스템 다크 모드 설정과 무관하게 늘 같다.
+                .foregroundStyle(isActive ? PaperTheme.paper : PaperTheme.ink)
                 .frame(width: 44, height: 40)
                 .background {
                     UnevenRoundedRectangle.ink(12, 9, 13, 10)
-                        .fill(isActive ? PaperTheme.ink : Color.clear)
+                        .fill(isActive ? PaperTheme.ink : PaperTheme.subtleSurface)
                 }
                 .contentShape(.rect)
         }

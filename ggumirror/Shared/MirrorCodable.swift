@@ -110,11 +110,14 @@ extension DrawingStroke: Codable {
 /// 자동 합성 대신 직접 적어서 case를 늘려도 저장 형태가 흔들리지 않게 한다.
 extension StickerSource: Codable {
     private enum CodingKeys: String, CodingKey { case kind, sticker, assetID, aspectRatio }
-    private enum Kind: String, Codable { case builtIn, photo }
+    private enum Kind: String, Codable { case builtIn, photo, doodle }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decodeOrDefault(Kind.self, forKey: .kind, default: .builtIn) {
+        case .doodle:
+            // 모르는 이름이면 하트로 떨어진다 — 파일 전체를 버리지 않는다.
+            self = .doodle(try container.decodeOrDefault(DoodleSticker.self, forKey: .sticker, default: .heart))
         case .builtIn:
             self = .builtIn(try container.decodeOrDefault(BuiltInSticker.self, forKey: .sticker, default: .heart))
         case .photo:
@@ -128,6 +131,9 @@ extension StickerSource: Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .doodle(let sticker):
+            try container.encode(Kind.doodle, forKey: .kind)
+            try container.encode(sticker, forKey: .sticker)
         case .builtIn(let sticker):
             try container.encode(Kind.builtIn, forKey: .kind)
             try container.encode(sticker, forKey: .sticker)

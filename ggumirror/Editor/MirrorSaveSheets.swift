@@ -14,7 +14,7 @@ struct MirrorNameSheet: View {
     let isNewMirror: Bool
     let onSave: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
     @FocusState private var isFocused: Bool
 
     private var trimmed: String {
@@ -92,7 +92,7 @@ struct StickerColorSheet: View {
     let color: Color
     let onPick: (Color) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
     @State private var custom: Color
 
     init(color: Color, onPick: @escaping (Color) -> Void) {

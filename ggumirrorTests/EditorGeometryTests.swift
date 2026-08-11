@@ -1956,7 +1956,9 @@ struct EditorGeometryTests {
     }
 
     @Test("내 거울에서 꾸미면 내가 만든 거울도 원본이 남고 새 거울이 생긴다")
-    func myMirrorsEditAlwaysDuplicates() {
+    func duplicateContextAlwaysCreatesNewMirror() {
+        // 이름이 예전엔 myMirrorsEditAlwaysDuplicates였다. 내 거울 `꾸미기`는 이제
+        // 기존 거울을 고치고(`.editCurrent`), `.duplicate`는 `복제` 동작만 쓴다.
         let library = MirrorLibrary()
         _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "원본", context: .createNew)
         let source = library.currentMirror

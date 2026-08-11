@@ -78,20 +78,22 @@ struct MirrorView: View {
         .onTapGesture { toggleControls() }
         .task { await camera.start() }
         .task(id: lastInteraction) { await autoHideControls() }
-        .alert(
+        // 거울 화면에도 같은 종이 Dialog를 쓴다. 카메라 영상 위에 잠깐 떠 있다 사라지는 카드다.
+        .inkDialog(
             "저장",
-            isPresented: Binding(get: { saveAlert != nil }, set: { if !$0 { saveAlert = nil } }),
-            presenting: saveAlert
-        ) { alert in
-            if alert.showsSettings {
-                Button("설정 열기") {
+            message: saveAlert?.message,
+            isPresented: Binding(get: { saveAlert != nil }, set: { if !$0 { saveAlert = nil } })
+        ) {
+            // 닫히면서 saveAlert가 비워지므로 버튼을 만들 때 값을 잡아 둔다.
+            let showsSettings = saveAlert?.showsSettings == true
+            var actions = [InkDialogAction("닫기", role: showsSettings ? .secondary : .primary)]
+            if showsSettings {
+                actions.append(InkDialogAction("설정 열기", role: .primary) {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     UIApplication.shared.open(url)
-                }
+                })
             }
-            Button("닫기", role: .cancel) {}
-        } message: { alert in
-            Text(alert.message)
+            return actions
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

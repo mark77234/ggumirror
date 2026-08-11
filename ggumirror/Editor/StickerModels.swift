@@ -29,9 +29,11 @@ enum StickerRenderMode: Hashable {
     case original
 }
 
-/// 기본 제공 스티커. 지금은 개발용 placeholder이고
-/// 최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
-/// rawValue는 저장 식별자이므로 asset을 바꿔도 유지한다.
+/// **Legacy 스티커.** 최종 스티커는 `DoodleSticker`로 교체됐다.
+///
+/// picker에 나오지 않고 새로 만들 수도 없다. 오직 **예전에 저장한 거울을 계속 그리기 위해** 남는다 —
+/// 여기 case를 지우면 그 거울에서 스티커가 사라진다.
+/// rawValue는 저장 식별자이므로 절대 바꾸지 않는다.
 enum BuiltInSticker: String, CaseIterable, Identifiable, Hashable, Codable {
     // 하트 / 러브
     case heart, heartSmall, heartDouble, heartArrow
@@ -137,12 +139,16 @@ enum BuiltInSticker: String, CaseIterable, Identifiable, Hashable, Codable {
 /// 사진 스티커도 **참조만** 담는다 — 이미지 자체는 PhotoStickerAssetStore에 한 번만 보관한다.
 /// 덕분에 MirrorDesign / EditorSnapshot / Undo 스택에 binary가 복사되지 않는다.
 enum StickerSource: Hashable {
+    /// 지금 쓰는 기본 제공 스티커.
+    case doodle(DoodleSticker)
+    /// Legacy. 예전에 저장한 거울에만 남아 있다. 새로 만들지 않는다.
     case builtIn(BuiltInSticker)
     /// - Parameter aspectRatio: 잘라낸 foreground의 가로 / 세로. 정사각형을 강요하지 않는다.
     case photo(assetID: UUID, aspectRatio: Double)
 
     var title: String {
         switch self {
+        case .doodle(let sticker): sticker.title
         case .builtIn(let sticker): sticker.title
         case .photo: "내 사진"
         }
@@ -151,9 +157,16 @@ enum StickerSource: Hashable {
     /// 사진은 원본 색을 그대로 쓴다 — tint를 지원하지 않는다.
     var renderMode: StickerRenderMode {
         switch self {
+        case .doodle(let sticker): sticker.renderMode
         case .builtIn(let sticker): sticker.renderMode
         case .photo: .original
         }
+    }
+
+    /// 강조색이 있는 두들만 자기 색을 갖는다. 나머지는 잉크색 하나다.
+    var accent: Color? {
+        if case .doodle(let sticker) = self { return sticker.accent?.color }
+        return nil
     }
 
     var supportsTint: Bool { renderMode == .template }
@@ -161,7 +174,7 @@ enum StickerSource: Hashable {
     /// 가로 / 세로 비율. 기본 제공 스티커는 정사각형이다.
     var aspectRatio: Double {
         switch self {
-        case .builtIn: 1
+        case .doodle, .builtIn: 1
         case .photo(_, let aspectRatio): aspectRatio
         }
     }

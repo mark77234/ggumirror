@@ -320,7 +320,10 @@ final class MirrorLibrary {
             mirrors[index].texts = design.texts
             mirrors[index].importedArtworks = design.importedArtworks
             // 이름은 그대로 둔다 — 홈에서 고칠 때마다 이름을 다시 묻지 않는다.
-            currentID = mirrors[index].id
+            // 적용 상태도 건드리지 않는다: 내 거울에서 **지금 쓰지 않는** 거울을 고쳤다고
+            // 쓰던 거울이 바뀌면 안 된다. 적용은 `적용` 동작이 따로 한다.
+            // (홈에서 들어온 경우는 design.id == currentID라 어차피 같은 값이다.)
+            if design.id == currentID { currentID = mirrors[index].id }
             persist()
             return .updated(id: mirrors[index].id, name: mirrors[index].name)
         }

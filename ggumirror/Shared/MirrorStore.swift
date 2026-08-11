@@ -27,7 +27,8 @@ import UniformTypeIdentifiers
 enum MirrorSchema {
     /// 저장 파일 버전. 형식을 바꾸면 올리고 migrate에 case를 추가한다.
     /// 1 → 2: 거울에 `importedArtworks`가 생겼다.
-    static let current = 2
+    /// 2 → 3: 스티커에 `doodle` 종류가 생겼다. 예전 파일은 `builtIn`뿐이라 그대로 읽힌다.
+    static let current = 3
 }
 
 /// 이미지 파일이 사는 폴더. 종류마다 따로 두고 정리도 각자 한다.
@@ -129,7 +130,7 @@ final class MirrorStore: Sendable {
     /// 다음 저장 때 v2 형식으로 다시 적힌다. 형식이 실제로 갈라지면 여기 case를 나눈다.
     private func migrate(_ data: Data, from version: Int) throws -> PersistedLibrary {
         switch version {
-        case 1, 2: try JSONDecoder().decode(PersistedLibrary.self, from: data)
+        case 1, 2, 3: try JSONDecoder().decode(PersistedLibrary.self, from: data)
         default: throw CocoaError(.fileReadCorruptFile)
         }
     }

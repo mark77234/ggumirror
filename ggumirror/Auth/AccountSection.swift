@@ -28,16 +28,15 @@ struct AccountSection: View {
                 }
             }
         }
-        .alert(
+        .inkDialog(
             "로그인하지 못했어요",
+            message: session.failureMessage,
             isPresented: Binding(
                 get: { session.failureMessage != nil },
                 set: { if !$0 { session.failureMessage = nil } }
             )
         ) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(session.failureMessage ?? "")
+            [InkDialogAction("확인", role: .primary)]
         }
     }
 

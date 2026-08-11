@@ -14,7 +14,7 @@ struct PublishMirrorView: View {
     let mirror: MyMirror
     var library: MirrorLibrary
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.inkModalDismiss) private var dismiss
     @State private var draft: MirrorPublishDraft
     @State private var savedNotice = false
 
@@ -49,10 +49,12 @@ struct PublishMirrorView: View {
             .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
-        .alert("등록 준비를 저장했어요", isPresented: $savedNotice) {
-            Button("확인") { dismiss() }
-        } message: {
-            Text("실제 상점 등록은 로그인과 함께 다음 업데이트에서 열려요. 지금은 조각이 차감되지 않아요.")
+        .inkDialog(
+            "등록 준비를 저장했어요",
+            message: "실제 상점 등록은 로그인과 함께 다음 업데이트에서 열려요. 지금은 조각이 차감되지 않아요.",
+            isPresented: $savedNotice
+        ) {
+            [InkDialogAction("확인", role: .primary) { dismiss() }]
         }
     }
 

@@ -61,8 +61,8 @@ struct MirrorControls: View {
         } label: {
             HStack(spacing: 6) {
                 // iOS 기본 back처럼 보이지 않게 chevron 대신 집 아이콘을 쓴다.
-                Image(systemName: "house")
-                    .font(.system(size: 14, weight: .semibold))
+                // 탭바의 홈과 **같은 아이콘**이다 (DoodleProductIcons.swift).
+                DoodleProductIconView(icon: .home, size: 16, tint: .white)
                 Text("홈으로")
                     .font(InkFont.secondary)
             }

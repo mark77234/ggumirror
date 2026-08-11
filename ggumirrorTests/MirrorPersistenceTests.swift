@@ -258,8 +258,8 @@ struct MirrorPersistenceTests {
         )
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         #expect(json["schemaVersion"] as? Int == MirrorSchema.current)
-        // 외부 디자인이 들어오면서 2가 됐다.
-        #expect(MirrorSchema.current == 2)
+        // 외부 디자인이 들어오면서 2, 두들 스티커가 들어오면서 3이 됐다.
+        #expect(MirrorSchema.current == 3)
     }
 
     // MARK: - Library

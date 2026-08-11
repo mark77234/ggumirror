@@ -777,12 +777,12 @@ struct ExternalArtworkTests {
             // 새 필드는 빈 배열로 들어온다.
             #expect(restored.importedArtworks.isEmpty)
 
-            // 다시 저장하면 v2로 적힌다.
+            // 다시 저장하면 지금 버전으로 적힌다.
             library.apply(restored)
             store.flush()
             let data = try Data(contentsOf: store.libraryURL)
             let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-            #expect(json["schemaVersion"] as? Int == 2)
+            #expect(json["schemaVersion"] as? Int == MirrorSchema.current)
             #expect(relaunch(store).mirrors.count == 1)
         }
     }

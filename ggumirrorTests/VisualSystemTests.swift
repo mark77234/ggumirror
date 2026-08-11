@@ -209,8 +209,10 @@ struct VisualSystemTests {
             let restored = try JSONDecoder().decode(TextObject.self, from: JSONEncoder().encode(text))
             #expect(restored.style == style)
         }
-        // 글꼴이 늘었다고 저장 형식 버전을 올리지 않았다.
-        #expect(MirrorSchema.current == 2)
+        // 글꼴이 늘어난 것만으로는 저장 형식 버전을 올리지 않았다 —
+        // rawValue 저장 방식이 그대로이기 때문이다.
+        // (3으로 올라간 이유는 스티커에 `doodle` 종류가 생겼기 때문이다.)
+        #expect(TextFontStyle(rawValue: "basic") == .basic)
     }
 
     @Test("고른 글꼴이 앱을 다시 켜도 남는다")

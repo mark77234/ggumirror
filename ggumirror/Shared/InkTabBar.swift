@@ -19,10 +19,11 @@ enum MainTab: CaseIterable {
         }
     }
 
-    var glyph: InkGlyph {
+    /// 제품 아이콘 셋은 손그림 두들을 쓴다 (DoodleProductIcons.swift).
+    var productIcon: DoodleProductIcon {
         switch self {
-        case .home: .system("house")
-        case .store: .system("bag")
+        case .home: .home
+        case .store: .store
         case .mine: .mirror
         }
     }
@@ -63,7 +64,7 @@ struct InkTabBar: View {
     private func item(for tab: MainTab) -> some View {
         let isSelected = selection == tab
         return VStack(spacing: 3) {
-            InkGlyphView(glyph: tab.glyph, size: 19, tint: PaperTheme.ink)
+            DoodleProductIconView(icon: tab.productIcon, size: 22)
             Text(tab.title)
                 .font(InkFont.tab)
                 .lineLimit(1)

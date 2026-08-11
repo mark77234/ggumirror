@@ -2,8 +2,8 @@
 //  StickerPickerSheet.swift
 //  ggumirror
 //
-//  기본 제공 스티커 고르기. 지금은 개발용 placeholder 세트다.
-//  최종 hand-drawn asset library는 후속 Visual Content Polish에서 교체한다.
+//  기본 제공 스티커 고르기. 손그림 두들 42종만 보여준다.
+//  Legacy(`BuiltInSticker`)는 **여기 나오지 않는다** — 예전에 저장한 거울을 그리기 위해서만 남아 있다.
 //
 
 import PhotosUI
@@ -14,7 +14,7 @@ struct StickerPickerSheet: View {
     /// 사진 1장 선택. 배경 제거와 진행 표시는 Editor가 맡는다.
     var onPickPhoto: (PhotosPickerItem) -> Void = { _ in }
 
-    @State private var category: StickerCategory = .all
+    @State private var category: DoodleCategory = .all
     @State private var photoItem: PhotosPickerItem?
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
@@ -24,21 +24,19 @@ struct StickerPickerSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
-            InkFilterBar(items: StickerCategory.allCases, selection: $category) { $0.rawValue }
+            InkFilterBar(items: DoodleCategory.allCases, selection: $category) { $0.rawValue }
                 .padding(.top, 14)
                 .padding(.bottom, 8)
 
             ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(BuiltInSticker.all(in: category)) { source in
+                    ForEach(DoodleSticker.all(in: category)) { source in
                         Button {
-                            onPick(.builtIn(source))
+                            onPick(.doodle(source))
                         } label: {
                             VStack(spacing: 8) {
-                                Image(systemName: source.symbolName)
-                                    .font(.system(size: 34, weight: .light))
-                                    .foregroundStyle(PaperTheme.ink)
+                                DoodleStickerView(sticker: source, size: 40)
                                     .frame(height: 44)
                                 Text(source.title)
                                     .font(InkFont.caption)
