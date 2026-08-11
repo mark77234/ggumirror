@@ -576,6 +576,74 @@ Persistence
 - 실제 등록(listing 생성), Apple 로그인, 서버 업로드, 조각 ledger와 20조각 차감,
   구매 / 판매자 정산, 상점 노출.
 
+## Phase 4-2B — Apple Sign In Foundation (확정 · CLIENT ONLY)
+
+계정의 **바탕만** 만들었다. 서버는 아직 없다 —
+`ggumirror-be`는 이 Phase에서 한 줄도 건드리지 않았다.
+
+경계
+
+- **로그인 성공 ≠ 서버 계정 생성.** Apple 계정을 이 기기에 연결한 것뿐이다.
+- 로그인 벽 0개. 앱은 여전히 Mirror부터 시작하고, 상점 구경 / 무료 받기 /
+  등록 준비 저장까지 전부 로그아웃 상태로 된다. (PRODUCT.md "로그인 없이 되는 것")
+- 실제 Publish / Purchase / ledger는 여기 붙이지 않았다. 가짜 성공 상태를 만들지 않는다.
+
+구조 (`ggumirror/Auth/`)
+
+- `AppleIdentity.swift` — `AppleIdentity`(userID / displayName / email) · `AuthState` ·
+  `AppleSignInResult`(전달용, 저장 안 함) · `AppleSignInOutcome` · `AuthProtectedAction` · `AuthLog`
+- `AuthIdentityStore.swift` — `AuthIdentityStoring` + Keychain 구현 + 메모리 구현
+- `AppleSignInService.swift` — **AuthenticationServices와 닿는 유일한 파일**
+- `AuthSession.swift` — 앱 하나뿐인 로그인 상태(`AuthSession.live`)
+- `AccountSection.swift` — 설정의 계정 칸
+
+`AuthSession`은 AuthenticationServices를 import하지 않는다. 순수한 값
+(`AppleSignInOutcome` / `AppleCredentialState`)만 보므로 **실제 Apple UI 없이 단위 테스트가 된다.**
+DI framework도 외부 OAuth / Keychain 라이브러리도 추가하지 않았다.
+
+`ASAuthorizationController`를 직접 만들지 않았다 — `SignInWithAppleButton`이 내부에서
+그것을 들고 있어서, 따로 만들면 같은 일을 하는 경로가 둘이 된다.
+프로그래밍 방식 로그인이 필요해지면 그때 `AppleSignInService`에 함수 하나를 더한다.
+
+이름 / 이메일 보존
+
+- Apple은 **첫 로그인에서만** fullName / email을 준다. 다음부터는 nil이다.
+- `AppleIdentity.merging(displayName:email:)`이 **값이 실제로 있을 때만** 갱신한다.
+  공백 문자열도 "없음"으로 친다. nil로 덮어써서 이름이 사라지는 일이 없다.
+
+복원 (앱 시작)
+
+- 시작은 언제나 Mirror다. Keychain 읽기는 동기(즉시)지만 **Apple 확인은 화면이 뜬 뒤 비동기**로 한다.
+- `authorized` → 유지 / `revoked` · `notFound` → Auth만 정리
+- `transferred` → **아무것도 지우지 않는다.** 앱 이관 신호일 뿐이라 Backend Auth Phase에서 다룬다.
+- 네트워크 · 시스템 오류(`unknown`) → **지우지 않는다.** 비행기 모드 한 번에 로그인이 풀리면 안 된다.
+- `credentialRevokedNotification`도 같은 규칙 — Auth만 signedOut.
+
+토큰
+
+- `identityToken` / `authorizationCode`는 `AppleSignInResult`에 잠깐 있다가 사라진다.
+  **저장하지 않고, 보내지 않고, 로그에 찍지 않는다.** 저장 형식(`AppleIdentity`)에는 칸 자체가 없다.
+- 로그는 상태 전이만 남긴다 — 식별자 / 이메일 / 토큰은 DEBUG에서도 찍지 않는다.
+
+Auth Gate (foundation)
+
+- `AuthProtectedAction { publish, purchase, shardTransaction }` + `requireSignIn(for:)` /
+  `takePendingAction()`. **지금 아무도 부르지 않는다.** 로그인 후 이어서 할 일을 담을 그릇만이다.
+
+Capability
+
+- `ggumirror/ggumirror.entitlements` 신규 — `com.apple.developer.applesignin = [Default]`.
+- app target Debug / Release에 `CODE_SIGN_ENTITLEMENTS`만 추가했다.
+  Camera / Photos usage description과 기존 build settings는 그대로다.
+
+이 Phase에서 하지 않은 것
+
+- Backend 전부(FastAPI / Firestore / HTTP client / 서버 토큰 검증 / Backend User / 세션 토큰)
+- Shard Ledger, actual Store Publish, 유료 구매, 판매자 정산, 클라우드 동기화
+- 계정 삭제 / Apple authorization revoke — 서버 사용자가 생긴 뒤에 만든다
+
+다음: **Backend Foundation** → Apple server verification + Server User.
+
 ## Sticker Creator (후속 Phase)
 
 별도의 "스티커 만들기" 페이지. Mirror Editor 기술을 최대한 재사용한다.

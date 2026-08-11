@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(AuthSession.self) private var session
     @AppStorage(ProfileStore.nameKey) private var profileName = ProfileStore.defaultName
     @AppStorage(ProfileStore.tagsKey) private var profileTags = ""
     @AppStorage("notificationsOn") private var notificationsOn = true
@@ -18,6 +19,10 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                AccountSection(session: session)
+                    .padding(.top, 8)
+                    .padding(.bottom, 22)
+
                 NavigationLink(value: SettingsRoute.profile) {
                     profileRow
                 }
@@ -139,4 +144,5 @@ enum ProfileTag: String, CaseIterable, Identifiable {
 
 #Preview {
     NavigationStack { SettingsView() }
+        .environment(AuthSession(store: InMemoryIdentityStore()))
 }
