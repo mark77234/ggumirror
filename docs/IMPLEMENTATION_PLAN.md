@@ -982,6 +982,139 @@ Release로 바꾸면 `#if DEBUG` 로그(`[Auth]` / `[Backend]`)가 사라진다.
 xcconfig는 `//`를 주석으로 읽으므로 URL을 그대로 적으면 잘린다.
 `SLASH = /` + `URL_SCHEME = https:$(SLASH)$(SLASH)`로 조립한다(치환이 주석 처리 뒤에 일어난다).
 
+## Phase C-1A — Lock Screen Quick Mirror MVP (구현 완료, 실기기 검증 대기)
+
+### Target 구조
+
+| target | product type | bundle id | extension point |
+|---|---|---|---|
+| `ggumirror` | application | `com.mark77234.ggumirror` | — |
+| `GgumirrorCapture` | extensionkit-extension | `com.mark77234.ggumirror.capture` | **`com.apple.securecapture`** |
+| `GgumirrorControls` | app-extension | `com.mark77234.ggumirror.controls` | `com.apple.widgetkit-extension` |
+
+Capture target은 **Xcode 공식 Capture Extension template**으로 만들었다(GUI).
+Controls target은 Xcode 공식 Widget Extension template의 값(product type · extension point ·
+frameworks)을 그대로 따라 project 파일에 구성했다.
+
+**중요한 정정**: capture extension point는 `com.apple.securecapture`다.
+이전 조사에서 런타임 바이너리 문자열로 추론했던 `com.apple.LockedCameraCapture`는 **틀렸다.**
+그대로 갔다면 build·서명은 통과하고 잠금화면 목록에는 control이 나타나지 않는 조용한 실패였다.
+추측하지 않고 공식 template을 기다린 것이 맞았다.
+
+### Entitlement
+
+**전용 entitlement가 없다.** 공식 template은 entitlements 파일을 만들지 않았고
+(`ENTITLEMENTS_REQUIRED = NO`), 서명 결과에도 base 3개(`application-identifier` ·
+`team-identifier` · `get-task-allow`)만 들어간다. 실증으로 확인했다.
+
+**App Group을 추가하지 않았다.** persistence 위치도 그대로다.
+
+### 카메라 공유
+
+`MirrorCamera.swift` · `CameraPreviewView.swift`를 **파일 그대로** capture target에
+공유한다(synchronized group membership exception). 그래서 전면 · 좌우 반전 · 1x ·
+가장 넓은 화각 · Portrait · `resizeAspectFill` 정책이 본앱과 **갈라질 수 없다.**
+
+MirrorCore package 추출도, 본앱 카메라 수정도 하지 않았다. 본앱 Mirror 코드에
+잠금화면 사정(`LockedCameraCapture` · `sessionContentURL` · `ControlWidget`)이
+스며들지 않았음을 테스트로 고정했다.
+
+capture target에 들어간 파일은 4개뿐이다 — 카메라 2개 + `QuickMirrorActivity` +
+`QuickMirrorCaptureStore`. `Backend/` · `Auth/` · `Store/` · `Editor/` · `Home/`은
+하나도 들어가지 않는다(테스트로 고정).
+
+### 흐름
+
+```
+잠금화면 control (GgumirrorControls)
+  → QuickMirrorCaptureIntent (CameraCaptureIntent, AppContext = Never)
+  → 시스템이 GgumirrorCapture를 띄움
+  → LockedCameraCaptureUIScene { GgumirrorCaptureViewFinder(session:) }
+  → MirrorCamera + CameraPreviewView (전면 · 반전 · edge-to-edge)
+  → 촬영 → session.sessionContentURL 에 PNG
+  → (선택) session.openApplication(for: QuickMirrorActivity.openMirror())
+       → 본앱이 onContinueUserActivity로 받아 Mirror 유지
+```
+
+본앱은 `QuickMirrorInbox`(`LockedCameraCaptureManager`)로 결과를 수거할 수 있다.
+C-1A에서는 "받을 수 있다"까지다 — 사진 앱 자동 저장이나 거울 목록 편입은 하지 않고,
+사용자가 저장하기 전에 `invalidateSessionContent`로 지우지도 않는다.
+
+### 하드웨어 촬영 버튼 (Apple 요구사항)
+
+**처리하지 않으면 extension이 실행 직후 종료될 수 있다.**
+
+`GgumirrorCaptureViewFinder`의 최상위 `ZStack`에 SwiftUI 공식
+`.onCameraCaptureEvent(isEnabled: canCapture)`를 붙였다(`import AVKit`,
+심볼은 `_AVKit_SwiftUI`에서 오고 링크도 확인했다). UIKit
+`AVCaptureEventInteraction`을 감싸지 않았다 — SwiftUI 화면이기 때문이다.
+
+- **`.ended`에서만 찍는다.** `.began`은 누르기 시작일 뿐이고 `.cancelled`로 취소될 수 있다 —
+  취소 phase가 존재한다는 것이 "끝났을 때 실행하라"는 뜻이다.
+  그래서 **한 번 누르면 한 장**이고, `.began`까지 잡으면 두 장이 된다
+- 화면의 흰 버튼과 하드웨어 버튼이 **같은 `capture()` 하나**를 부른다.
+  `QuickMirrorCaptureStore.save` 호출도 코드 전체에 한 곳뿐이다
+- `canCapture`(카메라 ready + 저장 중 아님) 하나를 두 입력이 공유한다 —
+  누를 수 없는 상태에서 하드웨어 버튼을 켜두면 반응 없는 버튼이 된다
+- 촬영 소리는 시스템 기본값 그대로. `defaultSoundDisabled`를 건드리지 않았다
+
+본앱 Mirror에는 넣지 않았다(테스트로 고정).
+
+### 하지 않은 것
+
+network · backend · App Group · MirrorStore/StickerStore 접근 · 로그인 정보 ·
+사용자 거울 장식 렌더링(**C-1B**) · Photos 자동 저장 · appContext 상태 전달 ·
+촬영 소리 커스터마이즈.
+
+### 실기기에서 잡은 문제 2개 (수정 완료)
+
+**1. control이 목록에는 보이지만 실행되지 않았다.**
+
+원인: `QuickMirrorIntent.swift`가 **본앱과 Controls에만** 들어가고
+**Capture target에는 빠져 있었다.** Apple은 `CameraCaptureIntent`를
+**세 target 모두**(앱 · control widget · capture extension)에 포함하라고 요구한다.
+빠지면 시스템이 control은 노출하지만 capture extension을 연결하지 못한다.
+
+당시 `appintentsmetadataprocessor`가 "No AppIntents.framework dependency found"
+경고를 냈는데 그것을 "capture는 AppIntents를 안 쓰니 정상"으로 판단한 것이 오진이었다.
+**그 경고가 바로 이 문제의 신호였다.**
+
+고친 뒤 세 product 모두 `Metadata.appintents`에 intent가 들어간다(빌드 산출물로 확인).
+
+**2. 본앱 전환에 커스텀 activity type을 썼다.**
+
+SDK 헤더(`LCCDefines.h`)가 `openApplication(for:)`에는
+**`NSUserActivityTypeLockedCameraCapture`**를 쓰라고 명시한다 —
+앱이 "잠금화면 capture extension에서 열렸는지"를 이 타입으로 판별한다.
+공식 상수로 바꿨다.
+
+**control이 두 곳에 보이는 현상**은 코드 문제가 아니다.
+`ControlWidget` 정의는 정확히 1개고(`kind` 문자열도 바이너리에 1회),
+시스템 gallery가 같은 control을 **Capture 카테고리와 앱 카테고리 양쪽에** 노출하는 것이다.
+억지로 없애지 않았다. `kind`는 그대로 둔다 — 바꾸면 사용자가 배치한 control이 사라진다.
+
+### Control 아이콘
+
+`person.crop.artframe` — **사람 + 액자 = 꾸민 거울.**
+SF Symbols 카탈로그(`CoreGlyphs.bundle/name_availability.plist`)에서 존재와
+iOS 15.0+ 가용성을 확인했다. `mirror.side.*`는 **자동차 사이드미러**라 뜻이 다르다.
+
+브랜드 mark를 Custom Symbol Image Set으로 쓰는 것은 **후속 디자인 작업**이다 —
+repo에 단색 symbol asset이 없고(`AppIcon.appiconset`뿐), full-color 앱 아이콘 PNG를
+control 아이콘으로 넣지 않는다.
+
+### 실기기 추적 로그 (DEBUG 전용)
+
+`[QuickMirror]` 접두어로 어느 process까지 도달했는지 본다:
+`extension scene started` → `camera starting` → `camera ready` → `capture saved` /
+`opening app`, 그리고 본앱 경로는 `intent perform (app process)` → `show mirror requested`.
+경로 · token · 사용자 정보는 담지 않는다(테스트로 고정).
+
+### 남은 것: 실기기 검증
+
+시뮬레이터로는 잠금화면 control과 잠금 상태 카메라를 검증할 수 없다.
+사용자가 잠금화면 사용자화에서 control을 직접 추가하고 기기가 잠긴 상태에서 확인해야 한다.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

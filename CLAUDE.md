@@ -167,7 +167,20 @@ Locked Camera Capture Extension은 Apple sandbox 때문에
 - 촬영 결과는 `LockedCameraCaptureSession.sessionContentURL`에 쓰고,
   본앱이 `LockedCameraCaptureManager`로 수거한다
 
-자세한 계획은 docs/IMPLEMENTATION_PLAN.md의 C-1 Prep 참고.
+C-1A 구현 확정 사실:
+
+- capture extension point는 **`com.apple.securecapture`**다 (공식 template 값).
+  추론했던 `com.apple.LockedCameraCapture`는 틀렸다 — 다시 쓰지 않는다
+- **전용 entitlement가 없다.** 공식 template도 만들지 않고, 서명에는 base만 들어간다
+- target 2개: `GgumirrorCapture`(`…ggumirror.capture`) · `GgumirrorControls`(`…ggumirror.controls`)
+- extension에는 카메라 파일 2개 + activity + capture store만 공유한다.
+  `Backend/` · `Auth/` · `Store/` · `Editor/`는 절대 넣지 않는다
+- extension `CURRENT_PROJECT_VERSION`은 본앱과 같아야 한다 (다르면 App Store 검증에서 막힌다)
+- **하드웨어 촬영 버튼 처리는 필수다.** `.onCameraCaptureEvent`(AVKit)를 viewfinder에 붙인다.
+  없으면 extension이 실행 직후 종료될 수 있다. **`.ended` phase에서만** 찍어
+  한 번 누르면 한 장이 되게 한다. 화면 버튼과 같은 `capture()`를 쓴다
+
+자세한 내용은 docs/IMPLEMENTATION_PLAN.md의 C-1A / C-1 Prep 참고.
 
 ## Build Configuration (현재 정책)
 

@@ -15,6 +15,10 @@ struct RootView: View {
     /// 앱 전체가 쓰는 단 하나의 로그인 상태. 거울 목록과 서로 아무 관계도 없다.
     @State private var session = AuthSession.live
     @State private var editing: EditorRequest?
+    /// 잠금화면 Quick Mirror가 찍은 사진을 받는 곳. 첫 화면을 막지 않는다.
+    @State private var quickMirror = QuickMirrorInbox()
+    /// 잠금이 풀린 상태에서 control을 눌러 **본앱**이 열린 경우의 신호.
+    @State private var quickMirrorRequest = QuickMirrorRequest.shared
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
     struct EditorRequest: Identifiable {
@@ -32,6 +36,17 @@ struct RootView: View {
         // ZStack은 화면이 바뀌어도 정체성이 유지된다 — 아래 task가 매번 다시 돌지 않는다.
         ZStack { content }
             .environment(session)
+            // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
+            // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
+            .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
+                screen = .mirror
+                quickMirror.refresh()
+            }
+            // 시스템이 capture extension 대신 본앱을 고른 경우(잠금 해제 상태).
+            // 홈에 있었더라도 Mirror로 되돌린다.
+            .onChange(of: quickMirrorRequest.token) { _, _ in
+                screen = .mirror
+            }
             .task {
                 // 첫 화면은 언제나 Mirror다. 로그인 확인은 화면이 뜬 뒤 비동기로 하고,
                 // 결과가 무엇이든 Mirror 진입을 막지 않는다.
@@ -39,6 +54,8 @@ struct RootView: View {
                 await session.refreshCredentialState()
                 // 저장된 서버 세션이 아직 살아 있는지 확인한다. 실패해도 화면을 막지 않는다.
                 await session.refreshServerSession()
+                // 잠금화면에서 찍은 사진이 있으면 여기서 알게 된다.
+                quickMirror.refresh()
             }
     }
 
