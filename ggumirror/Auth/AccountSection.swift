@@ -57,8 +57,11 @@ struct AccountSection: View {
             SignInWithAppleButton(.signIn) { request in
                 // 사용자가 직접 버튼을 눌렀을 때만 요청한다. 둘 다 nil로 와도 정상이다.
                 request.requestedScopes = [.fullName, .email]
+                // 이 시도에만 쓰는 nonce. Apple에는 해시만 가고 원본은 서버 검증용으로 남는다.
+                request.nonce = session.beginSignIn()
             } onCompletion: { result in
-                session.complete(AppleSignInOutcome(result))
+                // Apple UI 통과가 곧 로그인은 아니다 — 서버가 token을 검증해야 끝난다.
+                Task { await session.complete(AppleSignInOutcome(result)) }
             }
             .signInWithAppleButtonStyle(.black)
             .frame(height: 48)
@@ -94,7 +97,7 @@ struct AccountSection: View {
 
             InkSeparator()
 
-            Button("로그아웃") { session.signOut() }
+            Button("로그아웃") { Task { await session.signOut() } }
                 .font(InkFont.button)
                 .tint(PaperTheme.ink)
                 .frame(minHeight: 44)
@@ -105,7 +108,7 @@ struct AccountSection: View {
 
 #Preview("로그아웃") {
     NavigationStack {
-        AccountSection(session: AuthSession(store: InMemoryIdentityStore()))
+        AccountSection(session: AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore()))
             .padding(20)
             .paperBackground()
     }
@@ -117,6 +120,13 @@ struct AccountSection: View {
             session: AuthSession(
                 store: InMemoryIdentityStore(
                     AppleIdentity(userID: "preview", displayName: "병찬", email: "mirror@example.com")
+                ),
+                sessions: InMemoryServerSessionStore(
+                    ServerSession(
+                        accessToken: "preview",
+                        expiresAt: .now.addingTimeInterval(86_400),
+                        userID: "preview-user"
+                    )
                 )
             )
         )

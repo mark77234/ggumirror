@@ -29,14 +29,37 @@ struct AppleSignInTests {
         func state(for userID: String) async -> AppleCredentialState { result }
     }
 
+    /// 테스트용 서버 세션. 실제 값은 서버가 정한다.
+    static let validSession = ServerSession(
+        accessToken: "test-access-token",
+        expiresAt: Date(timeIntervalSinceNow: 3600),
+        userID: "internal-user-1"
+    )
+
     private func session(
         _ store: InMemoryIdentityStore? = nil,
-        credentials: AppleCredentialState = .authorized
+        credentials: AppleCredentialState = .authorized,
+        sessions: InMemoryServerSessionStore? = nil,
+        backend: FakeAuthBackend = FakeAuthBackend()
     ) -> AuthSession {
-        AuthSession(
-            store: store ?? InMemoryIdentityStore(),
-            credentials: StubCredentials(result: credentials)
+        let identities = store ?? InMemoryIdentityStore()
+        // 저장된 identity가 있으면 서버 세션도 있는 상태로 본다 —
+        // 로그인이란 둘 다 있는 것이고, 이 helper를 쓰는 테스트가 보려는 상태가 그것이다.
+        let saved = sessions ?? InMemoryServerSessionStore(
+            identities.load() == nil ? nil : Self.validSession
         )
+        return AuthSession(
+            store: identities,
+            sessions: saved,
+            credentials: StubCredentials(result: credentials),
+            backend: backend
+        )
+    }
+
+    /// Apple 로그인 결과를 그대로 넘긴다. 실제 nonce 흐름을 거치도록 `beginSignIn`을 먼저 부른다.
+    private func signIn(_ auth: AuthSession, _ result: AppleSignInResult) async {
+        _ = auth.beginSignIn()
+        await auth.complete(.success(result))
     }
 
     /// Apple이 처음 로그인에서만 주는 이름 / 이메일까지 담긴 결과.
@@ -54,7 +77,7 @@ struct AppleSignInTests {
         )
     }
 
-    private func withStore(_ body: (MirrorStore) throws -> Void) throws {
+    private func withStore(_ body: (MirrorStore) async throws -> Void) async throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appending(path: "ggumirror-auth-\(UUID().uuidString)", directoryHint: .isDirectory)
         let store = MirrorStore(root: root)
@@ -62,7 +85,7 @@ struct AppleSignInTests {
             store.flush()
             try? FileManager().removeItem(at: root)
         }
-        try body(store)
+        try await body(store)
     }
 
     private func library(_ store: MirrorStore) -> MirrorLibrary {
@@ -87,27 +110,27 @@ struct AppleSignInTests {
     }
 
     @Test("로그인에 성공하면 signedIn이 된다")
-    func successfulSignInSignsIn() {
+    func successfulSignInSignsIn() async {
         let auth = session()
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
         #expect(auth.state.isSignedIn)
     }
 
     @Test("Apple user identifier를 저장한다")
-    func persistsUserIdentifier() {
+    func persistsUserIdentifier() async {
         let store = InMemoryIdentityStore()
         let auth = session(store)
-        auth.complete(.success(firstSignIn(userID: "apple-user-42")))
+        await signIn(auth, firstSignIn(userID: "apple-user-42"))
 
         #expect(auth.state.identity?.userID == "apple-user-42")
         #expect(store.load()?.userID == "apple-user-42")
     }
 
     @Test("이름과 이메일을 저장한다")
-    func persistsNameAndEmail() {
+    func persistsNameAndEmail() async {
         let store = InMemoryIdentityStore()
         let auth = session(store)
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
 
         #expect(auth.state.identity?.displayName == "병찬")
         #expect(auth.state.identity?.email == "mirror@example.com")
@@ -116,46 +139,55 @@ struct AppleSignInTests {
     }
 
     @Test("다음 로그인에서 이름이 nil이어도 기존 이름을 지우지 않는다")
-    func laterNilNameKeepsStoredName() {
+    func laterNilNameKeepsStoredName() async {
         let store = InMemoryIdentityStore()
         let auth = session(store)
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
 
         // Apple은 두 번째 로그인부터 이름 / 이메일을 주지 않는다.
-        auth.complete(.success(AppleSignInResult(userID: "apple-user-1")))
+        await signIn(auth, firstSignIn(name: nil, email: nil))
 
         #expect(auth.state.identity?.displayName == "병찬")
         #expect(store.load()?.displayName == "병찬")
     }
 
     @Test("다음 로그인에서 이메일이 nil이어도 기존 이메일을 지우지 않는다")
-    func laterNilEmailKeepsStoredEmail() {
+    func laterNilEmailKeepsStoredEmail() async {
         let store = InMemoryIdentityStore()
         let auth = session(store)
-        auth.complete(.success(firstSignIn()))
-        auth.complete(.success(AppleSignInResult(userID: "apple-user-1")))
+        await signIn(auth, firstSignIn())
+        await signIn(auth, firstSignIn(name: nil, email: nil))
 
         #expect(auth.state.identity?.email == "mirror@example.com")
         #expect(store.load()?.email == "mirror@example.com")
     }
 
     @Test("빈 문자열은 값이 있는 것으로 치지 않는다")
-    func blankValuesDoNotOverwrite() {
+    func blankValuesDoNotOverwrite() async {
         let auth = session()
-        auth.complete(.success(firstSignIn()))
-        auth.complete(.success(AppleSignInResult(userID: "apple-user-1", displayName: "  ", email: "")))
+        await signIn(auth, firstSignIn())
+        await signIn(auth, firstSignIn(name: "  ", email: ""))
 
         #expect(auth.state.identity?.displayName == "병찬")
         #expect(auth.state.identity?.email == "mirror@example.com")
     }
 
     @Test("새 값이 실제로 오면 갱신한다")
-    func newValuesUpdate() {
+    func newValuesUpdate() async {
         let auth = session()
-        auth.complete(.success(firstSignIn()))
-        auth.complete(.success(AppleSignInResult(userID: "apple-user-1", displayName: "이병찬", email: nil)))
+        await signIn(auth, firstSignIn())
+        await signIn(auth, firstSignIn(name: "이병찬", email: nil))
 
         #expect(auth.state.identity?.displayName == "이병찬")
+    }
+
+    @Test("identityToken이 없으면 서버 인증을 하지 못하므로 로그인되지 않는다")
+    func missingIdentityTokenDoesNotSignIn() async {
+        let auth = session()
+        await signIn(auth, AppleSignInResult(userID: "apple-user-1", displayName: "병찬"))
+
+        #expect(!auth.state.isSignedIn)
+        #expect(auth.failureMessage != nil)
     }
 
     @Test("이름이 없으면 일반 표현으로 보여준다")
@@ -222,20 +254,20 @@ struct AppleSignInTests {
     // MARK: - 취소 / 실패
 
     @Test("취소하면 signedOut 그대로다")
-    func cancelPreservesSignedOut() {
+    func cancelPreservesSignedOut() async {
         let auth = session()
-        auth.complete(.cancelled)
+        await auth.complete(.cancelled)
 
         #expect(auth.state == .signedOut)
         #expect(auth.failureMessage == nil)   // 취소는 오류 알림을 띄우지 않는다
     }
 
     @Test("실패해도 이미 로그인된 identity를 지우지 않는다")
-    func failureKeepsExistingIdentity() {
+    func failureKeepsExistingIdentity() async {
         let store = InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1", displayName: "병찬"))
         let auth = session(store)
 
-        auth.complete(.failed("네트워크 오류"))
+        await auth.complete(.failed("네트워크 오류"))
 
         #expect(auth.state.isSignedIn)
         #expect(store.load()?.displayName == "병찬")
@@ -243,12 +275,12 @@ struct AppleSignInTests {
     }
 
     @Test("Keychain 저장이 실패해도 죽지 않는다")
-    func keychainFailureDoesNotCrash() {
+    func keychainFailureDoesNotCrash() async {
         let store = InMemoryIdentityStore()
         store.failsToSave = true
         let auth = session(store)
 
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
 
         // 디스크에는 못 적었지만 이번 실행 동안은 로그인 상태로 쓸 수 있다.
         #expect(auth.state.isSignedIn)
@@ -258,22 +290,22 @@ struct AppleSignInTests {
     // MARK: - 로그아웃
 
     @Test("로그아웃하면 signedOut이 된다")
-    func signOutSignsOut() {
+    func signOutSignsOut() async {
         let store = InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1"))
         let auth = session(store)
 
-        auth.signOut()
+        await auth.signOut()
 
         #expect(auth.state == .signedOut)
     }
 
     @Test("로그아웃은 Auth identity만 지운다")
-    func signOutClearsOnlyAuthIdentity() {
+    func signOutClearsOnlyAuthIdentity() async {
         let store = InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1"))
         let auth = session(store)
         auth.requireSignIn(for: .shardTransaction)
 
-        auth.signOut()
+        await auth.signOut()
 
         #expect(store.load() == nil)
         #expect(auth.pendingAction == nil)
@@ -283,8 +315,8 @@ struct AppleSignInTests {
     // MARK: - 로컬 콘텐츠 보존 (이 Phase의 핵심)
 
     @Test("로그아웃해도 내 거울과 현재 거울이 그대로다")
-    func signOutPreservesMirrorLibrary() throws {
-        try withStore { store in
+    func signOutPreservesMirrorLibrary() async throws {
+        try await withStore { store in
             let mirrors = library(store)
             let saved = mirrors.save(MirrorDesign.blank, name: "리본 거울", context: .createNew)
             guard case .created(let id, _) = saved else {
@@ -293,7 +325,7 @@ struct AppleSignInTests {
             }
 
             let auth = session(InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1")))
-            auth.signOut()
+            await auth.signOut()
 
             #expect(mirrors.mirrors.count == 1)
             #expect(mirrors.currentID == id)
@@ -306,8 +338,8 @@ struct AppleSignInTests {
     }
 
     @Test("로그아웃해도 사진 스티커 / 외부 디자인 이미지가 남는다")
-    func signOutPreservesAssets() throws {
-        try withStore { store in
+    func signOutPreservesAssets() async throws {
+        try await withStore { store in
             let photos = PhotoStickerAssetStore()
             let artworks = ImportedArtworkAssetStore()
             photos.attach(store)
@@ -321,7 +353,7 @@ struct AppleSignInTests {
             store.flush()
 
             let auth = session(InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1")))
-            auth.signOut()
+            await auth.signOut()
 
             #expect(photos.image(for: photoID) != nil)
             #expect(artworks.image(for: artworkID) != nil)
@@ -333,8 +365,8 @@ struct AppleSignInTests {
     }
 
     @Test("로그아웃해도 등록 준비 정보가 남는다")
-    func signOutPreservesPublishDraft() throws {
-        try withStore { store in
+    func signOutPreservesPublishDraft() async throws {
+        try await withStore { store in
             let mirrors = library(store)
             let saved = mirrors.save(MirrorDesign.blank, name: "리본 거울", context: .createNew)
             guard let mirrorID = saved.mirrorID else {
@@ -347,7 +379,7 @@ struct AppleSignInTests {
             store.flush()
 
             let auth = session(InMemoryIdentityStore(AppleIdentity(userID: "apple-user-1")))
-            auth.signOut()
+            await auth.signOut()
 
             #expect(mirrors.publishDraft(for: mirrorID)?.title == "리본 거울")
             #expect(library(store).publishDraft(for: mirrorID)?.priceInShards == 12)
@@ -355,15 +387,15 @@ struct AppleSignInTests {
     }
 
     @Test("로그인해도 보관 슬롯이 늘거나 줄지 않는다")
-    func signInDoesNotMutateSlots() throws {
-        try withStore { store in
+    func signInDoesNotMutateSlots() async throws {
+        try await withStore { store in
             let mirrors = library(store)
             _ = mirrors.save(MirrorDesign.blank, name: "거울 하나", context: .createNew)
             let usedBefore = mirrors.createdCount
             let capacityBefore = mirrors.createdCapacity
 
             let auth = session()
-            auth.complete(.success(firstSignIn()))
+            await signIn(auth, firstSignIn())
 
             #expect(mirrors.createdCount == usedBefore)
             #expect(mirrors.createdCapacity == capacityBefore)
@@ -384,8 +416,8 @@ struct AppleSignInTests {
     }
 
     @Test("로그아웃 상태에서도 등록 준비를 작성하고 저장할 수 있다")
-    func publishDraftSaveWorksSignedOut() throws {
-        try withStore { store in
+    func publishDraftSaveWorksSignedOut() async throws {
+        try await withStore { store in
             let mirrors = library(store)
             let saved = mirrors.save(MirrorDesign.blank, name: "내 거울", context: .createNew)
             guard let mirrorID = saved.mirrorID, let mirror = mirrors.mirrors.first else {
@@ -415,11 +447,11 @@ struct AppleSignInTests {
     }
 
     @Test("로그인에 성공하면 기억해 둔 동작을 이어서 꺼낼 수 있다")
-    func gateReleasesPendingActionAfterSignIn() {
+    func gateReleasesPendingActionAfterSignIn() async {
         let auth = session()
         auth.requireSignIn(for: .purchase(templateID: "art-pink-ribbon"))
 
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
 
         #expect(auth.state.isSignedIn)
         #expect(auth.takePendingAction() == .purchase(templateID: "art-pink-ribbon"))
@@ -435,11 +467,11 @@ struct AppleSignInTests {
     }
 
     @Test("취소하면 기억해 둔 동작도 지운다")
-    func cancelClearsPendingAction() {
+    func cancelClearsPendingAction() async {
         let auth = session()
         auth.requireSignIn(for: .shardTransaction)
 
-        auth.complete(.cancelled)
+        await auth.complete(.cancelled)
 
         #expect(auth.pendingAction == nil)
         #expect(auth.state == .signedOut)
@@ -448,10 +480,10 @@ struct AppleSignInTests {
     // MARK: - 보안
 
     @Test("identityToken과 authorizationCode는 저장하지 않는다")
-    func tokensAreNotPersisted() throws {
+    func tokensAreNotPersisted() async throws {
         let store = InMemoryIdentityStore()
         let auth = session(store)
-        auth.complete(.success(firstSignIn()))
+        await signIn(auth, firstSignIn())
 
         let identity = try #require(store.load())
         let encoded = try JSONEncoder().encode(identity)

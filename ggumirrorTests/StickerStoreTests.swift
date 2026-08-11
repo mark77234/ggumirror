@@ -95,7 +95,7 @@ struct StickerStoreTests {
     @Test("스티커 화면은 로그인 없이 쓸 수 있다")
     func stickerScreenWorksSignedOut() throws {
         try withStores { _, stickers, _, mirrors in
-            let session = AuthSession(store: InMemoryIdentityStore())
+            let session = AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore())
             #expect(session.state == .signedOut)
             // 로그인 상태와 무관하게 목록 · 만들기 · 등록 준비가 모두 동작한다.
             let saved = try #require(stickers.save(design(), name: "로그아웃", context: .createNew))

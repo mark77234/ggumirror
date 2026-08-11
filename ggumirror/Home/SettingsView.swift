@@ -146,5 +146,5 @@ enum ProfileTag: String, CaseIterable, Identifiable {
 
 #Preview {
     NavigationStack { SettingsView() }
-        .environment(AuthSession(store: InMemoryIdentityStore()))
+        .environment(AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore()))
 }

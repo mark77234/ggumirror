@@ -888,6 +888,62 @@ picker 두 칸 · 배치 · 2.2배 확대까지 눈으로 봤다. 탭 이동 흐
 실제 Marketplace(서버 listing · 구매 · 판매자 정산) · 스티커 등록 비용 확정 ·
 내 스티커를 거울에 "바로 적용"하는 지름길.
 
+## Phase B-2B — Server User Identity + Session (확정)
+
+Apple 로그인이 이제 **꾸미러 서버 계정**으로 이어진다.
+Backend 작업은 `ggumirror-be` repo에 있다(별도 commit).
+
+### Client 변경
+
+| 파일 | 내용 |
+|---|---|
+| `Auth/AppleNonce.swift` | 시도마다 만드는 nonce. Apple에는 SHA-256만, 서버에는 원본 |
+| `Auth/ServerSession.swift` | 서버 세션 + Keychain 저장소(identity와 다른 account) |
+| `Backend/BackendClient.swift` | URLSession 기반 API client + 주소 · 오류 · JSON |
+| `Auth/AuthSession.swift` | signedIn = Apple + **서버 세션**. async 로그인 / 로그아웃 |
+| `Auth/AccountSection.swift` | 버튼이 nonce를 만들고, 완료는 서버까지 기다린다 |
+| `RootView.swift` | 화면이 뜬 뒤 서버 세션 확인(비동기) |
+
+### 결정한 것
+
+**nonce**: client가 32 byte random을 만들어 `request.nonce`에는 **SHA-256**을 넣고,
+서버에는 **원본**을 보낸다. 서버가 다시 해싱해 token claim과 비교한다 —
+token만 훔쳐도 우리 서버에 쓸 수 없다. Apple 공식 방식이다.
+
+nonce는 한 시도에만 존재하고 **꺼내는 순간 사라진다.** Keychain · 디스크 · 로그 어디에도
+남지 않는다. 버튼을 연달아 눌러 시도가 겹치면 마지막 nonce만 남고, 뒤늦게 도착한 예전
+credential은 서버 검증에서 떨어진다 — **잘못 통과하는 쪽이 아니라 실패하는 쪽으로 기운다.**
+
+**로그인의 정의**: `signedIn`은 이제 "Apple identity + 유효한 서버 세션"이다.
+Apple UI만 통과하면 signedIn이 아니다. Auth Gate(`requireSignIn` / `takePendingAction`)도
+서버 세션까지 확인한다.
+
+**저장**: accessToken · expiresAt · internal userID만 Keychain에 넣는다
+(`service` 동일, `account = "server-session"`). identityToken · authorizationCode ·
+nonce는 저장하지 않는다. UserDefaults를 쓰지 않는다.
+
+**복원**: 앱은 여전히 Mirror부터 뜬다. 저장된 세션이 유효할 때만 로그인 상태로 시작하고,
+서버 확인은 화면이 뜬 뒤 비동기로 한다. 만료된 세션은 로그인으로 인정하지 않되
+Apple identity(이름 / 이메일)는 남긴다 — Apple이 다시 주지 않기 때문이다.
+
+**장애**: 서버가 401이든 503이든 network failure든 **거울 · 스티커 · 등록 준비를
+하나도 지우지 않고 앱 사용을 막지 않는다.** 실패하는 것은 서버 로그인뿐이다.
+
+**주소**: `BackendEnvironment`. DEBUG는 `http://127.0.0.1:8080`,
+release는 **아직 없다**(`nil`). 가짜 production URL을 만들지 않았다 —
+그 상태에서 서버 로그인은 "준비 중"으로 실패한다. 배포 Phase에서 채운다.
+
+### 아직 안 한 것
+
+Shard Ledger · shard balance · Store API · Listing · asset upload · actual Publish ·
+구매 · 소유권 · 판매자 정산 · Cloud Sync · refresh token · **실제 Cloud Run 배포**.
+
+Auth Gate에 실제 publish / purchase를 연결하지 않았다 — foundation만 서버 인증에 맞췄다.
+
+### 다음
+
+**B-3 Shard Ledger.** 그 전에 Infra Phase(실제 Cloud Run 배포)가 필요하다.
+
 ## Sticker Marketplace (후속 Phase)
 
 - Sticker Creator → 저장 → 내 스티커 → 상점에 올리기 → 가격 설정 → Sticker Store

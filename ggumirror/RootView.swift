@@ -37,6 +37,8 @@ struct RootView: View {
                 // 결과가 무엇이든 Mirror 진입을 막지 않는다.
                 session.watchRevocation()
                 await session.refreshCredentialState()
+                // 저장된 서버 세션이 아직 살아 있는지 확인한다. 실패해도 화면을 막지 않는다.
+                await session.refreshServerSession()
             }
     }
 
