@@ -86,11 +86,18 @@ enum DecorationLayer: Identifiable, Equatable {
     }
 
     /// 이 화면 좌표가 오브젝트 위인지. 고를 수 없는 레이어는 항상 false다.
-    func contains(_ location: CGPoint, in transform: MirrorViewTransform) -> Bool {
+    /// `minimumTapTarget`이 0이면 눈에 보이는 크기 그대로 판정한다 — 끌기가 이 쪽을 쓴다.
+    func contains(
+        _ location: CGPoint,
+        in transform: MirrorViewTransform,
+        minimumTapTarget: CGFloat = StickerObject.minimumTapTarget
+    ) -> Bool {
         switch self {
         case .importedArtwork: false
-        case .sticker(let object): object.contains(location, in: transform)
-        case .text(let object): object.contains(location, in: transform)
+        case .sticker(let object):
+            object.contains(location, in: transform, minimumTapTarget: minimumTapTarget)
+        case .text(let object):
+            object.contains(location, in: transform, minimumTapTarget: minimumTapTarget)
         }
     }
 }
@@ -112,8 +119,15 @@ extension MirrorDesign {
 
     /// 눌린 지점에서 화면상 가장 위에 있는 **고를 수 있는** 장식.
     /// 렌더 순서와 같은 기준을 그대로 뒤집어 쓴다 — 캔버스 tap과 Layers 목록이 어긋나지 않는다.
-    func topSelectableDecoration(at location: CGPoint, in transform: MirrorViewTransform) -> DecorationLayer? {
-        decorationLayers.first { $0.isCanvasSelectable && $0.contains(location, in: transform) }
+    func topSelectableDecoration(
+        at location: CGPoint,
+        in transform: MirrorViewTransform,
+        minimumTapTarget: CGFloat = StickerObject.minimumTapTarget
+    ) -> DecorationLayer? {
+        decorationLayers.first {
+            $0.isCanvasSelectable
+                && $0.contains(location, in: transform, minimumTapTarget: minimumTapTarget)
+        }
     }
 }
 

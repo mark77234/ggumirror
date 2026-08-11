@@ -609,7 +609,7 @@ struct EditorGeometryTests {
     private func seededLibrary() -> MirrorLibrary {
         let library = MirrorLibrary()
         library.acquire(StoreCatalog.basics[0])      // 무료 기본 템플릿 → origin .basic
-        library.acquire(StoreCatalog.creators[0])    // Creator 템플릿 → origin .purchased
+        library.acquire(StoreCatalog.artworkTemplates[0])   // 손그림 템플릿 → origin .purchased
         _ = library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "내가 만든 거울", context: .createNew)
         return library
     }
@@ -1312,7 +1312,9 @@ struct EditorGeometryTests {
             #expect(template.price == 0)
             #expect(template.isBasic)
             #expect(template.matches(.basic))
-            #expect(template.matches(.free))
+            // 값은 0이지만 갈래는 "기본"이다 — "무료" 갈래는 손그림 8장을 가리킨다.
+            #expect(template.isFree)
+            #expect(template.category == .basic)
             #expect(template.style.insets == .standard)
         }
     }

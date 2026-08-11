@@ -223,7 +223,12 @@ struct TextObject: Identifiable, Hashable {
 
     /// 이 화면 좌표가 텍스트 위인지.
     /// 스티커와 같은 규칙 — 중심 기준 역회전 후 로컬 사각형 판정 + 최소 tap target.
-    func contains(_ location: CGPoint, in transform: MirrorViewTransform) -> Bool {
+    /// tap target을 넓히는 것도 스티커와 같이 **제자리 tap에서만**이다.
+    func contains(
+        _ location: CGPoint,
+        in transform: MirrorViewTransform,
+        minimumTapTarget: CGFloat = TextObject.minimumTapTarget
+    ) -> Bool {
         let rect = transform.rect(frame)
         let dx = location.x - rect.midX
         let dy = location.y - rect.midY
@@ -231,8 +236,8 @@ struct TextObject: Identifiable, Hashable {
         let localX = dx * cos(radians) - dy * sin(radians)
         let localY = dx * sin(radians) + dy * cos(radians)
 
-        let width = max(rect.width, Self.minimumTapTarget)
-        let height = max(rect.height, Self.minimumTapTarget)
+        let width = max(rect.width, minimumTapTarget)
+        let height = max(rect.height, minimumTapTarget)
         return abs(localX) <= width / 2 && abs(localY) <= height / 2
     }
 }

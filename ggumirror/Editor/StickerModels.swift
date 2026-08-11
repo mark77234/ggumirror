@@ -251,7 +251,14 @@ struct StickerObject: Identifiable, Hashable {
     /// 회전 bounding box로 넓게 잡으면 눈에 보이는 모양과 어긋나므로,
     /// 중심 기준으로 역회전시켜 실제 스티커 사각형 안인지 본다.
     /// (좌우 뒤집기는 이 사각형에 대해 대칭이라 판정에 영향이 없다.)
-    func contains(_ location: CGPoint, in transform: MirrorViewTransform) -> Bool {
+    ///
+    /// `minimumTapTarget`은 **제자리 tap에서만** 넓힌다. 끌기에서 같이 넓히면
+    /// 작은 스티커 옆 빈 곳을 밀어도 스티커가 딸려와 화면 이동이 막힌다.
+    func contains(
+        _ location: CGPoint,
+        in transform: MirrorViewTransform,
+        minimumTapTarget: CGFloat = StickerObject.minimumTapTarget
+    ) -> Bool {
         let rect = transform.rect(frame)
         let dx = location.x - rect.midX
         let dy = location.y - rect.midY
@@ -261,8 +268,8 @@ struct StickerObject: Identifiable, Hashable {
 
         // 작게 줄인 스티커만 최소 tap target까지 넓힌다.
         // 큰 스티커는 보이는 크기 그대로라 옆 스티커를 덮지 않는다.
-        let width = max(rect.width, Self.minimumTapTarget)
-        let height = max(rect.height, Self.minimumTapTarget)
+        let width = max(rect.width, minimumTapTarget)
+        let height = max(rect.height, minimumTapTarget)
         return abs(localX) <= width / 2 && abs(localY) <= height / 2
     }
 

@@ -220,9 +220,28 @@ Sticker
 - Focus 조건: 스티커가 화면에 다 보이면 이동 없음. 아니면 zoom 유지 + 최소 pan.
 - 잠긴 스티커도 선택 가능(변형만 막힌다).
 - hit test는 중심 기준 역회전 후 로컬 사각형 판정 + 최소 tap target 44pt.
-- Sticker 도구에서 빈 곳 한 손가락 drag = 화면 이동. Drawing / Eraser는 기존 그대로.
+- Sticker 도구에서 빈 곳 한 손가락 drag = 화면 이동.
 - 제스처 우선순위: handle → sticker → scroll handle → 빈 캔버스 / gutter.
 - Pan은 언제나 같은 `EditorViewportState` 하나만 쓴다. Undo History에 들어가지 않는다.
+
+Editor Gesture Policy (V-2)
+
+- 한 손가락이 무엇을 하는지는 `EditorGesturePolicy.oneFingerAction(tool:drawingMode:grabbed:)`
+  **한 함수**가 정한다. 도구마다 따로 판단하지 않는다.
+  - draw + `.draw` → stroke / draw + `.pan` → viewport pan
+  - erase → erase
+  - sticker · text → 오브젝트를 잡았고 잠기지 않았으면 move, 아니면 viewport pan
+- Hit target이 두 종류다. `EditorGesturePolicy.selectTapTarget`(44pt)은 제자리 tap 전용,
+  `dragTapTarget`(0)은 끌기 전용 — 끌기에서 넓히면 오브젝트 옆 빈 곳을 밀 수 없다.
+  `contains(_:in:minimumTapTarget:)` / `topSelectableDecoration(at:in:minimumTapTarget:)`가 이 값을 받는다.
+- 두 손가락 pan / pinch는 `EditorCanvasGestureOverlay`의 전용 recognizer(최소 2 touch)라
+  오브젝트 위에서 시작해도 언제나 viewport navigation이다. Zoom 범위 1…4 유지.
+- 두 손가락이 들어오면 진행 중인 한 손가락 입력을 끊는다. 이때
+  `DrawingCommitPolicy.keepsCancelledWork(travel:)`가 44pt 미만이면 그 획 / 지우기를 버린다 —
+  pinch를 시작하려다 생기는 점·짧은 선을 막는다.
+- `DrawingInteractionMode`(draw / pan)는 Editor session state다. 기본 `.draw`,
+  도구를 바꾸면 `.draw`로 되돌아가고, 붓 / 색 / 굵기 변경으로는 리셋되지 않는다.
+- 좌표 변환은 `EditorCanvasTransform` 하나뿐이다. 도구별 변환을 만들지 않는다.
 
 Mirror Inner Corner Radius
 
@@ -637,3 +656,27 @@ Phase 3: Editor Canvas
 Phase 4: Drawing / Sticker / Photo tools
 Phase 5: Persistence + My Mirrors
 Phase 6: Apple Login + Store + 조각
+
+
+## Phase V-2 — Editor Navigation UX + Store Content 24/24
+
+PART A — Editor 이동/그리기 UX
+
+- 위 **Editor Gesture Policy (V-2)** 참고. 새 gesture recognizer를 추가하지 않았다 —
+  이미 있던 `EditorCanvasGestureOverlay`(1 touch / 2 touch / pinch) 위에서 라우팅만 정리했다.
+- Drawing toolbar에 그리기 ↔ 손바닥 잉크 컨트롤 추가. 새 카드 / 모달 없음.
+- Rotation(V-1) · Free Canvas drawing · Text 정책은 회귀 없음.
+
+PART B — Store Content
+
+- 실제 손그림 PNG **24 / 24**. procedural / placeholder 템플릿(`StoreCatalog.creators`)은 제거했다.
+- 파일: `ggumirror/Resources/StoreTemplates/{Free, RibbonHeart, Diary, Y2K, Moments}/*.png`
+  (Xcode의 synchronized group이 번들 루트로 평탄화하므로 `StoreArtworkResource.url`이 파일 이름으로 다시 찾는다.)
+- 데이터 모델: `MirrorTemplate.category`(갈래 하나) + `highlights`(추천/인기/신규).
+  문자열 Set 하나에 섞지 않는다.
+- id / assetID 모두 고정값. 기존 3장(`art-pink-ribbon` / `art-my-diary` / `art-y2k-star`)의
+  id와 assetID는 그대로 유지해 이미 받은 데이터와 호환된다.
+- 가격은 `StoreCategory.temporaryPrice` 한 곳. **actual Store economy 이전 임시 가격**이다.
+- 렌더 파이프라인은 4-2A 그대로: Bundle → `StoreArtworkResource` → `MirrorArtworkImporter.framedArtwork`
+  → `registerBundled` → `MirrorPreview`. 새 렌더러를 만들지 않았다.
+  구경할 때 memory only / 받을 때 persistToDisk 정책 유지.

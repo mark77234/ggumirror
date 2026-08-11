@@ -23,6 +23,8 @@ struct EditorView: View {
     @State private var isChoosingBackground = false
 
     @State private var tool: EditorTool = .draw
+    /// 그리기 도구의 한 손가락 동작. 붓 / 색 / 굵기를 바꿔도 이 값은 유지된다.
+    @State private var drawingMode: DrawingInteractionMode = .draw
     @State private var brush: EditorBrush = .pen
     @State private var brushWidth: Double = EditorBrush.pen.defaultWidth
     @State private var brushColor: Color = PaperTheme.ink
@@ -211,6 +213,7 @@ struct EditorView: View {
         MirrorEditorCanvas(
             design: design,
             tool: tool,
+            drawingMode: drawingMode,
             brush: brush,
             brushWidth: brushWidth,
             brushColor: brushColor,
@@ -238,6 +241,8 @@ struct EditorView: View {
             if newValue != .sticker { selectedStickerID = nil }
             if newValue != .text { selectedTextID = nil }
             selectedArtworkID = nil
+            // 그리기를 나갔다 들어오면 항상 그리기부터. 손바닥에 갇혀 있지 않게 한다.
+            drawingMode = .draw
         }
     }
 
@@ -280,38 +285,79 @@ struct EditorView: View {
         }
     }
 
-    /// 그리기일 때만 보이는 최소 설정 요약. 누르면 상세 시트가 열린다.
+    /// 그리기일 때만 보이는 최소 설정 요약 + 그리기 / 손바닥 전환.
+    /// 손이 가장 잘 닿는 캔버스 바로 아래에 둔다 — 별도 카드나 모달을 띄우지 않는다.
     private var drawContextBar: some View {
-        Button {
-            isEditingDrawSettings = true
-        } label: {
-            HStack(spacing: 10) {
-                StrokeSample(brush: brush, color: brushColor, width: brushWidth)
-                    .frame(width: 44, height: 20)
-                Circle()
-                    .fill(brushColor)
-                    .frame(width: 20, height: 20)
-                    .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
-                Text(brush.title)
-                    .font(InkFont.secondary)
-                Text("\(Int((brushWidth * MirrorCanvas.size.width).rounded()))")
-                    .font(InkFont.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up")
-                    .font(.system(.footnote, weight: .bold))
+        HStack(spacing: 10) {
+            drawingModeControl
+
+            Button {
+                isEditingDrawSettings = true
+            } label: {
+                HStack(spacing: 10) {
+                    StrokeSample(brush: brush, color: brushColor, width: brushWidth)
+                        .frame(width: 40, height: 20)
+                    Circle()
+                        .fill(brushColor)
+                        .frame(width: 20, height: 20)
+                        .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.4))
+                    Text(brush.title)
+                        .font(InkFont.secondary)
+                        .lineLimit(1)
+                    Text("\(Int((brushWidth * MirrorCanvas.size.width).rounded()))")
+                        .font(InkFont.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up")
+                        .font(.system(.footnote, weight: .bold))
+                }
+                .foregroundStyle(PaperTheme.ink)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
-            .foregroundStyle(PaperTheme.ink)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(minHeight: 44)
-            .contentShape(.rect)
+            .buttonStyle(InkPressStyle())
+            .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
         }
-        .buttonStyle(InkPressStyle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(PaperTheme.subtleSurface)
         .overlay(alignment: .top) { InkSeparator() }
-        .accessibilityLabel("그리기 설정: \(brush.title), 색상, 굵기")
+    }
+
+    /// 지금 한 손가락이 무엇을 하는지 한눈에 보이는 잉크 컨트롤.
+    private var drawingModeControl: some View {
+        HStack(spacing: 0) {
+            ForEach(DrawingInteractionMode.allCases) { mode in
+                drawingModeButton(mode)
+            }
+        }
+        .padding(2)
+        .background {
+            let shape = UnevenRoundedRectangle.ink(15, 12, 16, 13)
+            shape.overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.6))
+        }
+    }
+
+    private func drawingModeButton(_ mode: DrawingInteractionMode) -> some View {
+        let isActive = drawingMode == mode
+        return Button {
+            drawingMode = mode
+            EditorHaptics.placementConfirmed()
+        } label: {
+            Image(systemName: mode.icon)
+                .font(InkFont.body)
+                .foregroundStyle(isActive ? PaperTheme.subtleSurface : PaperTheme.ink)
+                .frame(width: 44, height: 40)
+                .background {
+                    UnevenRoundedRectangle.ink(12, 9, 13, 10)
+                        .fill(isActive ? PaperTheme.ink : Color.clear)
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel(mode.title)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
     }
 
     /// 내 거울에서 새 결과물을 만들 때만 이름을 묻는다.

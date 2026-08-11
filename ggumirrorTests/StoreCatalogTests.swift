@@ -2,8 +2,9 @@
 //  StoreCatalogTests.swift
 //  ggumirrorTests
 //
-//  상점에 실제 손그림 템플릿 3장이 연결됐는지.
-//  PNG가 번들에 있고, 카테고리로 갈라지고, 받으면 내 거울에 그림까지 따라오는지 본다.
+//  상점에 실제 손그림 템플릿 24장이 연결됐는지.
+//  PNG가 번들에 있고, 갈래로 갈라지고, 받으면 내 거울에 그림까지 따라오는지 본다.
+//  placeholder(SF Symbol 낙서 샘플)가 한 장도 남지 않았는지도 여기서 막는다.
 //
 
 import Testing
@@ -58,14 +59,81 @@ struct StoreCatalogTests {
 
     // MARK: - 목록
 
-    @Test("손그림 템플릿 3장이 고정 id로 상점에 있다")
+    /// 상점에 보이는 최종 목록. 순서와 갈래까지 여기 한 곳에 적어 둔다.
+    static let expected: [(id: String, file: String, category: StoreCategory)] = [
+        ("art-pink-ribbon", "pink-ribbon", .free),
+        ("art-ink-heart", "ink-heart", .free),
+        ("art-cream-note", "cream-note", .free),
+        ("art-lavender-star", "lavender-star", .free),
+        ("art-sky-cloud", "sky-cloud", .free),
+        ("art-mint-flower", "mint-flower", .free),
+        ("art-gray-check", "gray-check", .free),
+        ("art-red-point", "red-point", .free),
+        ("art-lovely-bow", "lovely-bow", .ribbonHeart),
+        ("art-love-letter", "love-letter", .ribbonHeart),
+        ("art-cherry-love", "cherry-love", .ribbonHeart),
+        ("art-angel-heart", "angel-heart", .ribbonHeart),
+        ("art-my-diary", "my-diary", .diary),
+        ("art-checklist", "checklist", .diary),
+        ("art-scrapbook", "scrapbook", .diary),
+        ("art-cafe-note", "cafe-note", .diary),
+        ("art-y2k-star", "y2k-star", .y2k),
+        ("art-cyber-love", "cyber-love", .y2k),
+        ("art-flash-girl", "flash-girl", .y2k),
+        ("art-retro-pop", "retro-pop", .y2k),
+        ("art-birthday", "birthday", .moments),
+        ("art-summer-trip", "summer-trip", .moments),
+        ("art-spring-bloom", "spring-bloom", .moments),
+        ("art-winter-letter", "winter-letter", .moments),
+    ]
+
+    @Test("손그림 템플릿이 정확히 24장이고 고정 id를 갖는다")
     func artworkTemplatesAreListed() throws {
-        let ids = StoreCatalog.artworkTemplates.map(\.id)
-        #expect(ids == ["art-pink-ribbon", "art-my-diary", "art-y2k-star"])
-        // 상점 목록의 맨 앞이다 — 이 3장이 스타일 기준이다.
-        #expect(StoreCatalog.samples.prefix(3).map(\.id) == ids)
+        #expect(StoreCatalog.artworkTemplates.count == 24)
+        #expect(StoreCatalog.artworkTemplates.map(\.id) == Self.expected.map(\.id))
+        // 상점 목록의 맨 앞이다 — 단색 기본보다 먼저 보인다.
+        #expect(StoreCatalog.samples.prefix(24).map(\.id) == Self.expected.map(\.id))
         // id는 전체에서 겹치지 않는다.
         #expect(Set(StoreCatalog.samples.map(\.id)).count == StoreCatalog.samples.count)
+    }
+
+    @Test("이미 연결됐던 3장은 id를 그대로 유지한다")
+    func originalThreeKeepTheirIdentity() throws {
+        for (id, assetID) in [
+            ("art-pink-ribbon", "A0000001-0000-4000-A000-000000000001"),
+            ("art-my-diary", "A0000002-0000-4000-A000-000000000002"),
+            ("art-y2k-star", "A0000003-0000-4000-A000-000000000003"),
+        ] {
+            let template = try template(id)
+            #expect(template.artwork?.assetID == UUID(uuidString: assetID))
+        }
+    }
+
+    @Test("placeholder 템플릿이 한 장도 남아 있지 않다")
+    func noPlaceholdersRemain() {
+        // 옛 개발용 샘플은 SF Symbol 낙서(style.doodles)로 만들어져 있었다.
+        for template in StoreCatalog.samples {
+            #expect(template.style.doodles.isEmpty, "\(template.id)에 낙서 placeholder가 남아 있다")
+            #expect(!["bunny-sketch", "star-scribble", "ribbon-diary"].contains(template.id))
+        }
+        // 아트워크가 아닌 것은 공식 단색 기본뿐이다.
+        for template in StoreCatalog.samples where template.artwork == nil {
+            #expect(template.isBasic, "\(template.id)는 그림도 기본도 아니다")
+        }
+    }
+
+    @Test("갈래별 개수가 8 / 4 / 4 / 4 / 4다")
+    func categoryCountsMatch() {
+        func count(_ category: StoreCategory) -> Int {
+            StoreCatalog.artworkTemplates.filter { $0.category == category }.count
+        }
+        #expect(count(.free) == 8)
+        #expect(count(.ribbonHeart) == 4)
+        #expect(count(.diary) == 4)
+        #expect(count(.y2k) == 4)
+        #expect(count(.moments) == 4)
+        // 갈래는 정확히 하나씩만 갖는다 — 합이 곧 전체다.
+        #expect(count(.free) + count(.ribbonHeart) + count(.diary) + count(.y2k) + count(.moments) == 24)
     }
 
     @Test("각 템플릿이 이름 / 카테고리 / 그림 / 가격을 갖는다")
@@ -73,8 +141,9 @@ struct StoreCatalogTests {
         for template in StoreCatalog.artworkTemplates {
             #expect(!template.name.isEmpty)
             #expect(!template.creator.isEmpty)
-            #expect(!template.categories.isEmpty || template.isFree)
+            #expect(StoreCategory.contentGroups.contains(template.category))
             #expect(template.price >= 0)
+            #expect(template.price == template.category.temporaryPrice)
             let artwork = try #require(template.artwork)
             #expect(!artwork.fileName.isEmpty)
             #expect(artwork.subdirectory.hasPrefix("StoreTemplates/"))
@@ -84,8 +153,8 @@ struct StoreCatalogTests {
     @Test("그림 참조 id는 템플릿마다 고정이고 서로 다르다")
     func artworkAssetIDsAreStableAndUnique() {
         let ids = StoreCatalog.artworkTemplates.compactMap { $0.artwork?.assetID }
-        #expect(ids.count == 3)
-        #expect(Set(ids).count == 3)
+        #expect(ids.count == 24)
+        #expect(Set(ids).count == 24)
         // 두 번 읽어도 같은 값 — 볼 때마다 새 파일이 생기지 않는다.
         #expect(StoreCatalog.artworkTemplates.compactMap { $0.artwork?.assetID } == ids)
     }
@@ -99,42 +168,90 @@ struct StoreCatalogTests {
             #expect(image.width == 1080)
             #expect(image.height == 2340)
         }
+        // 파일 이름도 의도한 그림과 정확히 맞는다.
+        #expect(StoreCatalog.artworkTemplates.compactMap { $0.artwork?.fileName } == Self.expected.map(\.file))
     }
 
-    @Test("상점 그림도 카메라 영역이 비어 있다")
+    /// 그림 한 장의 alpha 채널만 한 번에 읽는다.
+    /// 점 하나마다 다시 그리면 1080 × 2340짜리 24장에서 감당이 안 된다.
+    private func alphaMap(_ image: CGImage) -> [UInt8] {
+        var data = [UInt8](repeating: 0, count: image.width * image.height)
+        let context = CGContext(
+            data: &data, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: image.width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue
+        )!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return data
+    }
+
+    @Test("상점 그림 24장 모두 카메라 영역이 비어 있고 프레임에는 그림이 있다")
     func artworkKeepsCameraAreaClear() throws {
+        let insets = MirrorFrameInsets.standard
         for template in StoreCatalog.artworkTemplates {
             let artwork = try #require(StoreArtworkLibrary.artwork(for: template))
             let image = try #require(ImportedArtworkAssetStore.shared.image(for: artwork.assetID))
-            // 가운데는 비고, 프레임에는 그림이 있다.
-            #expect(pixel(image, at: NormalizedPoint(x: 0.5, y: 0.5)).alpha == 0)
-            #expect(pixel(image, at: NormalizedPoint(x: 0.05, y: 0.5)).alpha > 200)
-            #expect(pixel(image, at: NormalizedPoint(x: 0.5, y: 0.03)).alpha > 200)
+            let alpha = alphaMap(image)
+            let (w, h) = (image.width, image.height)
+
+            let left = Int(insets.left * Double(w))
+            let right = w - Int(insets.right * Double(w))
+            let top = Int(insets.top * Double(h))
+            let bottom = h - Int(insets.bottom * Double(h))
+            // 둥근 모서리는 판정에서 뺀다 — 반경 안쪽 사각형만 본다.
+            let margin = Int(MirrorGeometry.innerCornerRadius) + 2
+
+            var insideCamera = 0
+            var paintedFrame = 0
+            for y in 0..<h {
+                for x in 0..<w where alpha[y * w + x] > 10 {
+                    if x >= left + margin && x < right - margin
+                        && y >= top + margin && y < bottom - margin {
+                        insideCamera += 1
+                    } else if x < left || x >= right || y < top || y >= bottom {
+                        paintedFrame += 1
+                    }
+                }
+            }
+
+            #expect(insideCamera == 0, "\(template.id): 카메라 영역에 \(insideCamera)픽셀이 남아 있다")
+            // 테두리와 장식이 실제로 그려져 있다. 얼굴이 주인공이라 덮는 비율은 작지만 0은 아니다.
+            #expect(paintedFrame > 15_000, "\(template.id): 프레임이 거의 비어 있다 (\(paintedFrame))")
         }
     }
 
     // MARK: - 카테고리 / 가격
 
-    @Test("무료 / 다이어리 / Y2K 카테고리로 갈라진다")
-    func categoriesSplitTheThreeTemplates() throws {
+    @Test("다섯 갈래가 상점 필터에서 실제로 갈라진다")
+    func categoriesSplitTheCatalog() throws {
         func ids(_ category: StoreCategory) -> [String] {
             StoreCatalog.samples.filter { $0.matches(category) }.map(\.id)
         }
-        #expect(ids(.free).contains("art-pink-ribbon"))
-        #expect(!ids(.free).contains("art-my-diary"))       // 유료
-        #expect(!ids(.free).contains("art-y2k-star"))
-
-        #expect(ids(.diary).contains("art-my-diary"))
-        #expect(!ids(.diary).contains("art-y2k-star"))
-
-        #expect(ids(.y2k).contains("art-y2k-star"))
-        #expect(!ids(.y2k).contains("art-my-diary"))
-
+        for (id, _, category) in Self.expected {
+            #expect(ids(category).contains(id), "\(id)가 \(category.rawValue)에 없다")
+            // 다른 갈래에는 들어가지 않는다.
+            for other in StoreCategory.contentGroups where other != category {
+                #expect(!ids(other).contains(id), "\(id)가 \(other.rawValue)에도 들어갔다")
+            }
+        }
         #expect(ids(.all).count == StoreCatalog.samples.count)
-        // 세 카테고리 모두 상점 필터에 실제로 노출된다.
-        for category in [StoreCategory.free, .diary, .y2k] {
+        for category in StoreCategory.contentGroups {
             #expect(StoreCategory.allCases.contains(category))
             #expect(!ids(category).isEmpty)
+        }
+    }
+
+    @Test("추천 / 인기 / 신규는 갈래와 섞이지 않는 별도 꼬리표다")
+    func highlightsAreSeparateFromCategories() {
+        for template in StoreCatalog.samples {
+            // 꼬리표 자리에 갈래가 들어가지 않는다.
+            #expect(template.highlights.allSatisfy(StoreCategory.highlightTags.contains))
+        }
+        for tag in StoreCategory.highlightTags {
+            let tagged = StoreCatalog.samples.filter { $0.matches(tag) }
+            #expect(!tagged.isEmpty)
+            #expect(tagged.allSatisfy { $0.highlights.contains(tag) })
         }
     }
 
@@ -144,14 +261,19 @@ struct StoreCatalogTests {
         #expect(free.isFree)
         #expect(free.price == 0)
 
+        #expect(StoreCatalog.artworkTemplates.filter(\.isFree).count == 8)
+
         for id in ["art-my-diary", "art-y2k-star"] {
             let paid = try template(id)
             #expect(!paid.isFree)
             #expect(paid.price > 0)
             #expect(paid.matches(.free) == false)
         }
-        // 무료 필터는 값이 0인 것만 모은다.
+        // 무료 갈래는 모두 0 조각이다.
         #expect(StoreCatalog.samples.filter { $0.matches(.free) }.allSatisfy { $0.price == 0 })
+        // 기존 두 장의 값은 그대로 유지된다.
+        #expect(try template("art-my-diary").price == 18)
+        #expect(try template("art-y2k-star").price == 24)
     }
 
     // MARK: - 미리보기

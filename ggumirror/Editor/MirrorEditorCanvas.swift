@@ -13,6 +13,8 @@ import SwiftUI
 struct MirrorEditorCanvas: View {
     let design: MirrorDesign
     let tool: EditorTool
+    /// 그리기 도구에서 한 손가락이 무엇을 하는가. 다른 도구는 이 값을 보지 않는다.
+    let drawingMode: DrawingInteractionMode
     let brush: EditorBrush
     let brushWidth: Double
     let brushColor: Color
@@ -43,8 +45,12 @@ struct MirrorEditorCanvas: View {
     @State private var draggingText: TextObject?
     @State private var textAtGestureStart: TextObject?
     @State private var textGrabOffset = NormalizedPoint(x: 0, y: 0)
-    /// 스티커 도구에서 빈 곳을 한 손가락으로 끌 때의 직전 위치.
+    /// 빈 곳(또는 손바닥 모드)을 한 손가락으로 끌 때의 직전 위치.
     @State private var oneFingerPanAnchor: CGPoint?
+    /// 이번 한 손가락 제스처가 화면에서 움직인 총 거리(pt).
+    /// 두 손가락이 들어와 취소됐을 때 "그리려던 것"인지 "미끄러진 것"인지를 이 값으로 가른다.
+    @State private var touchTravel: CGFloat = 0
+    @State private var lastTouchLocation: CGPoint?
     /// 이동 중 촉각 피드백. 프레임마다 울리지 않도록 시간 + 거리로 제한한다.
     @State private var hapticLimiter = HapticRateLimiter()
     /// 제스처 힌트는 한 번 이해하면 다시 보여주지 않는다.
@@ -62,6 +68,11 @@ struct MirrorEditorCanvas: View {
 
     /// 오브젝트를 잡아 옮기는 도구인지. 빈 곳 한 손가락 드래그가 화면 이동이 된다.
     private var isObjectTool: Bool { tool == .sticker || tool == .text }
+
+    /// 이번 한 손가락 입력이 무엇을 하는가. 규칙은 `EditorGesturePolicy` 하나뿐이다.
+    private func oneFingerAction(grabbed: DecorationLayer? = nil) -> EditorGesturePolicy.OneFingerAction {
+        EditorGesturePolicy.oneFingerAction(tool: tool, drawingMode: drawingMode, grabbed: grabbed)
+    }
 
     /// Master Canvas 안인지. 프레임 / 카메라 구분은 하지 않는다.
     static func isInsideCanvas(_ point: NormalizedPoint) -> Bool {
@@ -158,20 +169,31 @@ struct MirrorEditorCanvas: View {
 
         case .began(let location):
             dismissGestureHint()
+            touchTravel = 0
+            lastTouchLocation = location
             let point = transform.masterPoint(from: location)
             switch tool {
-            case .draw: extendStroke(to: point)
+            case .draw:
+                // 손바닥 모드면 그 자리에서 화면 이동이 시작된다.
+                if oneFingerAction() == .draw { extendStroke(to: point) }
+                else { oneFingerPanAnchor = location }
             case .erase: erase(at: point, transform: transform)
             case .sticker, .text:
                 beginObjectTouch(at: location, point: point, transform: transform, viewportSize: viewportSize)
             }
         case .moved(let location):
+            if let last = lastTouchLocation {
+                touchTravel += hypot(location.x - last.x, location.y - last.y)
+            }
+            lastTouchLocation = location
             let point = transform.masterPoint(from: location)
             switch tool {
-            case .draw: extendStroke(to: point)
+            case .draw:
+                if oneFingerAction() == .draw { extendStroke(to: point) }
+                else { panWithOneFinger(to: location, viewportSize: viewportSize) }
             case .erase: erase(at: point, transform: transform)
             case .sticker, .text:
-                // 오브젝트를 잡았으면 이동, 빈 곳에서 시작했으면 화면을 민다.
+                // 오브젝트를 잡았으면 이동, 빈 곳 / 잠긴 것이면 화면을 민다.
                 if draggingSticker != nil {
                     moveSticker(to: point)
                 } else if draggingText != nil {
@@ -180,11 +202,32 @@ struct MirrorEditorCanvas: View {
                     panWithOneFinger(to: location, viewportSize: viewportSize)
                 }
             }
-        case .ended, .cancelled:
-            oneFingerPanAnchor = nil
-            // 취소여도 유효한 작업이면 저장한다. 사용자가 그린 선이 이유 없이 사라지지 않게.
+        case .ended:
+            endOneFingerTouch()
             commitActiveWork()
+        case .cancelled:
+            endOneFingerTouch()
+            // 두 손가락이 들어와 끊긴 경우다. 충분히 그렸으면 살리고,
+            // pinch를 시작하려다 살짝 미끄러진 정도면 흔적을 남기지 않는다.
+            if DrawingCommitPolicy.keepsCancelledWork(travel: touchTravel) {
+                commitActiveWork()
+            } else {
+                discardActiveStrokeWork()
+            }
         }
+    }
+
+    private func endOneFingerTouch() {
+        oneFingerPanAnchor = nil
+        lastTouchLocation = nil
+    }
+
+    /// 오브젝트 이동은 눈에 보인 대로 확정하고, 짧게 끊긴 획 / 지우기만 버린다.
+    private func discardActiveStrokeWork() {
+        commitSticker()
+        commitText()
+        activeStroke = nil
+        pendingErase = []
     }
 
     private func extendStroke(to point: NormalizedPoint) {
@@ -270,12 +313,25 @@ struct MirrorEditorCanvas: View {
     /// 판정 규칙은 `MirrorDesign.topSelectableDecoration` 하나뿐이다 —
     /// 렌더 순서와 Layers 목록과 정확히 같은 기준을 쓴다.
     /// 외부 디자인은 캔버스 전체를 덮으므로 여기서 잡히지 않는다.
+    private func topLayer(
+        at location: CGPoint,
+        transform: EditorCanvasTransform,
+        minimumTapTarget: CGFloat
+    ) -> DecorationLayer? {
+        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
+        return design.topSelectableDecoration(
+            at: location,
+            in: placement,
+            minimumTapTarget: minimumTapTarget
+        )
+    }
+
     private func topObject(
         at location: CGPoint,
-        transform: EditorCanvasTransform
+        transform: EditorCanvasTransform,
+        minimumTapTarget: CGFloat = EditorGesturePolicy.selectTapTarget
     ) -> (sticker: StickerObject?, text: TextObject?) {
-        let placement = MirrorViewTransform(canvasSize: transform.canvasSize, offset: transform.offset)
-        switch design.topSelectableDecoration(at: location, in: placement) {
+        switch topLayer(at: location, transform: transform, minimumTapTarget: minimumTapTarget) {
         case .sticker(let object): return (object, nil)
         case .text(let object): return (nil, object)
         case .importedArtwork, .none: return (nil, nil)
@@ -305,16 +361,32 @@ struct MirrorEditorCanvas: View {
         transform: EditorCanvasTransform,
         viewportSize: CGSize
     ) {
-        let hit = topObject(at: location, transform: transform)
+        // 끌기는 **눈에 보이는 크기 그대로** 판정한다. tap처럼 44pt까지 넓히면
+        // 작은 오브젝트 옆 빈 곳을 밀 수 없어 화면 이동이 막힌다.
+        let grabbed = topLayer(
+            at: location,
+            transform: transform,
+            minimumTapTarget: EditorGesturePolicy.dragTapTarget
+        )
+        let hit: (sticker: StickerObject?, text: TextObject?) = switch grabbed {
+        case .sticker(let object): (object, nil)
+        case .text(let object): (nil, object)
+        case .importedArtwork, .none: (nil, nil)
+        }
         selectedStickerID = hit.sticker?.id
         selectedTextID = hit.text?.id
         selectedArtworkID = nil
+
+        // 빈 곳이거나 잠긴 오브젝트면 그 자리에서 화면 이동이 시작된다.
+        guard oneFingerAction(grabbed: grabbed) == .moveObject else {
+            oneFingerPanAnchor = location
+            return
+        }
 
         if let sticker = hit.sticker {
             oneFingerPanAnchor = nil
             // 일부만 보이는 오브젝트는 zoom을 유지한 채 최소한만 끌어온다.
             let shift = focus(on: sticker.frame, transform: transform, viewportSize: viewportSize)
-            guard !sticker.isLocked else { return }
             stickerAtGestureStart = sticker
             draggingSticker = sticker
             hapticLimiter.reset()
@@ -327,7 +399,6 @@ struct MirrorEditorCanvas: View {
         } else if let text = hit.text {
             oneFingerPanAnchor = nil
             let shift = focus(on: text.frame, transform: transform, viewportSize: viewportSize)
-            guard !text.isLocked else { return }
             textAtGestureStart = text
             draggingText = text
             hapticLimiter.reset()
@@ -336,8 +407,6 @@ struct MirrorEditorCanvas: View {
                 x: point.x - text.center.x - shift.x,
                 y: point.y - text.center.y - shift.y
             )
-        } else {
-            oneFingerPanAnchor = location
         }
     }
 

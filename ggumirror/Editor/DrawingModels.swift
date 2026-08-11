@@ -27,6 +27,87 @@ struct NormalizedPoint: Hashable, Codable {
     }
 }
 
+// MARK: - Interaction mode
+
+/// 그리기 도구에서 **한 손가락**이 무엇을 하는가.
+/// 두 손가락 이동과 pinch 확대는 두 모드 모두 똑같이 동작한다 — 화면 이동을 위해
+/// 도구를 껐다 켤 필요가 없어야 한다.
+enum DrawingInteractionMode: String, CaseIterable, Identifiable {
+    /// 한 손가락 = 획을 그린다.
+    case draw
+    /// 손바닥. 한 손가락 = 화면 이동. 획을 만들지도, 지우지도 않는다.
+    case pan
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .draw: "그리기"
+        case .pan: "손바닥"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .draw: "pencil"
+        case .pan: "hand.raised"
+        }
+    }
+
+    /// 이 모드에서 한 손가락이 획을 만드는가.
+    var makesStrokes: Bool { self == .draw }
+}
+
+/// **한 손가락이 무엇을 하는가**를 정하는 규칙 하나.
+/// 도구마다 따로 판단하지 않는다 — Editor 캔버스가 이 함수 하나만 본다.
+enum EditorGesturePolicy {
+    enum OneFingerAction: Equatable {
+        case draw
+        case erase
+        /// 잡은 오브젝트를 옮긴다.
+        case moveObject
+        /// 화면을 민다. 빈 곳 · 잠긴 오브젝트 · 손바닥 모드가 모두 여기로 온다.
+        case panViewport
+    }
+
+    /// - Parameter grabbed: 손가락이 내려온 자리에 있는 오브젝트. 없으면 빈 곳이다.
+    static func oneFingerAction(
+        tool: EditorTool,
+        drawingMode: DrawingInteractionMode,
+        grabbed: DecorationLayer?
+    ) -> OneFingerAction {
+        switch tool {
+        case .draw:
+            return drawingMode.makesStrokes ? .draw : .panViewport
+        case .erase:
+            return .erase
+        case .sticker, .text:
+            // 잡을 것이 없거나 잠겨 있으면 화면이 움직인다.
+            // 잠긴 오브젝트 위에서 손가락이 멈춰 버리지 않게 한다.
+            guard let grabbed, !grabbed.isLocked else { return .panViewport }
+            return .moveObject
+        }
+    }
+
+    /// 끌기 판정은 **눈에 보이는 크기 그대로**. 넓히면 오브젝트 옆 빈 곳을 밀 수 없다.
+    static let dragTapTarget: CGFloat = 0
+
+    /// 제자리 tap만 손가락이 닿는 최소 크기까지 넓힌다.
+    static let selectTapTarget: CGFloat = StickerObject.minimumTapTarget
+}
+
+/// 진행 중이던 한 손가락 작업을 언제 살릴지.
+enum DrawingCommitPolicy {
+    /// 두 손가락이 들어와 취소된 작업은 이만큼(화면 pt) 움직였을 때만 살린다.
+    /// pinch를 시작하려고 손가락을 대는 동안 생기는 미끄러짐은 이보다 짧다.
+    static let minimumCancelledTravel: CGFloat = 44
+
+    /// 취소된 제스처의 결과를 남길지. 짧으면 사용자가 그리려던 게 아니다.
+    static func keepsCancelledWork(travel: CGFloat) -> Bool {
+        travel >= minimumCancelledTravel
+    }
+}
+
 // MARK: - Brush
 
 /// Clean Pen Sketch에 맞는 최소 preset. 굵기는 Master Canvas 폭 기준 normalized 값이다.
