@@ -888,13 +888,20 @@ picker 두 칸 · 배치 · 2.2배 확대까지 눈으로 봤다. 탭 이동 흐
 실제 Marketplace(서버 listing · 구매 · 판매자 정산) · 스티커 등록 비용 확정 ·
 내 스티커를 거울에 "바로 적용"하는 지름길.
 
-## Backend Hosting (원칙)
+## Architecture Invariant — Infrastructure Isolation
 
-꾸미러 production backend는 **꾸미러 전용 GCP project**에 있다.
-다른 제품의 project와 resource를 공유하지 않는다.
+꾸미러 production backend는 **꾸미러 전용 GCP project(`ggumirror-prod`)**에 있다.
+
+DailyOPIc(`opicmobile-45cd5`)은 실제 사용자가 있는 LIVE production이고
+꾸미러와 **어떤 product resource도 공유하지 않는다** —
+GCP project · Firestore · Storage · Artifact Registry · service account · Firebase ·
+RevenueCat · StoreKit product · AdMob app 전부.
+공유하는 것은 계정과 billing account뿐이다.
 
 Client가 아는 것은 **API 주소 하나**뿐이다(`BackendEnvironment`).
 GCP project id · Firestore database · service account 같은 서버 사정을 client에 넣지 않는다.
+
+이 invariant는 과거 bootstrap 기록보다 우선한다.
 
 ## Phase B-2B — Server User Identity + Session (확정)
 
@@ -951,6 +958,86 @@ Auth Gate에 실제 publish / purchase를 연결하지 않았다 — foundation�
 ### 다음
 
 **B-3 Shard Ledger.** 그 전에 Infra Phase(실제 Cloud Run 배포)가 필요하다.
+
+## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
+
+### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)
+
+이 제약이 C-1 설계를 결정한다.
+
+- **network 접근 불가**
+- **App Group shared container read/write 불가**
+- **app shared preferences 접근 불가**
+
+그래서 **C-1 때문에 Mirror / Sticker persistence 위치를 바꾸지 않는다.**
+`Application Support/ggumirror` 기반 저장은 그대로 둔다.
+App Group을 추가하지 않고, 데이터 마이그레이션도 하지 않는다 —
+extension이 그 컨테이너를 읽을 수 없으므로 옮겨도 아무 이득이 없고
+기존 사용자 데이터만 위험해진다.
+
+extension은 backend도 부르지 못한다(network 불가). 로그인 · 세션 · 상점은
+extension의 일이 아니다.
+
+### 앱 ↔ widget ↔ extension 사이의 상태
+
+`CameraCaptureIntent.AppContext`를 쓴다. **JSON 인코딩 4KB 이하**다.
+
+담아도 되는 것: 전면 카메라 선호 · quick mirror preset 식별자 ·
+작은 enum / 설정값 · extension UI 구성값.
+
+담지 않는 것: **PNG · 사진 스티커 asset · MirrorDesign 전체 · 사용자 asset blob.**
+4KB에 들어가지 않고, 들어가더라도 그렇게 쓸 통로가 아니다.
+
+### 촬영 결과
+
+extension은 `LockedCameraCaptureSession.sessionContentURL`에 쓴다.
+본앱은 `LockedCameraCaptureManager`의 `sessionContentURLs` /
+`sessionContentUpdates`로 수거한다. 다 쓴 결과는 `invalidateSessionContent(at:)`.
+
+촬영 후 본앱으로 이어야 하면 `session.openApplication(for:)`으로
+사용자를 잠금 해제시켜 넘긴다.
+
+### C-1A (MVP)
+
+잠금화면 control → **Quick Mirror**.
+
+- 전면 카메라
+- 좌우 반전 preview
+- edge-to-edge
+- 최소한의 촬영 UI
+- 촬영
+- 본앱 전환
+
+**사용자의 custom mirror asset을 extension에 복제하지 않는다.**
+`MirrorStore` · `StickerStore` · local asset · backend는 건드리지 않는다.
+
+extension은 "앱 열기" 화면이 아니라 **실제 카메라 뷰파인더를 빠르게 띄워야 한다** —
+Apple 요구사항이다. `AVCaptureEventInteraction` 등 LockedCameraCapture 요구사항은
+구현 시 공식 sample / SDK 기준으로 반영한다.
+
+### C-1B (후속)
+
+잠금화면에서 **사용자의 실제 꾸미러 디자인을 그대로 렌더링**하는 것.
+sandbox 제약 안에서 디자인을 어떻게 전달할지 별도로 설계해야 하므로 분리한다.
+(4KB appContext로는 안 되고, App Group도 못 쓴다.)
+
+### Target
+
+Apple 공식 문서는 **File → New → Target → Application Extension → Capture Extension**
+템플릿 사용을 안내한다. 구현 시작 시 설치된 Xcode에 이 템플릿이 있는지 먼저 확인하고,
+**있으면 공식 템플릿을 쓴다.** generic ExtensionKit target에 extension identifier를
+직접 넣는 방식은 공식 템플릿을 쓸 수 없을 때만 검토한다.
+
+Control 자체는 WidgetKit `ControlWidget` + `CameraCaptureIntent`다.
+잠금화면 control은 **사용자가 잠금화면 편집에서 직접 추가**한다 —
+시스템 카메라 버튼을 코드로 교체하는 API는 없다.
+
+전부 iOS 18.0+ API이고 현재 deployment target이 26.2라 `@available` 분기가 필요 없다.
+
+### 실기기 필수
+
+카메라와 잠금화면 control 둘 다 시뮬레이터로 검증할 수 없다.
+사용자가 잠금화면 편집에서 control을 추가하고, **기기가 잠긴 상태에서** 눌러 봐야 한다.
 
 ## Sticker Marketplace (후속 Phase)
 
