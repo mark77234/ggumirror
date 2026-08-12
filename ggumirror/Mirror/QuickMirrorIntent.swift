@@ -7,8 +7,9 @@
 //  `CameraCaptureIntent`는 시스템이 Quick Mirror capture extension을 띄우는 공식 통로다.
 //  URL scheme 같은 우회로를 쓰지 않는다.
 //
-//  `AppContext`는 두지 않았다(`Never`). C-1A에서 extension에 넘길 상태가 없다 —
-//  거울 장식은 C-1B의 일이고, 4KB 통로에 사용자 asset을 담지 않는다.
+//  `AppContext`는 **작은 preset 설정 하나**(`QuickMirrorContext`)다.
+//  Apple 제한은 JSON 4KB이고 실제로는 수십 byte다.
+//  PNG · 사진 · 스티커 · 그림 · 텍스트 · 인증 정보는 이 통로로 보내지 않는다.
 //
 //  **Apple 요구사항: 이 파일은 세 target 모두에 들어가야 한다** —
 //  본앱 · Control widget · Capture extension. 하나라도 빠지면 control이 목록에는 보이지만
@@ -18,7 +19,7 @@
 import AppIntents
 
 nonisolated struct QuickMirrorCaptureIntent: CameraCaptureIntent {
-    typealias AppContext = Never
+    typealias AppContext = QuickMirrorContext
 
     static let title: LocalizedStringResource = "꾸미러 거울"
     static let description = IntentDescription("잠금화면에서 바로 거울을 봐요.")

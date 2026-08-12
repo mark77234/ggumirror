@@ -180,7 +180,21 @@ C-1A 구현 확정 사실:
   없으면 extension이 실행 직후 종료될 수 있다. **`.ended` phase에서만** 찍어
   한 번 누르면 한 장이 되게 한다. 화면 버튼과 같은 `capture()`를 쓴다
 
-자세한 내용은 docs/IMPLEMENTATION_PLAN.md의 C-1A / C-1 Prep 참고.
+C-1B 확정 사실:
+
+- Quick Mirror 프레임은 **내장 preset만**이다. `QuickMirrorPresetID`는 상점 기본 거울 8종과
+  1:1이고 색·비율이 같다(테스트가 비교한다)
+- 매핑 기준은 **프레임 색 하나**다. 장식이 있어도 표현 가능한 색은 그대로 지키고,
+  표현할 수 없는 색일 때만 기본값으로 간다. 장식(사진·스티커·그림·텍스트)은 그리지 않는다
+- extension에 넘기는 것은 `CameraCaptureIntent.AppContext`의 **작은 설정 하나**뿐이다
+  (schemaVersion + presetID). PNG · 사진 · 스티커 · 그림 · 인증 정보를 넣지 않는다
+- context가 없거나 못 읽으면 **기본 preset**으로 떨어진다.
+  프레임 실패가 카메라를 못 띄우는 이유가 되면 안 된다
+- 촬영 결과는 **카메라 + 같은 프레임**만 합친다. 화면 스냅샷을 쓰지 않는다(버튼이 찍힌다)
+- `MirrorCamera`: 구성 실패를 영구히 굳히지 않는다. `.unavailable`은 재시도 가능,
+  `.denied`만 최종이다. 이 latch가 잠금화면 간헐 검은 화면의 원인이었다
+
+자세한 내용은 docs/IMPLEMENTATION_PLAN.md의 C-1B / C-1A / C-1 Prep 참고.
 
 ## Build Configuration (현재 정책)
 

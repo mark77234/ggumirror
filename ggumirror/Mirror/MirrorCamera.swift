@@ -11,7 +11,7 @@ import UIKit
 @Observable
 @MainActor
 final class MirrorCamera {
-    enum Status {
+    nonisolated enum Status {
         case idle
         case ready
         case denied
@@ -85,10 +85,18 @@ final class MirrorCamera {
     /// preview와 동일하게 좌우 반전 + Portrait 회전이 적용된 상태로 나온다.
     func currentFrame() -> UIImage? { frames.snapshot() }
 
+    /// 다시 시도해 볼 만한 상태인가.
+    ///
+    /// `.denied`만 최종이다 — 설정에서 권한을 바꿔야 하므로 여기서 할 수 있는 게 없다.
+    /// **`.unavailable`은 최종이 아니다**: 잠금화면 extension이 뜨는 순간 다른 프로세스가
+    /// 아직 카메라를 놓지 않았을 수 있다. 그때 한 번 실패한 것을 영구 실패로 굳히면
+    /// 앱/extension을 다시 띄울 때까지 검은 화면이 남는다.
+    nonisolated static func canRetry(_ status: Status) -> Bool { status != .denied }
+
     /// 권한 확인 → 세션 구성 → 실행. 구성이 끝난 뒤에만 status가 .ready가 되므로
     /// preview layer는 항상 connection이 준비된 상태에서 붙는다.
     func start() async {
-        guard status != .denied, status != .unavailable else { return }
+        guard Self.canRetry(status) else { return }
         guard await isAuthorized() else {
             status = .denied
             return
@@ -122,11 +130,13 @@ final class MirrorCamera {
 
     private nonisolated func configureIfNeeded() {
         guard !isConfigured else { return }
-        isConfigured = true
 
         session.beginConfiguration()
         defer { session.commitConfiguration() }
 
+        // 카메라를 못 잡는 경우가 있다 — 다른 프로세스가 아직 놓지 않았거나 일시적으로 막혔을 때.
+        // **여기서 `isConfigured`를 세우지 않는다.** 세우면 그 실패가 영구히 굳어
+        // 다시 시도해도 입력 없는 세션이 남는다(잠금화면에서 검은 화면으로 보였던 원인).
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input)
@@ -136,6 +146,9 @@ final class MirrorCamera {
 
         session.addInput(input)
         addFrameOutput()
+
+        // 실제로 붙은 뒤에만 "구성 완료"다.
+        isConfigured = true
     }
 
     /// 줌은 1x로 못박고, 쓸 수 있는 format 중 화각이 가장 넓은 것을 고른다.

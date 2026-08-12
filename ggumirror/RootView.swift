@@ -47,6 +47,11 @@ struct RootView: View {
             .onChange(of: quickMirrorRequest.token) { _, _ in
                 screen = .mirror
             }
+            // 현재 거울이 바뀌면(다른 거울 선택 · 꾸미기 저장) 잠금화면 프레임도 따라간다.
+            // 사용자가 "동기화"를 누를 일은 없다.
+            .onChange(of: library.currentMirror) { _, mirror in
+                Task { await QuickMirrorSync.update(for: mirror) }
+            }
             .task {
                 // 첫 화면은 언제나 Mirror다. 로그인 확인은 화면이 뜬 뒤 비동기로 하고,
                 // 결과가 무엇이든 Mirror 진입을 막지 않는다.
@@ -56,6 +61,8 @@ struct RootView: View {
                 await session.refreshServerSession()
                 // 잠금화면에서 찍은 사진이 있으면 여기서 알게 된다.
                 quickMirror.refresh()
+                // 잠금화면 Quick Mirror가 쓸 프레임을 등록한다. 실패해도 앱은 그대로다.
+                await QuickMirrorSync.update(for: library.currentMirror)
             }
     }
 

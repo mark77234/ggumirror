@@ -1115,6 +1115,94 @@ control 아이콘으로 넣지 않는다.
 시뮬레이터로는 잠금화면 control과 잠금 상태 카메라를 검증할 수 없다.
 사용자가 잠금화면 사용자화에서 control을 직접 추가하고 기기가 잠긴 상태에서 확인해야 한다.
 
+## Phase C-1B — Quick Mirror Preset Frame (구현 완료, 실기기 검증 대기)
+
+잠금화면 Quick Mirror에 **꾸미러 프레임**이 카메라 위로 얹힌다.
+
+### 지원 범위
+
+**내장 preset만.** `AppContext`로 오가는 것은 작은 설정 하나뿐이다.
+
+| | |
+|---|---|
+| Quick Mirror frame | **내장 preset 9종** (무프레임 + 단색 8색) |
+| 사용자 custom mirror asset | **지원하지 않는다** (사진 · 스티커 · 그림 · 텍스트 · 외부 디자인) |
+| App Group | 없음 |
+| network | 없음 |
+| AppContext | preset 설정만 (schemaVersion + presetID, 실측 40 byte 미만) |
+
+### preset = 상점 기본 거울 8종
+
+새 디자인을 발명하지 않았다. `QuickMirrorPresetID`는 상점 "기본" 갈래의
+**단색 거울 8종(화이트 · 블랙 · 크림 · 소프트 핑크 · 라벤더 · 스카이 · 민트 · 그레이)**과
+1:1이고 색도 같다(테스트가 두 곳을 비교한다). 여기에 `none`(무프레임)을 더해 9개다.
+
+프레임 비율도 본앱 거울과 같다 — Master 1080×2340 기준 좌우 108 / 위 180 / 아래 220,
+안쪽 모서리 반경 30. 카메라가 화면의 80% 이상을 차지해 얼굴을 가리지 않는다.
+
+### 현재 거울 → preset
+
+`QuickMirrorSync.preset(for:)`가 **본앱에서만** 줄인다. 거울 모델은 extension에 가지 않는다.
+
+판단 기준은 **프레임 색 하나**다:
+
+- 프레임 색이 기본 8종 중 하나면 → **그 preset** (장식이 있어도 그대로)
+- 표현할 수 없는 색이면 → **기본 preset(`cream`)**
+
+소프트 핑크 거울에 스티커를 얹어 두었다면 잠금화면도 **소프트 핑크**다.
+크림으로 떨어지면 지금 쓰는 거울과 상관없는 디자인처럼 느껴지기 때문이다.
+
+**지킬 수 있는 부분(프레임 색)만 정확히 지키고 나머지는 흉내 내지 않는다** —
+사진 · 스티커 · 그림 · 텍스트 · 외부 디자인은 잠금화면에 나오지 않는다.
+
+### 갱신 시점
+
+`RootView`에서 자동이다 — 앱이 뜰 때 한 번, 그리고 `library.currentMirror`가 바뀔 때마다
+(다른 거울 선택 · 꾸미기 저장). **"동기화" 버튼이 없다.**
+
+앱이 떠 있지 않아도 마지막으로 등록된 값으로 잠금화면이 그린다.
+등록이 실패해도 거울 저장 · 사용자 콘텐츠 · 앱 동작에 영향이 없다.
+
+### fallback
+
+context가 없거나 · 못 읽거나 · 모르는 schemaVersion이거나 · 모르는 presetID면 **기본 preset**이다.
+**프레임 실패가 카메라를 못 띄우는 이유가 되면 안 된다.**
+
+### 촬영 결과 = 본 것 (WYSIWYG)
+
+화면 스냅샷을 쓰지 않는다(촬영 버튼까지 사진에 남는다). `QuickMirrorComposer`가
+**카메라 이미지 + 같은 프레임 딱 둘만** 합친다.
+
+미리보기와 같아 보이게 하는 두 가지:
+1. 카메라 버퍼를 **화면 비율로 가운데 잘라낸다**(`resizeAspectFill` 미리보기와 같은 영역)
+2. 프레임은 `QuickMirrorFrame`의 **같은 계산**을 쓴다 — 미리보기와 촬영이 숫자를 따로 갖지 않는다
+
+### 간헐 실패 수정 (실기기에서 "한 번씩 바로 안 들어가던" 문제)
+
+`MirrorCamera`에 **latch 버그**가 있었다.
+
+`configureIfNeeded()`가 작업 **전에** `isConfigured = true`를 세웠다. 잠금화면 extension이
+뜨는 순간 다른 프로세스가 카메라를 아직 놓지 않아 `AVCaptureDevice.default(...)`가 실패하면:
+
+- 입력 없는 세션이 남고 `status = .unavailable`
+- `start()`의 첫 guard가 `.unavailable`을 최종으로 취급해 **모든 재시도를 막고**
+- `configureIfNeeded()`도 `isConfigured == true`라 아무것도 하지 않는다
+- → **process를 다시 띄울 때까지 검은 화면.** control을 다시 누르면 새 process라서 됐던 이유다
+
+고친 것 세 가지:
+1. `isConfigured`는 입력을 **실제로 붙인 뒤에만** 세운다
+2. `.unavailable`은 최종이 아니다 — `MirrorCamera.canRetry`는 `.denied`만 최종으로 본다
+3. extension이 250ms 간격으로 **최대 3번** 다시 시도한다(무한 재시도 아님)
+
+본앱 카메라 정책(전면 · 반전 · 1x · 최대 화각 · Portrait · `resizeAspectFill`)은 그대로다.
+같은 latch가 본앱 Mirror도 검은 화면으로 만들 수 있었으므로 양쪽이 함께 고쳐졌다.
+
+### 아직 아닌 것 (C-1C 이후)
+
+사용자 custom mirror를 잠금화면에 그대로 재현하는 것. extension은 App Group · network ·
+MirrorStore에 접근할 수 없고 `AppContext`는 4KB라 사진 · 스티커 · 그림을 보낼 통로가 없다.
+별도 설계가 필요하다.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

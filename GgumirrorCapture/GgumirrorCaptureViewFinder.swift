@@ -7,7 +7,11 @@
 //  본앱의 `MirrorCamera` / `CameraPreviewView`를 그대로 쓴다(target membership으로만 공유).
 //  그래서 전면 · 좌우 반전 · 1x · 가장 넓은 화각 · Portrait 정책이 본앱과 자동으로 같다.
 //
-//  이 화면이 하지 않는 것 (sandbox 제약과 C-1A 범위):
+//  프레임은 본앱이 등록해 둔 **작은 preset 설정**(`CameraCaptureIntent.AppContext`)으로 정한다.
+//  앱이 떠 있지 않아도 마지막으로 등록된 값으로 그린다. 값이 없거나 못 읽으면 기본 preset이다 —
+//  **프레임 실패가 카메라를 못 띄우는 이유가 되면 안 된다.**
+//
+//  이 화면이 하지 않는 것 (sandbox 제약과 C-1B 범위):
 //  - network / backend 호출 (extension은 network를 쓸 수 없다)
 //  - App Group · MirrorStore · StickerStore · Keychain · 로그인 정보 접근
 //  - 사용자의 거울 장식 렌더링 (C-1B)
@@ -18,6 +22,7 @@
 
 import AVFoundation
 import AVKit
+import AppIntents
 import LockedCameraCapture
 import SwiftUI
 import UIKit
@@ -28,6 +33,10 @@ struct GgumirrorCaptureViewFinder: View {
     @State private var camera = MirrorCamera()
     @State private var notice: String?
     @State private var isSaving = false
+    /// 본앱이 등록해 둔 프레임. 읽기 전에도 기본값으로 이미 그릴 수 있다.
+    @State private var preset = QuickMirrorPresetID.fallback
+    /// 미리보기 크기. 촬영 결과를 **화면에서 본 그대로** 만들 때 쓴다.
+    @State private var previewSize: CGSize = .zero
     @Environment(\.scenePhase) private var scenePhase
 
     /// 지금 찍을 수 있는지. **화면 버튼과 하드웨어 버튼이 같은 조건을 쓴다.**
@@ -50,7 +59,17 @@ struct GgumirrorCaptureViewFinder: View {
                 EmptyView()
             }
 
+            // 카메라 위 · 조작 아래. 터치를 먹지 않는다.
+            QuickMirrorFrameView(preset: preset)
+
             controls
+        }
+        .background {
+            // 미리보기 비율을 알아둔다(촬영 결과를 같은 비율로 자르기 위해).
+            GeometryReader { proxy in
+                Color.clear.onAppear { previewSize = proxy.size }
+                    .onChange(of: proxy.size) { _, size in previewSize = size }
+            }
         }
         // 시스템 하드웨어 촬영 버튼(전원/볼륨/Action button, AirPods stem 등).
         // **화면의 흰 버튼과 완전히 같은 `capture()`를 부른다** — 별도 촬영 경로를 만들지 않는다.
@@ -66,10 +85,18 @@ struct GgumirrorCaptureViewFinder: View {
             capture()
         }
         .task {
-            // 열리자마자 카메라부터.
-            QuickMirrorLog.event("camera starting")
-            await camera.start()
-            QuickMirrorLog.event("camera \(camera.status)")
+            // 열리자마자 카메라부터. 프레임은 그다음이다.
+            await startCamera()
+        }
+        .task {
+            // 본앱이 등록해 둔 preset. 실패해도 기본값으로 이미 그리고 있다.
+            do {
+                let context = try await QuickMirrorCaptureIntent.appContext
+                preset = QuickMirrorContext.preset(from: context)
+                QuickMirrorLog.event("context received preset=\(preset.rawValue)")
+            } catch {
+                QuickMirrorLog.event("context fallback default")
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -85,6 +112,24 @@ struct GgumirrorCaptureViewFinder: View {
             Button("확인") { notice = nil }
         } message: {
             Text(notice ?? "")
+        }
+    }
+
+    // MARK: - 카메라 시작
+
+    /// 잠금화면에서 control을 누른 직후에는 다른 프로세스가 카메라를 아직 놓지 않아
+    /// 첫 시도가 실패할 수 있다. 그때 그냥 포기하면 **검은 화면**이 남는다.
+    /// 몇 백 ms 안에 풀리는 문제라 짧게 몇 번만 다시 시도한다.
+    private func startCamera() async {
+        for attempt in 1...3 {
+            QuickMirrorLog.event("camera starting (attempt \(attempt))")
+            await camera.start()
+            QuickMirrorLog.event("camera \(camera.status)")
+
+            if camera.status == .ready { return }
+            // 권한 문제면 기다려도 달라지지 않는다.
+            guard MirrorCamera.canRetry(camera.status) else { return }
+            try? await Task.sleep(for: .milliseconds(250))
         }
     }
 
@@ -158,9 +203,16 @@ struct GgumirrorCaptureViewFinder: View {
         isSaving = true
         defer { isSaving = false }
 
+        // 화면에서 본 그대로 만든다 — 카메라 + 같은 프레임. 조작 버튼은 들어가지 않는다.
+        let composed = QuickMirrorComposer.compose(
+            camera: image,
+            preset: preset,
+            previewAspect: previewSize
+        )
+
         do {
-            try QuickMirrorCaptureStore.save(image, in: session)
-            QuickMirrorLog.event("capture saved")
+            try QuickMirrorCaptureStore.save(composed, in: session)
+            QuickMirrorLog.event("capture saved preset=\(preset.rawValue)")
         } catch {
             // 실패해도 화면은 살아 있어야 한다. 이유는 사용자에게 옮기지 않는다.
             notice = "사진을 저장하지 못했어요."

@@ -16,6 +16,7 @@
 import AVFoundation
 import Foundation
 import LockedCameraCapture
+import SwiftUI
 import Testing
 import UIKit
 @testable import ggumirror
@@ -48,6 +49,27 @@ struct QuickMirrorTests {
     private func temporaryDirectory() -> URL {
         URL(fileURLWithPath: NSTemporaryDirectory())
             .appending(path: "quick-mirror-\(UUID().uuidString)", directoryHint: .isDirectory)
+    }
+
+    /// 이미지의 한 점 색. 프레임이 실제로 그려졌는지 볼 때 쓴다.
+    private func pixel(_ image: UIImage, at point: CGPoint) -> [UInt8] {
+        guard let cgImage = image.cgImage else { return [] }
+        var data = [UInt8](repeating: 0, count: 4)
+        let context = CGContext(
+            data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        context?.draw(cgImage, in: CGRect(x: -point.x, y: -point.y,
+                                         width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
+        return data
+    }
+
+    private func corner(of image: UIImage) -> [UInt8] { pixel(image, at: CGPoint(x: 2, y: 2)) }
+
+    private func center(of image: UIImage) -> [UInt8] {
+        guard let cgImage = image.cgImage else { return [] }
+        return pixel(image, at: CGPoint(x: cgImage.width / 2, y: cgImage.height / 2))
     }
 
     private func image(_ size: CGSize = CGSize(width: 8, height: 12)) -> UIImage {
@@ -168,11 +190,16 @@ struct QuickMirrorTests {
         #expect(!source.contains("URL(string:"))
     }
 
-    @Test("intent는 큰 상태를 넘기지 않는다 (appContext = Never)")
-    func intentCarriesNoContext() throws {
+    @Test("intent는 작은 preset 설정만 넘긴다")
+    func intentCarriesOnlySmallContext() throws {
         let source = try repoFile("ggumirror/Mirror/QuickMirrorIntent.swift")
-        #expect(source.contains("typealias AppContext = Never"))
+        // C-1B에서 Never → QuickMirrorContext(schemaVersion + presetID)로 바뀌었다.
+        #expect(source.contains("typealias AppContext = QuickMirrorContext"))
         #expect(source.contains("CameraCaptureIntent"))
+        // 큰 값을 넘기는 통로를 만들지 않았다.
+        for forbidden in ["Data", "UIImage", "base64", "MirrorDesign"] {
+            #expect(!source.contains(forbidden))
+        }
     }
 
     @Test("control kind는 고정이다 — 바꾸면 사용자가 배치한 control이 사라진다")
@@ -280,6 +307,296 @@ struct QuickMirrorTests {
                 }
             }
         }
+    }
+
+
+    // MARK: - C-1B: AppContext
+
+    @Test("context가 Codable로 왕복한다")
+    func contextRoundTrip() throws {
+        for preset in QuickMirrorPresetID.allCases {
+            let context = QuickMirrorContext(presetID: preset)
+            let data = try JSONEncoder().encode(context)
+            #expect(try JSONDecoder().decode(QuickMirrorContext.self, from: data) == context)
+        }
+    }
+
+    @Test("context는 4KB 제한에 한참 못 미친다")
+    func contextIsTiny() throws {
+        // Apple 제한은 JSON 4096 byte. 실제로는 수십 byte여야 한다.
+        for preset in QuickMirrorPresetID.allCases {
+            let size = try JSONEncoder().encode(QuickMirrorContext(presetID: preset)).count
+            #expect(size < 4096)
+            #expect(size < 128, "\(preset.rawValue) context가 \(size)byte — 너무 크다")
+        }
+    }
+
+    @Test("context에 이미지 / 인증 / 서버 값이 들어갈 자리가 없다")
+    func contextHasNoForbiddenFields() throws {
+        let json = String(decoding: try JSONEncoder().encode(QuickMirrorContext(presetID: .cream)), as: UTF8.self)
+        // 필드는 딱 둘이다.
+        #expect(json.contains("schemaVersion"))
+        #expect(json.contains("presetID"))
+        for forbidden in ["image", "png", "data", "base64", "token", "userID", "mirrorID", "asset", "url"] {
+            #expect(!json.lowercased().contains(forbidden.lowercased()))
+        }
+
+        let source = codeOnly(try repoFile("ggumirror/Mirror/QuickMirrorPreset.swift"))
+        for forbidden in ["Data", "UIImage", "pngData", "base64"] {
+            #expect(!source.contains(forbidden), "preset 모델에 \(forbidden)이 있다")
+        }
+    }
+
+    @Test("context가 없거나 모르는 버전이면 기본 preset으로 떨어진다")
+    func contextFallback() {
+        #expect(QuickMirrorContext.preset(from: nil) == QuickMirrorPresetID.fallback)
+
+        let future = QuickMirrorContext(presetID: .black, schemaVersion: 99)
+        #expect(QuickMirrorContext.preset(from: future) == QuickMirrorPresetID.fallback)
+
+        let old = QuickMirrorContext(presetID: .black, schemaVersion: 0)
+        #expect(QuickMirrorContext.preset(from: old) == QuickMirrorPresetID.fallback)
+    }
+
+    @Test("정상 context는 그 preset을 쓴다")
+    func contextHonoursPreset() {
+        for preset in QuickMirrorPresetID.allCases {
+            #expect(QuickMirrorContext.preset(from: QuickMirrorContext(presetID: preset)) == preset)
+        }
+    }
+
+    @Test("모르는 presetID 문자열은 decode에서 걸러진다")
+    func unknownPresetIDRejected() {
+        let json = #"{"schemaVersion":1,"presetID":"neon-dragon"}"#
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(QuickMirrorContext.self, from: Data(json.utf8))
+        }
+    }
+
+    // MARK: - C-1B: 거울 → preset 매핑
+
+    @MainActor
+    @Test("기본 거울 8종은 같은 이름의 preset이 된다")
+    func basicMirrorsMapToPresets() {
+        for basic in BasicMirror.allCases {
+            let mirror = MyMirror(id: basic.id, name: basic.name, origin: .basic, style: basic.style)
+            #expect(QuickMirrorSync.preset(for: mirror) == basic.quickMirrorPreset)
+        }
+    }
+
+    @MainActor
+    @Test("preset 색은 기본 거울 색과 정확히 같다")
+    func presetColorsMatchBasicMirrors() {
+        for basic in BasicMirror.allCases {
+            #expect(basic.quickMirrorPreset.frameColor == basic.style.frame,
+                    "\(basic.name) 색이 preset과 다르다")
+        }
+    }
+
+    @MainActor
+    @Test("장식이 있어도 표현할 수 있는 프레임 색은 그대로 지킨다")
+    func decorationsKeepFrameColor() {
+        // 지금 쓰는 거울이 소프트 핑크면 잠금화면도 소프트 핑크여야 한다.
+        // 크림으로 떨어지면 관계없는 디자인처럼 느껴진다.
+        var withSticker = MyMirror(id: "m", name: "내 거울", origin: .made, style: BasicMirror.softPink.style)
+        withSticker.stickers = [
+            StickerObject(source: .doodle(.heart), frame: NormalizedRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))
+        ]
+        #expect(QuickMirrorSync.preset(for: withSticker) == .softPink)
+
+        var withArtwork = MyMirror(id: "m", name: "내 거울", origin: .made, style: BasicMirror.black.style)
+        withArtwork.importedArtworks = [ImportedArtworkObject(assetID: UUID())]
+        #expect(QuickMirrorSync.preset(for: withArtwork) == .black)
+
+        var withDrawingAndText = MyMirror(id: "m", name: "내 거울", origin: .made, style: BasicMirror.mint.style)
+        withDrawingAndText.texts = [TextObject(text: "안녕", center: NormalizedPoint(x: 0.5, y: 0.5))]
+        withDrawingAndText.style.doodles = [MirrorStyle.Doodle(symbol: "heart", x: 0.5, y: 0.1, size: 0.1)]
+        #expect(QuickMirrorSync.preset(for: withDrawingAndText) == .mint)
+    }
+
+    @MainActor
+    @Test("표현할 수 없는 프레임 색만 기본값으로 간다")
+    func unsupportedFrameColorFallsBack() {
+        var custom = MyMirror(id: "m", name: "내 거울", origin: .made,
+                              style: MirrorStyle(frame: Color(red: 0.1, green: 0.7, blue: 0.3)))
+        #expect(QuickMirrorSync.preset(for: custom) == QuickMirrorPresetID.fallback)
+
+        // 장식이 없어도 마찬가지다 — 판단 기준은 프레임 색 하나뿐이다.
+        custom.stickers = []
+        #expect(QuickMirrorSync.preset(for: custom) == QuickMirrorPresetID.fallback)
+    }
+
+    @MainActor
+    @Test("장식 데이터는 context에 들어가지 않는다")
+    func decorationsNeverEnterContext() throws {
+        var mirror = MyMirror(id: "m", name: "내 거울", origin: .made, style: BasicMirror.lavender.style)
+        mirror.texts = [TextObject(text: "비밀 메모", center: NormalizedPoint(x: 0.5, y: 0.5))]
+        mirror.stickers = [
+            StickerObject(source: .doodle(.heart), frame: NormalizedRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))
+        ]
+
+        let preset = QuickMirrorSync.preset(for: mirror)
+        let json = String(decoding: try JSONEncoder().encode(QuickMirrorContext(presetID: preset)), as: UTF8.self)
+
+        #expect(preset == .lavender)
+        // 프레임 색만 간다. 장식 · 거울 이름 · id는 가지 않는다.
+        #expect(!json.contains("비밀 메모"))
+        #expect(!json.contains("내 거울"))
+        #expect(!json.contains("heart"))
+        #expect(try JSONEncoder().encode(QuickMirrorContext(presetID: preset)).count < 128)
+    }
+
+    @MainActor
+    @Test("매핑이 거울 모델을 바꾸지 않는다")
+    func mappingDoesNotMutateMirror() {
+        let mirror = MyMirror(id: "m", name: "거울", origin: .basic, style: BasicMirror.mint.style)
+        let before = mirror
+        _ = QuickMirrorSync.preset(for: mirror)
+        #expect(mirror == before)
+    }
+
+    // MARK: - C-1B: 프레임 / 합성
+
+    @Test("프레임 비율이 본앱 거울과 같다")
+    func frameGeometryMatchesMainMirror() {
+        // 숫자를 따로 적었으므로 어긋나지 않는지 여기서 비교한다.
+        #expect(QuickMirrorFrame.insetLeft == MirrorFrameInsets.standard.left)
+        #expect(QuickMirrorFrame.insetRight == MirrorFrameInsets.standard.right)
+        #expect(QuickMirrorFrame.insetTop == MirrorFrameInsets.standard.top)
+        #expect(QuickMirrorFrame.insetBottom == MirrorFrameInsets.standard.bottom)
+        let expectedRadius = MirrorGeometry.innerCornerRadius / Double(MirrorCanvas.size.width)
+        #expect(abs(QuickMirrorFrame.cornerRadiusRatio - expectedRadius) < 1e-12)
+    }
+
+    @Test("프레임 구멍은 크기가 달라도 같은 비율이다")
+    func frameGeometryIsDeterministic() {
+        for size in [CGSize(width: 393, height: 852), CGSize(width: 1179, height: 2556)] {
+            let hole = QuickMirrorFrame.hole(in: size)
+            #expect(abs(hole.minX / size.width - QuickMirrorFrame.insetLeft) < 0.0001)
+            #expect(abs(hole.minY / size.height - QuickMirrorFrame.insetTop) < 0.0001)
+            #expect(hole.width > 0 && hole.height > 0)
+            // 카메라가 화면 대부분을 차지해야 한다 — 프레임이 얼굴을 가리지 않는다.
+            #expect(hole.width / size.width > 0.75)
+            #expect(hole.height / size.height > 0.8)
+        }
+    }
+
+    @Test("none preset은 프레임을 그리지 않는다")
+    func nonePresetDrawsNothing() {
+        #expect(QuickMirrorPresetID.none.frameColor == nil)
+        #expect(!QuickMirrorPresetID.none.drawsFrame)
+        for preset in QuickMirrorPresetID.allCases where preset != .none {
+            #expect(preset.drawsFrame)
+            #expect(preset.frameColor != nil)
+        }
+    }
+
+    @Test("촬영 결과는 화면 비율로 잘린다 — 미리보기와 같은 영역")
+    func captureCropsToPreviewAspect() {
+        // 4:3 카메라 버퍼 → 9:19.5 화면.
+        let camera = image(CGSize(width: 400, height: 300))
+        let preview = CGSize(width: 393, height: 852)
+        let cropped = QuickMirrorComposer.cropToAspect(camera, aspect: preview)
+
+        let target = preview.width / preview.height
+        let result = cropped.size.width / cropped.size.height
+        #expect(abs(result - target) < 0.01, "잘린 비율이 화면과 다르다: \(result) vs \(target)")
+        #expect(cropped.size.width <= camera.size.width)
+    }
+
+    @Test("촬영 결과에 프레임이 들어간다")
+    func captureIncludesFrame() {
+        let camera = image(CGSize(width: 200, height: 400))
+        let preview = CGSize(width: 200, height: 400)
+
+        let framed = QuickMirrorComposer.compose(camera: camera, preset: .black, previewAspect: preview)
+        let bare = QuickMirrorComposer.compose(camera: camera, preset: .none, previewAspect: preview)
+
+        // 프레임이 있는 쪽은 모서리 픽셀이 프레임 색(검정)에 가깝고, 없는 쪽은 원본(빨강)이다.
+        #expect(corner(of: framed) != corner(of: bare))
+        // 가운데는 둘 다 카메라다.
+        #expect(center(of: framed) == center(of: bare))
+    }
+
+    @Test("촬영 결과에 조작 버튼이 들어가지 않는다")
+    func captureExcludesControls() throws {
+        let source = codeOnly(try repoFile("GgumirrorCapture/GgumirrorCaptureViewFinder.swift"))
+        // 화면 전체 스냅샷을 쓰지 않는다.
+        for forbidden in ["ImageRenderer", "drawHierarchy", "snapshot(", "UIGraphicsImageRenderer"] {
+            #expect(!source.contains(forbidden), "화면 스냅샷 방식(\(forbidden))을 쓰고 있다")
+        }
+        // 합성은 composer 한 곳에서만.
+        #expect(source.contains("QuickMirrorComposer.compose"))
+    }
+
+    @Test("미리보기와 촬영이 같은 프레임 정의를 쓴다")
+    func previewAndCaptureShareFrameDefinition() throws {
+        let view = try repoFile("ggumirror/Mirror/QuickMirrorFrameView.swift")
+        let composer = try repoFile("ggumirror/Mirror/QuickMirrorComposer.swift")
+        for source in [view, composer] {
+            #expect(source.contains("QuickMirrorFrame.hole(in:"))
+            #expect(source.contains("QuickMirrorFrame.cornerRadius(in:"))
+        }
+    }
+
+    @Test("프레임 overlay가 조작을 막지 않는다")
+    func frameDoesNotBlockTouches() throws {
+        let source = try repoFile("ggumirror/Mirror/QuickMirrorFrameView.swift")
+        #expect(source.contains("allowsHitTesting(false)"))
+
+        // 카메라 위 · 조작 아래 순서.
+        let view = try repoFile("GgumirrorCapture/GgumirrorCaptureViewFinder.swift")
+        let frame = try #require(view.range(of: "QuickMirrorFrameView(preset:"))
+        let controls = try #require(view.range(of: "\n            controls"))
+        let camera = try #require(view.range(of: "CameraPreviewView(session:"))
+        #expect(camera.lowerBound < frame.lowerBound)
+        #expect(frame.lowerBound < controls.lowerBound)
+    }
+
+    @Test("프레임 렌더러가 저장소 / network를 쓰지 않는다")
+    func frameRendererIsPure() throws {
+        for path in ["ggumirror/Mirror/QuickMirrorPreset.swift",
+                     "ggumirror/Mirror/QuickMirrorFrameView.swift",
+                     "ggumirror/Mirror/QuickMirrorComposer.swift"] {
+            let source = codeOnly(try repoFile(path))
+            for forbidden in ["MirrorStore", "StickerProjectStore", "URLSession", "Bundle.main",
+                              "AuthSession", "BackendClient", "FileManager"] {
+                #expect(!source.contains(forbidden), "\(path)에 \(forbidden)이 있다")
+            }
+        }
+    }
+
+    // MARK: - C-1B: 잠금화면 진입 안정성 (실기기에서 간헐 실패했던 문제)
+
+    @Test("카메라를 못 잡은 상태는 최종이 아니다 — 다시 시도할 수 있다")
+    func unavailableCameraIsRetryable() {
+        // 이게 "한 번씩 바로 안 들어가던" 원인이었다:
+        // 첫 시도가 실패하면 .unavailable로 굳어 재시도가 전부 막혔다.
+        #expect(MirrorCamera.canRetry(.unavailable))
+        #expect(MirrorCamera.canRetry(.idle))
+        #expect(MirrorCamera.canRetry(.ready))
+        // 권한 거부만 최종이다 — 설정에서 바꿔야 한다.
+        #expect(!MirrorCamera.canRetry(.denied))
+    }
+
+    @Test("구성 실패가 영구히 굳지 않는다")
+    func failedConfigurationIsNotLatched() throws {
+        let source = codeOnly(try repoFile("ggumirror/Mirror/MirrorCamera.swift"))
+        // isConfigured는 입력을 실제로 붙인 **뒤에** 세워야 한다.
+        let guardIndex = try #require(source.range(of: "guard !isConfigured else { return }"))
+        let addInput = try #require(source.range(of: "session.addInput(input)"))
+        let latch = try #require(source.range(of: "isConfigured = true"))
+        #expect(guardIndex.lowerBound < addInput.lowerBound)
+        #expect(addInput.lowerBound < latch.lowerBound, "실패한 구성이 영구히 굳는다")
+    }
+
+    @Test("extension이 카메라 시작을 짧게 재시도한다")
+    func extensionRetriesCameraStart() throws {
+        let source = codeOnly(try repoFile("GgumirrorCapture/GgumirrorCaptureViewFinder.swift"))
+        #expect(source.contains("for attempt in 1...3"))
+        #expect(source.contains("MirrorCamera.canRetry"))
+        // 무한 재시도가 아니다.
+        #expect(!source.contains("while true"))
     }
 
     // MARK: - Capture extension 경계 (이 Phase의 핵심 위험)

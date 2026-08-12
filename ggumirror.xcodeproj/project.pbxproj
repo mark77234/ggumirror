@@ -125,6 +125,7 @@
 			membershipExceptions = (
 				Mirror/QuickMirrorActivity.swift,
 				Mirror/QuickMirrorIntent.swift,
+				Mirror/QuickMirrorPreset.swift,
 				Mirror/QuickMirrorRequest.swift,
 			);
 			target = 12C1A000310000000000C001 /* GgumirrorControls */;
@@ -143,6 +144,9 @@
 				Mirror/MirrorCamera.swift,
 				Mirror/QuickMirrorActivity.swift,
 				Mirror/QuickMirrorCaptureStore.swift,
+				Mirror/QuickMirrorComposer.swift,
+				Mirror/QuickMirrorFrameView.swift,
+				Mirror/QuickMirrorPreset.swift,
 				Mirror/QuickMirrorIntent.swift,
 				Mirror/QuickMirrorRequest.swift,
 			);
