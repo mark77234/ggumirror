@@ -77,7 +77,7 @@ nonisolated protocol AuthBackend: Sendable {
 }
 
 /// nonisolated — MainActor 밖에서도 만들고 쓸 수 있다.
-nonisolated struct BackendClient: AuthBackend {
+nonisolated struct BackendClient: AuthBackend, ShardBackend {
     /// 기본값은 빌드 설정에서 온다(`AppConfig`). **여기에 주소를 적지 않는다.**
     /// 테스트는 원하는 주소를 넣어 쓴다.
     var baseURL: URL?
@@ -125,6 +125,19 @@ nonisolated struct BackendClient: AuthBackend {
 
     func logout(accessToken: String) async throws {
         _ = try await send("auth/logout", method: "POST", accessToken: accessToken)
+    }
+
+    // MARK: 조각
+
+    /// 내 조각 잔액. **읽기뿐이다** — 잔액을 바꾸는 요청은 client에서 만들지 않는다.
+    func shards(accessToken: String) async throws -> ShardBalance {
+        let data = try await send("users/me/shards", method: "GET", accessToken: accessToken)
+        do {
+            return try JSONDecoder.backend.decode(ShardBalance.self, from: data)
+        } catch {
+            BackendLog.event("GET /users/me/shards decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
     }
 
     // MARK: 전송

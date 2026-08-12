@@ -196,6 +196,33 @@ C-1B 확정 사실:
 
 자세한 내용은 docs/IMPLEMENTATION_PLAN.md의 C-1B / C-1A / C-1 Prep 참고.
 
+## 거울조각 (B-3) — client는 권위가 아니다
+
+조각 잔액의 진실은 **server ledger 하나**다. client는 서버 값을 보여주기만 한다.
+
+- `ShardWallet`(`Shared/ShardWallet.swift`)에 잔액을 바꾸는 함수가 **없다.**
+  `balance += 1` · `balance -= 20` · `setBalance` 같은 것을 만들지 않는다.
+  `balance`는 `private(set)`이고, 값이 바뀌는 유일한 경로는 `refresh(session:)`의 서버 응답이다
+- `ShardBackend` protocol에는 **읽기 하나**(`shards(accessToken:)`)뿐이다.
+  `BackendClient`도 `GET users/me/shards`만 부른다.
+  `POST /shards/credit` 같은 요청을 client에서 만들지 않는다
+- 서버가 새 잔액을 주면 **그것이 최종**이다(server wins). 로컬 값을 우선하지 않는다
+- 서버에 닿지 못하면 마지막으로 본 값을 유지한다. 임의로 0으로 만들지 않는다 —
+  "조각이 사라졌다"처럼 보인다
+- 로그아웃은 **화면 표시만** 지운다. 서버 지갑은 그대로 있고 다시 로그인하면 돌아온다
+- 로그인 전 잔액은 0이고 서버를 부르지 않는다. **조각 때문에 로그인 벽을 세우지 않는다** —
+  거울 · 촬영 · 꾸미기 · 내 거울 · 상점 구경은 그대로 로그인 없이 쓴다
+- 하드코딩 잔액(`ShardWallet.temporaryBalance = 32`)은 **삭제됐다.** 다시 만들지 않는다
+- 로컬에 남아 있던 임시 잔액을 서버로 옮기지 않는다. 마이그레이션 자체가 없다
+
+`ggumirrorTests/ShardWalletTests.swift`가 위 규칙을 소스 레벨로 고정한다.
+
+### AdMob Rewarded (B-5) — client는 지급하지 않는다
+
+`onUserEarnedReward`로 조각을 주지 않는다. 그 callback은 UI 갱신용이고,
+실제 지급은 **Google SSV callback을 검증한 server**만 한다.
+광고 시청 후 client가 할 일은 `shards.refresh(session:)` 하나다.
+
 ## Build Configuration (현재 정책)
 
 서버 주소는 **코드에 없다.** `Config/*.xcconfig` → `Config/Info.plist` → `AppConfig`로 온다.

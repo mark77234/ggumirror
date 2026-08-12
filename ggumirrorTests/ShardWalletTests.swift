@@ -1,0 +1,207 @@
+//
+//  ShardWalletTests.swift
+//  ggumirrorTests
+//
+//  조각 잔액은 **서버가 정한다.**
+//
+//  여기서 지키는 것:
+//  1. client에 잔액을 더하거나 빼는 통로가 없다
+//  2. 로그인 전에는 0이고, 로그인하면 서버 값을 그대로 보여준다
+//  3. 로그아웃은 화면만 지운다 — 서버 지갑과 로컬 콘텐츠는 그대로다
+//
+
+import Foundation
+import Testing
+@testable import ggumirror
+
+/// 서버 응답을 원하는 대로 고정하는 가짜 backend.
+final class FakeShardBackend: ShardBackend, @unchecked Sendable {
+    var result: Result<ShardBalance, BackendError>
+    private(set) var receivedTokens: [String] = []
+
+    init(balance: Int = 0, lifetimeEarned: Int = 0, lifetimeSpent: Int = 0) {
+        result = .success(ShardBalance(
+            balance: balance, lifetimeEarned: lifetimeEarned, lifetimeSpent: lifetimeSpent
+        ))
+    }
+
+    func shards(accessToken: String) async throws -> ShardBalance {
+        receivedTokens.append(accessToken)
+        return try result.get()
+    }
+}
+
+@MainActor
+struct ShardWalletTests {
+
+    private func session(expiresIn: TimeInterval = 3600) -> ServerSession {
+        ServerSession(
+            accessToken: "server-token",
+            expiresAt: Date(timeIntervalSinceNow: expiresIn),
+            userID: "internal-user-1"
+        )
+    }
+
+    private func repoFile(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    private func codeOnly(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard let comment = line.range(of: "//") else { return String(line) }
+                return String(line[..<comment.lowerBound])
+            }
+            .joined(separator: "\n")
+    }
+
+    // MARK: - 서버 값을 보여준다
+
+    @Test("로그인하면 서버 잔액을 그대로 보여준다")
+    func showsServerBalance() async {
+        let backend = FakeShardBackend(balance: 12, lifetimeEarned: 30, lifetimeSpent: 18)
+        let wallet = ShardWallet(backend: backend)
+
+        await wallet.refresh(session: session())
+
+        #expect(wallet.balance == 12)
+        #expect(wallet.lifetimeEarned == 30)
+        #expect(wallet.lifetimeSpent == 18)
+        #expect(backend.receivedTokens == ["server-token"])
+    }
+
+    @Test("로그인 전에는 0이고 서버를 부르지 않는다")
+    func signedOutIsZero() async {
+        let backend = FakeShardBackend(balance: 99)
+        let wallet = ShardWallet(backend: backend)
+
+        await wallet.refresh(session: nil)
+
+        #expect(wallet.balance == 0)
+        #expect(backend.receivedTokens.isEmpty, "로그인 없이 서버를 불렀다")
+    }
+
+    @Test("만료된 세션으로는 서버를 부르지 않는다")
+    func expiredSessionIsZero() async {
+        let backend = FakeShardBackend(balance: 99)
+        let wallet = ShardWallet(backend: backend)
+
+        await wallet.refresh(session: session(expiresIn: -60))
+
+        #expect(wallet.balance == 0)
+        #expect(backend.receivedTokens.isEmpty)
+    }
+
+    @Test("서버가 새 잔액을 주면 그것이 최종이다 — server wins")
+    func serverWins() async {
+        let backend = FakeShardBackend(balance: 50)
+        let wallet = ShardWallet(backend: backend)
+        await wallet.refresh(session: session())
+        #expect(wallet.balance == 50)
+
+        // 다른 기기에서 조각을 썼다.
+        backend.result = .success(ShardBalance(balance: 30, lifetimeEarned: 50, lifetimeSpent: 20))
+        await wallet.refresh(session: session())
+
+        #expect(wallet.balance == 30, "서버 값이 최종이어야 한다")
+    }
+
+    @Test("서버에 닿지 못하면 마지막 값을 유지한다")
+    func keepsLastValueOnFailure() async {
+        let backend = FakeShardBackend(balance: 7)
+        let wallet = ShardWallet(backend: backend)
+        await wallet.refresh(session: session())
+
+        backend.result = .failure(.unavailable)
+        await wallet.refresh(session: session())
+
+        // 조각이 사라진 것처럼 보이면 안 된다.
+        #expect(wallet.balance == 7)
+    }
+
+    // MARK: - 로그아웃 / 재로그인
+
+    @Test("로그아웃은 화면만 지운다")
+    func logoutClearsDisplayOnly() async {
+        let backend = FakeShardBackend(balance: 25)
+        let wallet = ShardWallet(backend: backend)
+        await wallet.refresh(session: session())
+        #expect(wallet.balance == 25)
+
+        await wallet.refresh(session: nil)
+        #expect(wallet.balance == 0)
+
+        // 서버 지갑은 그대로다 — 다시 로그인하면 돌아온다.
+        await wallet.refresh(session: session())
+        #expect(wallet.balance == 25)
+    }
+
+    // MARK: - client에 권위가 없다
+
+    @Test("client에 잔액을 바꾸는 통로가 없다")
+    func clientCannotMutateBalance() throws {
+        let source = codeOnly(try repoFile("ggumirror/Shared/ShardWallet.swift"))
+
+        // 잔액을 더하거나 빼는 코드가 없다.
+        for forbidden in ["balance +=", "balance -=", "balance = balance", "func credit", "func debit",
+                          "func add", "func spend", "func grant"] {
+            #expect(!source.contains(forbidden), "client가 잔액을 바꾸고 있다: \(forbidden)")
+        }
+        // 밖에서 balance를 대입할 수 없다.
+        #expect(source.contains("private(set) var balance"))
+    }
+
+    @Test("backend에도 조각을 바꾸는 요청이 없다")
+    func noShardMutationRequest() throws {
+        let source = codeOnly(try repoFile("ggumirror/Backend/BackendClient.swift"))
+        #expect(source.contains("users/me/shards"))
+        // 읽기(GET)뿐이다.
+        for forbidden in ["shards/credit", "shards/debit", "shards/add", "wallet/add", "wallet/set"] {
+            #expect(!source.contains(forbidden))
+        }
+
+        let protocolSource = codeOnly(try repoFile("ggumirror/Shared/ShardWallet.swift"))
+        #expect(protocolSource.contains("func shards(accessToken: String) async throws -> ShardBalance"))
+        // protocol에 쓰기 연산 자체가 없다.
+        #expect(!protocolSource.contains("func credit"))
+        #expect(!protocolSource.contains("func debit"))
+    }
+
+    @Test("임시 하드코딩 잔액이 사라졌다")
+    func temporaryBalanceIsGone() throws {
+        for path in ["ggumirror/Shared/InkComponents.swift",
+                     "ggumirror/Home/HomeView.swift",
+                     "ggumirror/Store/StoreView.swift"] {
+            #expect(!(try repoFile(path)).contains("temporaryBalance"))
+        }
+    }
+
+    @Test("서버 응답 모양을 그대로 읽는다")
+    func decodesServerShape() throws {
+        let json = #"{"balance":12,"lifetimeEarned":30,"lifetimeSpent":18}"#
+        let balance = try JSONDecoder.backend.decode(ShardBalance.self, from: Data(json.utf8))
+        #expect(balance == ShardBalance(balance: 12, lifetimeEarned: 30, lifetimeSpent: 18))
+    }
+
+    @Test("모양이 다르면 읽지 않는다")
+    func rejectsUnknownShape() {
+        let json = #"{"shards":12}"#
+        #expect(throws: (any Error).self) {
+            try JSONDecoder.backend.decode(ShardBalance.self, from: Data(json.utf8))
+        }
+    }
+
+    // MARK: - 로그인 없이 쓰는 기능
+
+    @Test("조각 때문에 로그인 벽을 세우지 않는다")
+    func noLoginWall() throws {
+        let root = codeOnly(try repoFile("ggumirror/RootView.swift"))
+        // 첫 화면은 여전히 Mirror다.
+        #expect(root.contains("@State private var screen: Screen = .mirror"))
+        // 지갑 갱신이 화면을 막지 않는다(실패해도 그냥 지나간다).
+        #expect(root.contains("await shards.refresh(session: session.server)"))
+    }
+}

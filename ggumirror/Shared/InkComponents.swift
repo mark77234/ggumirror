@@ -357,9 +357,3 @@ struct InkGlyphView: View {
     }
 }
 
-// MARK: - 조각 잔액
-
-/// 실제 ledger가 생기기 전까지 Home / Store가 함께 보는 임시 잔액.
-enum ShardWallet {
-    static let temporaryBalance = 32
-}

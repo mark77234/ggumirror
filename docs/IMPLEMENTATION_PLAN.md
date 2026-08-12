@@ -1203,6 +1203,88 @@ context가 없거나 · 못 읽거나 · 모르는 schemaVersion이거나 · 모
 MirrorStore에 접근할 수 없고 `AppContext`는 4KB라 사진 · 스티커 · 그림을 보낼 통로가 없다.
 별도 설계가 필요하다.
 
+## Phase B-3 — Server-Authoritative Mirror Shard Ledger (확정)
+
+거울조각을 client의 숫자에서 **server 원장**으로 옮겼다.
+이 Phase 이후 모든 BM(출석 · 광고 · IAP · Pass · 마켓)은 이 원장 위에만 얹힌다.
+
+### 왜
+
+`ShardWallet.temporaryBalance = 32`는 앱 안의 상수였다. 그 위에 광고 보상 · 결제 · 구매를
+쌓으면 client가 자기 잔액을 정하는 구조가 된다. 나중에 고치려면 이미 팔린 거울과
+이미 지급한 조각을 전부 다시 계산해야 한다 — **BM을 시작하기 전에** 옮겨야 하는 이유다.
+
+### Backend (`ggumirror-be/app/shards/`)
+
+```
+ShardLedgerEntry (불변 append-only)  ← 진실
+ShardWallet (balance / lifetime)     ← 읽기용 projection
+```
+
+- 두 문서는 **하나의 Firestore transaction**에서만 같이 쓰인다
+- ledger entry는 고치지 않는다. 잘못됐으면 `refund` / `admin_adjustment`를 새로 쌓는다
+- 모든 이동에 `ShardReason`이 붙는다 — `daily_attendance` · `rewarded_ad` ·
+  `iap_purchase` · `mirror_purchase` · `mirror_sale` · `mirror_publish_fee` ·
+  `refund` · `admin_adjustment`
+- **idempotency**: ledger 문서 ID가
+  `sha256(len:user_id | len:reason | len:external_event_id)`다.
+  transaction 안에서 `create()`로 쓰기 때문에 재전송이 와도 구조적으로 한 번만 반영된다
+- 열쇠는 **user-scoped**다. `ShardLedgerService`가 강제하고 호출부에 기대지 않는다 —
+  빼면 출석(`daily_attendance` + 날짜)에서 하루에 한 사람만 조각을 받는다.
+  같은 user + 같은 event = 정확히 한 번, 다른 user + 같은 event = 서로 독립
+- 길이 접두사 canonical encoding이라 값에 `:` · `|`가 섞여도 조합이 뒤섞이지 않는다.
+  raw user id · raw external event id는 문서 ID에 남지 않는다
+- 잔액은 음수가 되지 않는다. 부족하면 거절하고 **아무것도 쓰지 않는다**
+- collection: `ggumirror_shard_wallets` · `ggumirror_shard_ledger`
+
+### API — 읽기 하나뿐
+
+| method | path | auth |
+|---|---|---|
+| GET | `/users/me/shards` | Bearer |
+
+```json
+{ "balance": 12, "lifetimeEarned": 30, "lifetimeSpent": 18 }
+```
+
+**generic mutation endpoint를 만들지 않는다.** `POST /shards/credit` · `/debit` ·
+`/add` · `/set`이 하나라도 생기면 client가 조각을 찍어낼 수 있다.
+지급 / 차감은 각자의 이유를 검증하는 전용 endpoint로만 생긴다.
+
+### Client
+
+- `Shared/ShardWallet.swift` — `@Observable @MainActor` remote-backed read model.
+  `balance`는 `private(set)`, 바뀌는 경로는 `refresh(session:)`의 서버 응답 하나뿐이다
+- `Backend/BackendClient.swift` — `GET users/me/shards` 추가. 쓰기 요청 없음
+- `RootView`가 `.environment(shards)`로 내려주고, 세션이 바뀌면 다시 읽는다
+- `HomeView` · `StoreView`가 `shards.balance`를 보여준다
+- `InkComponents.swift`의 `enum ShardWallet { static let temporaryBalance = 32 }` **삭제**
+- 서버에 닿지 못하면 마지막 값을 유지한다. 로그아웃은 화면만 지운다
+- **로그인 벽 없음** — 거울 · 촬영 · 꾸미기 · 내 거울 · 상점 구경은 그대로다
+- 로컬 임시 잔액을 서버로 옮기는 마이그레이션은 **하지 않았다**
+
+### AdMob Rewarded 준비 (B-5에서 쓴다)
+
+보상 권위는 **Google SSV callback 하나뿐이다.** client의 `onUserEarnedReward`로
+조각을 지급하지 않는다. B-5가 붙일 것: 서명 검증 → `transaction_id`를
+external event id로 사용 → 하루 5회 상한 → reason `rewarded_ad`.
+원장이 이미 이유 · idempotency · transaction · 상한 검증 자리를 갖고 있다.
+
+### BM 로드맵
+
+| Phase | 내용 |
+|---|---|
+| B-4 | 출석 — 하루 1개 |
+| B-5 | AdMob rewarded — 1개, 하루 5회, SSV 필수 |
+| B-6 | 조각 IAP — 10 / 30 / 70 / 160 |
+| B-7 | 꾸미러 Pass — ₩4,900 월 / ₩39,000 년 |
+| B-8 | 마켓 — 등록 20 조각, 조각으로 산 거울은 영구 소유 |
+
+### 아직 아닌 것
+
+지급 · 차감 endpoint · 출석 · 광고 보상 · IAP · Pass · 실제 구매 · 판매 정산.
+사용자 화면에서 조각이 실제로 늘거나 줄지 않는다 — 지금은 **서버 잔액을 보여주기만** 한다.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

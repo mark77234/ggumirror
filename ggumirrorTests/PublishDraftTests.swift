@@ -324,7 +324,6 @@ struct PublishDraftTests {
             let originBefore = mirror.origin
             let createdBefore = library.createdCount
             let capacityBefore = library.createdCapacity
-            let shardsBefore = ShardWallet.temporaryBalance
             let storeListingsBefore = StoreCatalog.samples.count
 
             var draft = valid(mirror)
@@ -335,7 +334,6 @@ struct PublishDraftTests {
             #expect(library.mirrors[0].origin == .made)
             #expect(library.createdCount == createdBefore)              // 슬롯 변화 없음
             #expect(library.createdCapacity == capacityBefore)
-            #expect(ShardWallet.temporaryBalance == shardsBefore)       // 조각 차감 없음
             #expect(StoreCatalog.samples.count == storeListingsBefore)  // 상점 목록에 끼어들지 않는다
             #expect(!StoreCatalog.samples.contains { $0.id == mirror.id })
             // 거울 디자인 데이터도 그대로다.
@@ -349,14 +347,15 @@ struct PublishDraftTests {
             let library = library(store)
             library.save(MirrorDesign(mirror: made()), name: "나의 거울", context: .createNew)
 
-            let before = ShardWallet.temporaryBalance
             #expect(MirrorPublishPolicy.feeInShards == 20)
 
             var draft = valid(library.mirrors[0])
             draft.mirrorID = library.mirrors[0].id
             library.savePublishDraft(draft)
 
-            #expect(ShardWallet.temporaryBalance == before)
+            // 준비만 저장됐다. 조각은 서버 원장에만 있고 client에 차감 통로 자체가 없다
+            // (ShardWalletTests가 고정한다).
+            #expect(library.publishDraft(for: library.mirrors[0].id) != nil)
         }
     }
 }

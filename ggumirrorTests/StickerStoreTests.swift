@@ -514,14 +514,14 @@ struct StickerStoreTests {
     @Test("등록 준비는 조각을 건드리지 않고 listing도 만들지 않는다")
     func draftChangesNothingElse() throws {
         try withStores { store, stickers, _, _ in
-            let balanceBefore = ShardWallet.temporaryBalance
+            // 조각 잔액은 이제 서버가 정한다. 등록 준비는 client에서 잔액을 건드릴 수 없다 —
+            // 애초에 그런 통로가 없다(ShardWalletTests가 고정한다).
             let saved = try #require(stickers.save(design(), name: "A", context: .createNew))
             var draft = StickerPublishDraft(stickerProjectID: saved.id, title: "제목")
             draft.didAcknowledgeRights = true
             stickers.saveDraft(draft)
             store.flush()
 
-            #expect(ShardWallet.temporaryBalance == balanceBefore)
             // 등록 비용은 아직 정하지 않았다 — 거울의 20 조각을 가져오지 않는다.
             #expect(StickerPublishPolicy.feeInShards == nil)
             #expect(MirrorPublishPolicy.feeInShards == 20)

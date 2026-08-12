@@ -392,9 +392,9 @@ struct DoodleStickerTests {
         #expect(StoreCatalog.artworkTemplates.count == 24)
     }
 
-    @Test("조각 표시 규칙은 바뀌지 않았다")
-    func shardAmountUnchanged() {
-        #expect(ShardWallet.temporaryBalance == 32)
+    @Test("조각 정책은 바뀌지 않았다")
+    func shardPolicyUnchanged() {
+        // 잔액은 이제 서버가 정한다(하드코딩 32는 사라졌다). 등록 비용 정책은 그대로다.
         #expect(MirrorPublishPolicy.feeInShards == 20)
     }
 }

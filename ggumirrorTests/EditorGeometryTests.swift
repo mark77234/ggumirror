@@ -1056,14 +1056,15 @@ struct EditorGeometryTests {
         #expect(library.createdCapacity == before + MirrorStoragePolicy.slotPackSize)
     }
 
-    @Test("보관 슬롯과 조각 잔액은 서로 무관하다")
+    @Test("보관 슬롯 확장은 조각을 건드리지 않는다")
     func slotsAreNotShards() {
         let library = MirrorLibrary()
-        let shards = ShardWallet.temporaryBalance
+        let capacityBefore = library.createdCapacity
         library.grantSlotPack()
-        // 슬롯을 늘려도 조각이 차감되지 않는다 (실제 결제는 아직 없다)
-        #expect(ShardWallet.temporaryBalance == shards)
-        #expect(library.createdCapacity != shards)
+
+        // 슬롯만 늘어난다. 조각은 client가 만질 수 없고 서버 원장에만 있다
+        // (ShardWalletTests가 client에 mutation 통로가 없음을 고정한다).
+        #expect(library.createdCapacity == capacityBefore + MirrorStoragePolicy.slotPackSize)
     }
 
     // MARK: - 지우개

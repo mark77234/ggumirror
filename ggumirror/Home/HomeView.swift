@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Environment(ShardWallet.self) private var shards
     var library: MirrorLibrary
     var onOpenMirror: () -> Void
     var onEdit: (RootView.EditorRequest) -> Void
@@ -84,7 +85,7 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             ShardAmount(
-                amount: ShardWallet.temporaryBalance,
+                amount: shards.balance,
                 font: InkFont.cardTitle,
                 iconSize: 17
             )
@@ -96,7 +97,7 @@ struct HomeView: View {
                     .rotationEffect(.degrees(-0.35))
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("보유 \(ShardWallet.temporaryBalance) 조각")
+            .accessibilityLabel("보유 \(shards.balance) 조각")
 
             Spacer(minLength: 12)
 

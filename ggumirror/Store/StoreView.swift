@@ -17,6 +17,7 @@ enum StoreSection: String, CaseIterable, Identifiable, Hashable {
 }
 
 struct StoreView: View {
+    @Environment(ShardWallet.self) private var shards
     var library: MirrorLibrary?
     /// 내가 만든 스티커. 저장하면 이 화면이 바로 갱신된다(@Observable).
     var stickers: StickerLibrary = .live
@@ -67,7 +68,7 @@ struct StoreView: View {
             // 조각 잔액 (표시 전용)
             HStack(spacing: 6) {
                 ShardIcon(size: 15)
-                Text("\(ShardWallet.temporaryBalance) 조각")
+                Text("\(shards.balance) 조각")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.ink)
             }
@@ -79,7 +80,7 @@ struct StoreView: View {
                     .rotationEffect(.degrees(0.3))
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("보유 \(ShardWallet.temporaryBalance) 조각")
+            .accessibilityLabel("보유 \(shards.balance) 조각")
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)

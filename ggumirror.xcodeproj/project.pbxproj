@@ -146,8 +146,8 @@
 				Mirror/QuickMirrorCaptureStore.swift,
 				Mirror/QuickMirrorComposer.swift,
 				Mirror/QuickMirrorFrameView.swift,
-				Mirror/QuickMirrorPreset.swift,
 				Mirror/QuickMirrorIntent.swift,
+				Mirror/QuickMirrorPreset.swift,
 				Mirror/QuickMirrorRequest.swift,
 			);
 			target = 12F42EEC302B6FD40007811E /* GgumirrorCapture */;
