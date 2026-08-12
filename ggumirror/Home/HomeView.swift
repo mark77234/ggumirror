@@ -84,10 +84,12 @@ struct HomeView: View {
 
     private var header: some View {
         HStack {
+            // 여기는 **가격이 아니라 보유 잔액**이다. 0은 "무료"가 아니라 0이다.
             ShardAmount(
                 amount: shards.balance,
                 font: InkFont.cardTitle,
-                iconSize: 17
+                iconSize: 17,
+                treatsZeroAsFree: false
             )
             .padding(.horizontal, 14)
             .padding(.vertical, 6)

@@ -10,7 +10,9 @@
 //  3. 로그아웃은 화면만 지운다 — 서버 지갑과 로컬 콘텐츠는 그대로다
 //
 
+import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 @testable import ggumirror
 
@@ -177,6 +179,73 @@ struct ShardWalletTests {
                      "ggumirror/Store/StoreView.swift"] {
             #expect(!(try repoFile(path)).contains("temporaryBalance"))
         }
+    }
+
+    // MARK: - 잔액 표시 — 0은 "무료"가 아니다
+
+    @Test("홈은 서버 잔액을 쓰고, 0을 무료라고 하지 않는다")
+    func homeShowsBalanceNotFree() throws {
+        let home = codeOnly(try repoFile("ggumirror/Home/HomeView.swift"))
+
+        // 잔액은 서버가 준 값이다.
+        #expect(home.contains("amount: shards.balance"))
+        #expect(!home.contains("temporaryBalance"))
+        // 가격이 아니라 잔액이므로 "무료" 변환을 끈다.
+        #expect(home.contains("treatsZeroAsFree: false"), "홈 잔액 0이 아직 무료로 표시된다")
+        // 홈 화면 자체에 "무료" 문구가 없다.
+        #expect(!home.contains("무료"))
+
+        // 상점 잔액 표시도 숫자다.
+        let store = codeOnly(try repoFile("ggumirror/Store/StoreView.swift"))
+        #expect(store.contains(#"Text("\(shards.balance) 조각")"#))
+    }
+
+    @Test("잔액 0과 가격 0은 다르게 보인다")
+    func zeroBalanceRendersDifferentlyFromFreePrice() throws {
+        let balance = try #require(render(ShardAmount(amount: 0, treatsZeroAsFree: false)))
+        let price = try #require(render(ShardAmount(amount: 0)))
+        // 가격 0은 "무료", 잔액 0은 "0" — 그려진 결과가 같으면 안 된다.
+        #expect(balance != price)
+
+        // 잔액 0과 잔액 12도 서로 다르다(숫자가 실제로 그려진다).
+        let twelve = try #require(render(ShardAmount(amount: 12, treatsZeroAsFree: false)))
+        #expect(balance != twelve)
+    }
+
+    @Test("상점의 실제 무료 상품 표시는 그대로다")
+    func freeStoreItemsKeepTheirLabel() throws {
+        // 기본값이 가격 규칙이므로 상점 호출부는 손대지 않았다.
+        let components = codeOnly(try repoFile("ggumirror/Shared/InkComponents.swift"))
+        #expect(components.contains("var treatsZeroAsFree = true"))
+        #expect(components.contains(#"Text(isFree ? "무료" : "\(amount)")"#))
+
+        let store = codeOnly(try repoFile("ggumirror/Store/StoreView.swift"))
+        #expect(store.contains("ShardAmount(amount: template.price)"))
+        #expect(!store.contains("template.price, treatsZeroAsFree"))
+
+        // 무료 갈래 · 무료로 받기 문구도 그대로 있다.
+        #expect(try repoFile("ggumirror/Store/StoreCatalog.swift").contains(#"case free = "무료""#))
+        #expect(try repoFile("ggumirror/Store/TemplateDetailView.swift").contains(#""무료로 받기""#))
+
+        // 무료 템플릿은 여전히 0 조각이고 8종이다.
+        #expect(StoreCatalog.samples.contains { $0.price == 0 })
+        #expect(StoreCatalog.basics.allSatisfy { $0.price == 0 })
+    }
+
+    private func render(_ view: some View) -> Data? {
+        let renderer = ImageRenderer(content: view.frame(width: 90, height: 30))
+        renderer.scale = 1
+        renderer.isOpaque = false
+        guard let image = renderer.cgImage else { return nil }
+        var data = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        guard let context = CGContext(
+            data: &data, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: image.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return Data(data)
     }
 
     @Test("서버 응답 모양을 그대로 읽는다")

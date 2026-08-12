@@ -179,16 +179,23 @@ struct ShardAmount: View {
     let amount: Int
     var font: Font = InkFont.caption
     var iconSize: CGFloat = 13
+    /// 0을 "무료"로 읽을지. **가격일 때만 참이다.**
+    ///
+    /// 잔액은 0도 그냥 0이다 — 조각이 하나도 없는 것을 "무료"라고 하면 말이 되지 않는다.
+    /// 잔액의 진실은 서버에 있고(`ShardWallet`) 그 숫자를 그대로 보여준다.
+    var treatsZeroAsFree = true
+
+    private var isFree: Bool { treatsZeroAsFree && amount == 0 }
 
     var body: some View {
         HStack(spacing: 4) {
             ShardIcon(size: iconSize)
-            Text(amount == 0 ? "무료" : "\(amount)")
+            Text(isFree ? "무료" : "\(amount)")
                 .font(font)
                 .foregroundStyle(PaperTheme.ink)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(amount == 0 ? "무료" : "\(amount) 조각")
+        .accessibilityLabel(isFree ? "무료" : "\(amount) 조각")
     }
 }
 
