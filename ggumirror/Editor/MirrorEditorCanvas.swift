@@ -95,7 +95,8 @@ struct MirrorEditorCanvas: View {
                     activeStroke: activeStroke,
                     // Editor에서는 카메라 영역도 배경색으로 채워 한 장의 캔버스처럼 보인다.
                     // 저장되는 배경이 카메라를 덮는다는 뜻이 아니다 — 실제 거울에서는 그대로 비워진다.
-                    mirrorAreaFill: design.backgroundColor,
+                    // 투명 프레임이면 nil이라 체크무늬가 그대로 보인다.
+                    mirrorAreaFill: design.style.frameFill,
                     showsCameraGuide: true
                 )
                 .allowsHitTesting(false)

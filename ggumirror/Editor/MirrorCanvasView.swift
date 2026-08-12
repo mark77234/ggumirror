@@ -27,9 +27,11 @@ struct MirrorCanvasView: View {
         Canvas { context, size in
             let placement = transform ?? .fitted(in: size)
 
-            // 스티커 캔버스는 바탕이 없다. 투명한 자리를 알아볼 수 있게 체크무늬만 깐다.
-            // **이 무늬는 최종 PNG에 들어가지 않는다** — StickerRenderer가 따로 그린다.
-            if design.canvas == .sticker {
+            // 바탕이 없는 canvas는 투명한 자리를 알아볼 수 있게 체크무늬만 깐다:
+            // 스티커 캔버스, 그리고 **투명 프레임 거울**.
+            // **이 무늬는 편집 화면에서만 보인다** — 실제 Mirror / Capture는
+            // MirrorDecorationView를 쓰고 이 함수를 부르지 않는다.
+            if design.canvas == .sticker || design.style.frameFill == nil {
                 drawCheckerboard(in: context, rect: placement.canvasRect)
             }
 

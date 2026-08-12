@@ -87,10 +87,12 @@ enum MirrorRenderer {
         // 1. 프레임 배경 + 종이 결 — 프레임 영역 안에서만 그린다.
         //    중앙은 손대지 않으므로 카메라 영상이 그대로 비친다.
         //    **스티커 캔버스는 바탕을 그리지 않는다** — 최종 PNG가 완전히 투명해야 한다.
-        if canvas.drawsBackground {
+        //    **투명 프레임(`frameFill == nil`)도 그리지 않는다** — 색만 빼고 종이 결을 남기면
+        //    카메라 위에 점이 흩뿌려진 것처럼 보인다. 밴드 전체를 건너뛴다.
+        if canvas.drawsBackground, let frameFill = style.frameFill {
             var paper = context
             paper.clip(to: frame, style: FrameMaskShape.fillStyle)
-            paper.fill(frame, with: .color(style.frame), style: FrameMaskShape.fillStyle)
+            paper.fill(frame, with: .color(frameFill), style: FrameMaskShape.fillStyle)
             drawGrain(in: paper, transform: transform, visible: visible)
         }
 

@@ -178,7 +178,7 @@ struct EditorView: View {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
         }
         .inkBottomSheet(isPresented: $isChoosingBackground) {
-            BackgroundColorSheet(color: $design.backgroundColor)
+            BackgroundColorSheet(style: $design.style)
         }
         // 스티커 만들기: 빈 캔버스 / 사진으로 시작. 커스텀 다이얼로그를 쓴다.
         .inkDialog(
@@ -921,42 +921,43 @@ struct EditorView: View {
 // MARK: - Background
 
 private struct BackgroundColorSheet: View {
-    @Binding var color: Color
+    /// 색과 "투명" 여부를 함께 다루므로 style 전체를 잡는다.
+    /// 색만 바인딩하면 투명을 `Color.clear`로 표현하게 되고, 그러면 원래 색을 잃는다.
+    @Binding var style: MirrorStyle
     @Environment(\.dismiss) private var dismiss
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("배경 색")
+            Text("프레임 색")
                 .font(InkFont.cardTitle)
                 .foregroundStyle(PaperTheme.ink)
 
             LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(EditorBackground.options, id: \.name) { option in
-                    Button {
-                        color = option.color
-                    } label: {
-                        VStack(spacing: 6) {
-                            Circle()
-                                .fill(option.color)
-                                .frame(width: 40, height: 40)
-                                .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.6))
-                            Text(option.name)
-                                .font(InkFont.caption)
-                                .foregroundStyle(PaperTheme.ink)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(.rect)
+                // 투명도 같은 칸, 같은 선택 표시를 쓴다. 별도 화면을 만들지 않는다.
+                option(
+                    name: EditorBackground.transparentName,
+                    isSelected: !style.isFrameVisible,
+                    swatch: { transparentSwatch }
+                ) {
+                    // 색은 그대로 둔다 — 다시 켜면 고르던 색이 돌아온다.
+                    style.isFrameVisible = false
+                }
+
+                ForEach(EditorBackground.options, id: \.name) { choice in
+                    option(
+                        name: choice.name,
+                        isSelected: style.isFrameVisible && style.frame == choice.color,
+                        swatch: { Circle().fill(choice.color) }
+                    ) {
+                        style.frame = choice.color
+                        style.isFrameVisible = true
                     }
-                    .buttonStyle(InkPressStyle())
-                    .accessibilityLabel(option.name)
                 }
             }
 
-            ColorPicker("직접 고르기", selection: $color, supportsOpacity: false)
+            ColorPicker("직접 고르기", selection: colorBinding, supportsOpacity: false)
                 .font(InkFont.body)
                 .foregroundStyle(PaperTheme.ink)
                 .frame(minHeight: 44)
@@ -965,6 +966,62 @@ private struct BackgroundColorSheet: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 직접 고른 색은 언제나 "보이는 프레임"이다.
+    private var colorBinding: Binding<Color> {
+        Binding(
+            get: { style.frame },
+            set: { style.frame = $0; style.isFrameVisible = true }
+        )
+    }
+
+    private func option(
+        name: String,
+        isSelected: Bool,
+        swatch: () -> some View,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                swatch()
+                    .frame(width: 40, height: 40)
+                    .overlay(Circle().stroke(PaperTheme.ink, lineWidth: 1.6))
+                    // 선택 표시는 손으로 두 번 두른 테두리 하나. 새 디자인 언어를 만들지 않는다.
+                    .overlay {
+                        if isSelected {
+                            Circle()
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                                .padding(-4)
+                        }
+                    }
+                Text(name)
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// 투명을 나타내는 칸. 캔버스의 체크무늬와 같은 뜻이다.
+    private var transparentSwatch: some View {
+        Circle()
+            .fill(PaperTheme.paper)
+            .overlay {
+                Circle().fill(
+                    LinearGradient(
+                        colors: [.clear, PaperTheme.ink.opacity(0.16), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            }
     }
 }
 

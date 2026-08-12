@@ -196,6 +196,38 @@ C-1B 확정 사실:
 
 자세한 내용은 docs/IMPLEMENTATION_PLAN.md의 C-1B / C-1A / C-1 Prep 참고.
 
+## 투명 프레임 + 편집 guide (C-2A)
+
+프레임을 **완전히 투명하게** 만들 수 있다. 그리고 편집 guide는 Editor 밖으로 나가지 않는다.
+
+투명 프레임:
+
+- `MirrorStyle.isFrameVisible`(기본 `true`)이 유일한 표현이다.
+  **`frame`을 `Color.clear`로 바꾸지 않는다** — 색을 지우면 고르던 색을 잃고,
+  렌더러마다 "clear인가" 비교하는 magic value가 생긴다
+- 렌더러는 `frame`이 아니라 **`style.frameFill`**(투명이면 `nil`) 하나만 본다.
+  투명 판단이 한 곳에만 있어야 Mirror · Capture · 미리보기가 어긋나지 않는다
+- 투명이면 프레임 밴드를 **아예 그리지 않는다** — paper grain도 같이 빠진다.
+  색만 빼고 결을 남기면 카메라 위에 점이 흩뿌려진 것처럼 보인다
+- 저장 key는 `frameVisible`이고 **없으면 `true`로 읽는다.**
+  C-2A 이전에 저장된 거울이 업데이트 후 무프레임이 되면 안 된다. migration script는 없다
+- geometry는 그대로다 — 1080 × 2340 · insets · 장식 좌표 하나도 움직이지 않는다
+- 상점 9번째 기본 거울로 추가하지 않았다. **프레임 편집 option**이다
+- 잠금화면은 이미 있던 `QuickMirrorPresetID.none`으로 간다.
+  `transparent` case를 새로 만들지 않는다 (preset은 여전히 9개)
+
+편집 guide(카메라 영역 점선):
+
+- `MirrorCanvasView.showsCameraGuide`가 유일한 통로이고 **기본이 `false`**다.
+  `true`로 켜는 곳은 `Editor/MirrorEditorCanvas.swift` **한 곳뿐**이다
+- 실제 Mirror와 Capture는 `MirrorDecorationView`를 쓴다 — 이 view에는
+  guide를 켤 인자가 **없다.** 그래서 새어 나갈 구조 자체가 아니다
+- 저장된 PNG · 잠금화면 Quick Mirror · 상점/홈 미리보기에도 나오지 않는다
+- 점선 굵기 · 색 · 간격은 재설계하지 않았다
+
+`ggumirrorTests/TransparentFrameTests.swift`가 위 전부를 고정한다
+(렌더 픽셀 비교 + guide를 켜는 파일 목록 검사).
+
 ## 거울조각 (B-3) — client는 권위가 아니다
 
 조각 잔액의 진실은 **server ledger 하나**다. client는 서버 값을 보여주기만 한다.

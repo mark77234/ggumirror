@@ -15,6 +15,12 @@ struct MirrorStyle: Hashable {
     var insets: MirrorFrameInsets = .standard
     /// 프레임 위에 얹히는 잉크 낙서. 기본 거울은 항상 비어 있다.
     var doodles: [Doodle] = []
+    /// 프레임을 그리는가. `false`면 **투명 프레임** — 카메라만 보이고 장식은 그대로다.
+    ///
+    /// `frame`을 `Color.clear`로 바꾸지 않는다. 색을 지우면 사용자가 고른 색을 잃어버리고,
+    /// 렌더러마다 "clear인지" 비교하는 magic value가 생긴다. 색은 그대로 두고
+    /// **보이는지 여부만** 따로 담는다 — 다시 켜면 원래 색이 돌아온다.
+    var isFrameVisible = true
 
     struct Doodle: Hashable, Codable {
         let symbol: String
@@ -30,6 +36,12 @@ struct MirrorStyle: Hashable {
 extension MirrorStyle {
     /// 모든 미리보기가 쓰는 단일 비율. Master Canvas와 같은 값이다.
     static var aspectRatio: CGFloat { MirrorCanvas.aspectRatio }
+
+    /// 프레임 밴드를 칠할 색. 투명 프레임이면 `nil`.
+    ///
+    /// **렌더러는 `frame`이 아니라 이 값만 본다.** 투명 판단이 한 곳에만 있어야
+    /// 실제 Mirror · Capture · 미리보기가 어긋나지 않는다.
+    var frameFill: Color? { isFrameVisible ? frame : nil }
 }
 
 struct MirrorPreview: View {

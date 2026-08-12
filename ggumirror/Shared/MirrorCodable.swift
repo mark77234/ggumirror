@@ -53,14 +53,17 @@ extension KeyedDecodingContainer {
 // MARK: - Style
 
 extension MirrorStyle: Codable {
-    private enum CodingKeys: String, CodingKey { case frame, insets, doodles }
+    private enum CodingKeys: String, CodingKey { case frame, insets, doodles, frameVisible }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             frame: try container.decodeColor(forKey: .frame, default: PaperTheme.paper),
             insets: try container.decodeIfPresent(MirrorFrameInsets.self, forKey: .insets) ?? .standard,
-            doodles: try container.decodeIfPresent([Doodle].self, forKey: .doodles) ?? []
+            doodles: try container.decodeIfPresent([Doodle].self, forKey: .doodles) ?? [],
+            // 이 key가 없는 건 **투명 프레임이 생기기 전에 저장된 거울**이다.
+            // 반드시 "보인다"로 읽는다 — 업데이트했다고 기존 거울이 무프레임이 되면 안 된다.
+            isFrameVisible: try container.decodeIfPresent(Bool.self, forKey: .frameVisible) ?? true
         )
     }
 
@@ -69,6 +72,7 @@ extension MirrorStyle: Codable {
         try container.encode(RGBAColor(frame), forKey: .frame)
         try container.encode(insets, forKey: .insets)
         try container.encode(doodles, forKey: .doodles)
+        try container.encode(isFrameVisible, forKey: .frameVisible)
     }
 }
 

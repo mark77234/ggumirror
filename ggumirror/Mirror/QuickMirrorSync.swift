@@ -28,8 +28,11 @@ enum QuickMirrorSync {
     /// 어느 쪽이든 **장식은 그리지 않는다**: 사진 · 스티커 · 그림 · 텍스트 · 외부 디자인은
     /// 잠금화면에 나오지 않는다. 지킬 수 있는 부분(프레임 색)만 정확히 지키고,
     /// 나머지를 흉내 내지 않는다.
+    /// 투명 프레임은 이미 있는 `.none`을 그대로 쓴다 — `transparent`를 새로 만들지 않는다.
+    /// 사용자가 "프레임 없음"을 고른 것이므로 fallback(크림)으로 가면 안 된다.
     static func preset(for mirror: MyMirror) -> QuickMirrorPresetID {
-        basicPreset(matching: mirror.style.frame) ?? QuickMirrorPresetID.fallback
+        guard let frame = mirror.style.frameFill else { return .none }
+        return basicPreset(matching: frame) ?? QuickMirrorPresetID.fallback
     }
 
     /// 프레임 색이 기본 거울 8종 중 하나와 같으면 그 preset.

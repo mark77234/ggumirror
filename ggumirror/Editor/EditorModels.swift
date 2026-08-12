@@ -141,10 +141,16 @@ struct MirrorDesign: Identifiable, Hashable {
 }
 
 /// Background Color 팔레트. 기본 거울 8종과 같은 색을 쓴다.
+///
+/// 여기에 "투명"을 색으로 끼워 넣지 않는다 — 투명은 색이 아니라
+/// `MirrorStyle.isFrameVisible`이다. 시트가 두 가지를 나란히 보여준다.
 enum EditorBackground {
     static let options: [(name: String, color: Color)] = BasicMirror.allCases.map {
         ($0.name, $0.style.frame)
     }
+
+    /// 프레임을 없애는 선택지의 이름. 상점의 "무료" 갈래와 헷갈리지 않게 "투명"이라고 쓴다.
+    static let transparentName = "투명"
 }
 
 // MARK: - Editor viewport

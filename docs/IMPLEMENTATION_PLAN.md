@@ -1203,6 +1203,62 @@ context가 없거나 · 못 읽거나 · 모르는 schemaVersion이거나 · 모
 MirrorStore에 접근할 수 없고 `AppContext`는 4KB라 사진 · 스티커 · 그림을 보낼 통로가 없다.
 별도 설계가 필요하다.
 
+## Phase C-2A — Transparent Frame + Guide Visibility (확정)
+
+목표 두 가지: 프레임을 완전히 투명하게 만들 수 있게 하고, 편집 guide가 실제 Mirror에
+나오지 않도록 **구조로** 막는다. 전면/후면 전환 · Flash는 C-2B에서 한다.
+
+### guide 조사 결과 (증상 가리기 전에 먼저 확인한 것)
+
+프로젝트 전체에서 `dash` / `StrokeStyle` / `guide`를 훑고, 실제 Mirror 렌더 결과의
+픽셀까지 재서 확인했다:
+
+- 카메라 영역 점선을 그리는 곳은 `MirrorCanvasView`의 `showsCameraGuide` **하나뿐**이고
+  기본값이 `false`, `true`로 켜는 곳은 `MirrorEditorCanvas` **한 곳뿐**이다
+- 실제 Mirror / Capture는 `MirrorDecorationView` → `MirrorRenderer.draw`를 쓴다.
+  이 경로에는 guide 인자가 **없다**
+- 실제 Mirror 렌더를 그려 카메라 구멍 경계 scanline의 alpha 토글을 셌다 →
+  **1회**(단색 경계 한 덩이). 점선이면 여러 번 토글된다. 구멍 안쪽에 남는 것은
+  둥근 모서리뿐이다
+- 즉 **현재 코드에서 guide가 Mirror로 새는 경로는 없다.** Mirror에 보이는 유일한 "점"은
+  프레임 밴드 위의 paper grain(2600 speckle, 의도된 종이 결)이다
+
+그래서 이번 작업은 "숨기기"가 아니라 **구조 고정 + 회귀 방지**다. 더불어
+투명 프레임을 `Color.clear`로 구현했다면 grain 2600개가 카메라 위에 그대로 남아
+정확히 그 증상을 **만들** 뻔했다 — 밴드 전체를 건너뛰는 방식으로 막았다.
+
+### 모델
+
+```swift
+MirrorStyle.isFrameVisible = true   // 저장 key: frameVisible, 없으면 true
+MirrorStyle.frameFill: Color?       // 투명이면 nil — 렌더러는 이것만 본다
+```
+
+- `frame` 색은 **지우지 않는다.** 투명을 껐다 켜면 고르던 색이 그대로 돌아온다
+- `Color.clear` magic value 비교가 어디에도 없다
+- 예전 파일에 `frameVisible`이 없으면 **보이는 프레임**으로 읽는다. migration script 없음,
+  `Application Support/ggumirror` 그대로
+
+### Editor
+
+- `BackgroundColorSheet` → 제목 "프레임 색", **첫 칸이 "투명"**. 새 화면을 만들지 않았다
+- 8색과 같은 칸 · 같은 선택 표시(잉크 테두리 하나). 현재 선택이 무엇인지 처음으로 보인다
+- 직접 고르기(ColorPicker)로 색을 고르면 자동으로 "보이는 프레임"이 된다
+- 투명이면 캔버스에 **스티커 캔버스와 같은 체크무늬**를 깐다 — 새 표현을 만들지 않았다
+- 카메라 영역 점선은 그대로 보인다 (Editor 전용)
+
+### Mirror / Capture / Quick Mirror
+
+- 투명이면 프레임 밴드를 그리지 않는다(grain 포함). 장식은 전부 그대로
+- geometry · 좌표 무변경
+- Quick Mirror: `style.frameFill == nil` → `QuickMirrorPresetID.none`.
+  색 8종 매핑은 그대로, preset 총 9개 그대로, context는 여전히 수십 byte
+- 촬영 결과 = 카메라 + 장식. guide 없음
+
+### 아직 아닌 것
+
+전면/후면 전환 · Flash · torch · 노출 · zoom · 카메라 session 재설계 (C-2B).
+
 ## Phase B-3 — Server-Authoritative Mirror Shard Ledger (확정)
 
 거울조각을 client의 숫자에서 **server 원장**으로 옮겼다.
