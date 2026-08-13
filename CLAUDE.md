@@ -58,12 +58,71 @@ Camera Area:
 
 ## Camera Policy
 
-- front camera
-- mirrored
+- 본앱 Mirror: **front ↔ rear 전환 가능**. 시작은 언제나 front
+- front는 mirrored, rear는 **mirrored 아님**
+- 잠금화면 Quick Mirror: **front 고정** (전환 없음)
 - portrait
 - no user zoom
 - videoZoomFactor = 1
+- rear도 **일반 1x wide 하나만** 쓴다 (ultra-wide / tele 선택 없음)
 - Camera framing 문제를 해결하기 위해 Mirror frame geometry를 변경하지 않는다
+
+## 전/후면 전환 + 플래시 (C-2B)
+
+`MirrorCamera`는 본앱과 잠금화면 extension이 **공유한다.** 그래서 능력을 role로 나눈다:
+
+| role | 쓰는 곳 | 전환 | photo output | flash |
+|---|---|---|---|---|
+| `.viewfinder` (**기본값**) | 잠금화면 `GgumirrorCapture` | 없음 | 없음 | 없음 |
+| `.mirror` | 본앱 `MirrorView` | 있음 | 있음 | 있음 |
+
+**기본값이 `.viewfinder`라서 본앱 기능을 추가해도 extension 동작이 따라 바뀌지 않는다.**
+extension은 계속 `MirrorCamera()`를 쓰고 `currentFrame()` → `QuickMirrorComposer` 경로다.
+
+전환:
+
+- `position`(UI용)은 **성공한 전환만** 반영한다. 화면은 rear인데 실제로는 front인 상태를 만들지 않는다
+- 세션 변경은 전부 `sessionQueue`에서만 일어난다 — retry(`start()`)와 자연히 직렬화된다.
+  별도 lock을 만들지 않았다
+- 전환 실패 시 **원래 input을 되돌려 붙인다.** 되돌리기도 실패하면 세션을 비우고
+  `isConfigured = false`로 두어 다음 `start()`가 처음부터 구성한다
+- 반전 / 회전은 `applyConnections(for:)` **한 곳**에서만 건다.
+  input을 갈아 끼우면 connection이 새로 생기므로 매번 다시 걸어야 한다
+- **`session.outputs`가 아니라 `session.connections`를 돈다.**
+  preview layer의 connection은 output이 아니라 세션이 직접 들고 있는 것이라
+  `outputs`만 돌면 영원히 갱신되지 않는 자리가 생긴다 —
+  rear → front에서 화면이 180° 뒤집혀 보이던 원인이 정확히 이것이었다
+- `CameraPreviewView`는 **반전/회전을 스스로 정하지 않는다.** 붙은 직후
+  `camera.applyCurrentConnectionPolicy()`만 부른다. 소유자가 둘이면 반드시 어긋난다
+- `automaticallyAdjustsVideoMirroring`은 항상 끈다.
+  켜 두면 input이 바뀔 때 system이 `isVideoMirrored`를 임의로 되돌린다
+- 회전 각은 **상수 하나**다. 전면/후면에 다른 숫자를 쓰지 않는다 —
+  같은 90도가 두 카메라 모두에서 정방향이라는 것이 실기기로 확인됐다
+- `.unavailable` 재시도 / `.denied` 최종 정책은 그대로다 (C-1A latch 회귀 금지)
+- 후면 선택을 **저장하지 않는다.** 앱을 다시 켜면 front다
+
+플래시:
+
+- 상태는 **OFF / ON 둘뿐**이다. AUTO 없음, torch 없음
+- **preview 중에 켜두지 않는다.** 촬영하는 순간에만 동작한다
+- `AVCapturePhotoOutput` + `AVCapturePhotoSettings.flashMode`를 쓴다.
+  deprecated `AVCaptureDevice.flashMode`를 쓰지 않는다
+- settings는 **촬영마다 새로 만든다.** 재사용하면 AVFoundation이 예외를 던진다
+- `supportedFlashModes`에 없는 mode를 요청하지 않는다 (`MirrorCamera.flashMode(wantsFlash:supported:)`)
+- 공식 flash가 없으면(전면 Retina Flash 미지원 기기) **화면 flash**로 대신한다.
+  흰 화면 + 밝기 최대 → 220ms 안정화 → 촬영 → 즉시 복원.
+  overlay만 깜빡이고 이전 프레임을 저장하는 가짜가 되면 안 된다
+- 밝기는 성공 · 실패 · 취소 · 백그라운드 · 화면 이탈 **어느 경로에서도** 되돌린다
+- 흰 화면은 **저장되는 사진에 들어가지 않는다** — 사진은 화면 스냅샷이 아니라
+  카메라 사진 + 장식을 따로 합성한다
+- flash를 못 써도 촬영은 계속된다. 사용자가 사진을 못 찍게 만들지 않는다
+- 앱을 다시 켜면 OFF다. 저장하지 않는다
+
+촬영 요청은 **시작 시점의 position / flash 의도를 고정**한다. 촬영 중 토글해도 그 사진은 바뀌지 않고,
+촬영 중에는 전환 버튼이 비활성이며 중복 촬영도 막는다.
+
+`ggumirrorTests/CameraSwitchFlashTests.swift`가 위 전부를 고정한다.
+
 
 ## Editor Policy
 

@@ -50,7 +50,7 @@ struct GgumirrorCaptureViewFinder: View {
             switch camera.status {
             case .ready:
                 // edge-to-edge. 거울이므로 화면을 꽉 채운다.
-                CameraPreviewView(session: camera.session)
+                CameraPreviewView(camera: camera)
                     .ignoresSafeArea()
             case .denied, .unavailable:
                 unavailable

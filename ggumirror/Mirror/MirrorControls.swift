@@ -14,6 +14,12 @@ struct MirrorControls: View {
     var onCapture: () -> Void
     /// 카메라가 살아 있을 때만 촬영 버튼을 보여준다. 홈으로는 항상 필요하다.
     var showsCapture: Bool = true
+    /// 플래시 ON/OFF. 같은 Mirror session 동안만 유지된다.
+    var isFlashOn: Bool = false
+    var onToggleFlash: () -> Void = {}
+    /// 전/후면 전환. 촬영 중이거나 카메라가 준비되지 않았으면 비활성이다.
+    var canSwitchCamera: Bool = false
+    var onSwitchCamera: () -> Void = {}
 
     /// Claude Design(Mirror App v2, 402 x 874 기준)의 배치를 0...1 normalized로 옮긴 값.
     /// 기기 크기가 달라져도 같은 비율로 놓인다.
@@ -44,15 +50,82 @@ struct MirrorControls: View {
                     .padding(.top, height * Layout.homeTop)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
+                // 플래시는 홈으로와 같은 높이, 반대쪽. 새 UI 언어를 만들지 않는다.
+                if showsCapture {
+                    flashButton
+                        .padding(.trailing, width * Layout.homeLeading)
+                        .padding(.top, height * Layout.homeTop)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
+
+                // 촬영 버튼 자리는 그대로다. 전환은 그 오른쪽에 얹기만 한다 —
+                // 카메라 앱과 같은 자리라 배우지 않아도 안다.
                 if showsCapture {
                     captureButton
                         .padding(.bottom, height * Layout.shutterBottom)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+
+                    switchButton
+                        .padding(.trailing, width * Layout.homeLeading)
+                        .padding(.bottom, height * Layout.shutterBottom + 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
             }
         }
         .ignoresSafeArea()
     }
+
+    /// 카메라 전환 / 플래시가 공유하는 잉크 칩. 홈으로 버튼과 같은 재질이다.
+    private func chip(
+        symbol: String,
+        label: String,
+        isActive: Bool = false,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            onInteraction()
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(isActive ? Color(white: 0.11) : .white)
+                .frame(width: 40, height: 40)
+                .background(
+                    isActive ? Color.white.opacity(0.92) : Color(white: 0.11).opacity(0.5),
+                    in: .circle
+                )
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityLabel(label)
+    }
+
+    private var flashButton: some View {
+        chip(
+            // 켜져 있는지가 아이콘만 봐도 보여야 한다.
+            symbol: isFlashOn ? "bolt.fill" : "bolt.slash.fill",
+            label: isFlashOn ? "플래시 끄기" : "플래시 켜기",
+            isActive: isFlashOn,
+            action: onToggleFlash
+        )
+    }
+
+    private var switchButton: some View {
+        chip(
+            symbol: Self.switchSymbol,
+            label: "카메라 전환",
+            isEnabled: canSwitchCamera,
+            action: onSwitchCamera
+        )
+    }
+
+    /// 현재 SDK에 실제로 있는 이름이다. 예전 `camera.rotate` /
+    /// `arrow.triangle.2.circlepath.camera`가 아니라 iOS 18에서 정리된 trianglehead 계열이다.
+    /// 테스트가 실제로 존재하는지 확인한다 — 없는 symbol은 빈 자리로 보인다.
+    static let switchSymbol = "arrow.trianglehead.2.clockwise.rotate.90.camera"
 
     private var homeButton: some View {
         Button {

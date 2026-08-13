@@ -1203,6 +1203,93 @@ context가 없거나 · 못 읽거나 · 모르는 schemaVersion이거나 · 모
 MirrorStore에 접근할 수 없고 `AppContext`는 4KB라 사진 · 스티커 · 그림을 보낼 통로가 없다.
 별도 설계가 필요하다.
 
+## Phase C-2B — Front/Rear Camera Switching + Flash ON/OFF (확정)
+
+### C-2B 전 촬영 구조 (조사 결과)
+
+- `MirrorCamera`는 **`AVCaptureVideoDataOutput` + 최신 프레임 1장 보관**(`LatestFrameStore`)뿐이었다.
+  `AVCapturePhotoOutput`은 **없었다**
+- 본앱 촬영 = `camera.currentFrame()` → `MirrorCapture.compose`(카메라 + 장식) → Photos
+- 잠금화면 촬영 = 같은 `currentFrame()` → `QuickMirrorComposer`
+- 좌우 반전 / Portrait 회전은 video 출력 connection에 직접 걸려 있었고, front 고정이었다
+
+→ 그 구조에서는 `AVCapturePhotoSettings.flashMode`만 얹을 수 없다.
+**실제 후면 LED flash를 쓰려면 `AVCapturePhotoOutput`이 필요하다.** torch로 대체하지 않는다.
+
+### 선택한 최소 변경
+
+- 본앱만 photo output을 갖는다. `MirrorCamera(role:)` 하나로 갈랐다 —
+  기본값 `.viewfinder`(잠금화면), 본앱은 `.mirror`
+- 잠금화면 촬영 경로는 **그대로**(`currentFrame()` → composer). 두 촬영이 같은 구현일 필요는 없다
+- `MirrorCapture.compose`는 손대지 않았다. 넣는 이미지가 video frame에서 photo로 바뀌었을 뿐이라
+  장식 좌표계(정규화 + aspect-fill)가 그대로다
+- photo를 못 얻으면 `currentFrame()`으로 떨어진다 — 촬영을 막지 않는다
+
+### 전환
+
+- `MirrorCamera.Position`(front/back) 작은 모델. UI는 AVFoundation을 직접 만지지 않는다
+- rear는 `.builtInWideAngleCamera` **1x 하나만**. ultra-wide / tele를 고르지 않는다
+- 원자적 교체: `beginConfiguration` → 기존 input 제거 → `canAddInput` 확인 →
+  성공하면 추가 / **실패하면 기존 input 복원** → `commitConfiguration`
+- 복원까지 실패하면 세션을 비우고 `isConfigured = false` — 다음 `start()`가 처음부터 구성한다
+- `position`은 **성공한 결과만** 받는다. UI와 실제가 어긋나지 않는다
+- 반전 / 회전은 `applyConnections(mirrored:)` 한 곳. input 교체 때마다 다시 건다
+- 연타 guard는 `isSwitching` 하나. 대기 큐를 만들지 않았다
+- retry와의 경합은 `sessionQueue` 직렬화로 해결했다. 별도 lock 없음
+
+### 플래시
+
+- OFF / ON 둘뿐. AUTO 없음, torch 없음, preview 중 상시 점등 없음
+- `MirrorCamera.flashMode(wantsFlash:supported:)` 순수 함수가 mode를 정한다 —
+  `supportedFlashModes`에 없는 값을 요청하지 않고, 아무것도 없으면 settings를 건드리지 않는다
+- settings는 촬영마다 새로 만든다
+- **공식 flash가 있으면 그것을 쓴다** — 후면 LED든 전면 Retina Flash든 같은 API다.
+  어떤 기기가 전면 flash를 지원하는지 우리가 표로 적지 않고 `supportedFlashModes`에 물어본다
+- 없으면 **화면 flash**: 흰 화면 + 밝기 최대 → 220ms 안정화 → 촬영 → 즉시 복원.
+  밝기는 성공·실패·취소·백그라운드·화면 이탈 모두에서 되돌린다
+- 흰 화면은 저장 이미지에 합성되지 않는다 (사진은 화면 스냅샷이 아니다)
+- 카메라를 전환해도 ON/OFF 의도는 유지된다. 앱 재실행 시 OFF
+- 촬영 요청은 시작 시점의 position / flash를 고정한다. 중복 촬영과 촬영 중 전환을 막는다
+
+### rear → front 180° 뒤집힘 수정
+
+증상: 초기 front 정상, rear 정상, **rear → front에서만** preview가 뒤집혔다.
+
+원인은 각도 값이 아니라 **적용 범위**였다. 같은 90도가 초기 front에서도 rear에서도
+정방향으로 나왔으므로 device별 각도 문제가 아니다. 실제 원인은 둘:
+
+1. `applyConnections`가 `session.outputs`의 connection만 돌았다.
+   **preview layer의 connection은 output이 아니라** `AVCaptureVideoPreviewLayer`가
+   세션에 직접 만드는 것이라 전환 때 아무도 다시 설정하지 않았다
+2. `CameraPreviewView`가 생성 시점에 `isVideoMirrored = true`를 **한 번** 박아 두고 있었다.
+   소유자가 둘이라 전환 후 상태가 갈라졌다
+
+수정:
+
+- `applyConnections(for position:)`가 **`session.connections`** 전체를 돈다 —
+  video data output · photo output · preview layer가 한 규칙을 쓴다
+- `CameraPreviewView`는 정책을 정하지 않는다. 붙은 직후
+  `camera.applyCurrentConnectionPolicy()`만 부른다 (preview는 세션 구성보다 늦게 붙는다)
+- 초기 구성 · 전환 성공 · 전환 실패 복원 · preview 부착 **네 경로가 같은 함수** 하나로 간다
+- `automaticallyAdjustsVideoMirroring = false`를 모든 video connection에 건다
+- 회전 각은 여전히 상수 하나. device별 magic number를 만들지 않았다
+- DEBUG 로그에 실제 값을 남긴다:
+  `[MirrorCamera] connection position=front rotation=90.0 mirrored=true auto=false`
+
+### 잠금화면 (회귀 금지)
+
+`GgumirrorCapture`는 `MirrorCamera()` 그대로 — front 고정 · 전환 없음 · flash 없음 ·
+photo output 없음 · `currentFrame()` 경로 · preset frame · transparent `.none` ·
+`sessionContentURL` · hardware capture · `openApplication` 전부 유지.
+
+(`MirrorCamera.swift`를 두 target이 공유하므로 extension 바이너리에 `AVCapturePhotoOutput`
+심볼은 링크된다. 실행 경로가 `role == .mirror`로 막혀 있어 동작·시작시간·서명에는 영향이 없다.)
+
+### 아직 아닌 것
+
+zoom · 노출 · 초점 UI · torch · auto flash · 동영상 · RAW · Live Photo ·
+후면 렌즈 선택(0.5x/2x/5x) · 카메라/플래시 선택 영구 저장 · 잠금화면 전환/플래시.
+
 ## Phase C-2A — Transparent Frame + Guide Visibility (확정)
 
 목표 두 가지: 프레임을 완전히 투명하게 만들 수 있게 하고, 편집 guide가 실제 Mirror에

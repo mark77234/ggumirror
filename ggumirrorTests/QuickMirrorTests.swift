@@ -548,7 +548,7 @@ struct QuickMirrorTests {
         let view = try repoFile("GgumirrorCapture/GgumirrorCaptureViewFinder.swift")
         let frame = try #require(view.range(of: "QuickMirrorFrameView(preset:"))
         let controls = try #require(view.range(of: "\n            controls"))
-        let camera = try #require(view.range(of: "CameraPreviewView(session:"))
+        let camera = try #require(view.range(of: "CameraPreviewView(camera:"))
         #expect(camera.lowerBound < frame.lowerBound)
         #expect(frame.lowerBound < controls.lowerBound)
     }
