@@ -22,7 +22,11 @@ import UserMessagingPlatform
 nonisolated enum MobileAdsStarter {
     /// 동의 확인이 끝난 뒤에만 불린다. `AdsConsent`가 한 번만 부르도록 보장한다.
     static func start() {
-        MobileAds.shared.start(completionHandler: nil)
+        AdLog.diagnostic("mobile ads start requested")
+        MobileAds.shared.start { status in
+            // adapter가 몇 개 준비됐는지만 남긴다. adapter 이름/상세는 담지 않는다.
+            AdLog.diagnostic("mobile ads started adapters=\(status.adapterStatusesByClassName.count)")
+        }
     }
 }
 
@@ -48,14 +52,40 @@ private func topViewController() -> UIViewController? {
 nonisolated struct UMPConsentGateway: AdsConsentGateway {
     func requestUpdate() async {
         let parameters = RequestParameters()
+        AdLog.diagnostic("consent update started")
         await withCheckedContinuation { continuation in
             ConsentInformation.shared.requestConsentInfoUpdate(with: parameters) { error in
-                if error != nil {
+                if let error = error as NSError? {
                     // 동의 정보를 못 받았다. 광고만 못 나갈 뿐 앱은 그대로 동작한다.
-                    AdLog.event("consent info update failed")
+                    AdLog.diagnostic(
+                        "consent update failed domain=\(error.domain) code=\(error.code)"
+                    )
+                } else {
+                    AdLog.diagnostic("consent update completed")
                 }
                 continuation.resume()
             }
+        }
+    }
+
+    /// 진단용 상태 이름. **동의 내용이 아니라 상태 분류만** 담는다.
+    var diagnosticStatus: String {
+        get async {
+            let information = ConsentInformation.shared
+            let status: String = switch information.consentStatus {
+            case .notRequired: "notRequired"
+            case .required: "required"
+            case .obtained: "obtained"
+            case .unknown: "unknown"
+            @unknown default: "unrecognized"
+            }
+            let privacyOptions: String = switch information.privacyOptionsRequirementStatus {
+            case .required: "required"
+            case .notRequired: "notRequired"
+            case .unknown: "unknown"
+            @unknown default: "unrecognized"
+            }
+            return "consentStatus=\(status) privacyOptions=\(privacyOptions)"
         }
     }
 
@@ -128,12 +158,19 @@ final class GoogleRewardedAdPresenter: NSObject, RewardedAdPresenting {
             loaded.fullScreenContentDelegate = self
             ad = loaded
             loadedAt = now()
-            AdLog.event("rewarded ad loaded")
+            AdLog.diagnostic("rewarded load succeeded unitSuffix=\(AdLog.unitSuffix(adUnit))")
         } catch {
             // 못 받았다. 조각과는 아무 상관이 없다 — 화면만 "불러오지 못했어요"가 된다.
+            //
+            // **error를 버리지 않는다.** 예전에는 여기서 전부 삼켜서, Release에서
+            // 광고가 안 뜰 때 no fill인지 설정 오류인지 네트워크인지 알 수 없었다.
             ad = nil
             loadedAt = nil
-            AdLog.event("rewarded ad load failed")
+            AdLog.diagnostic(
+                "rewarded load failed unitSuffix=\(AdLog.unitSuffix(adUnit)) \(Self.summary(of: error))"
+            )
+            // 사람이 읽을 문장은 DEBUG에서만. Release 상시 로그에는 넣지 않는다.
+            AdLog.event("rewarded ad load failed: \((error as NSError).localizedDescription)")
         }
     }
 
@@ -169,9 +206,37 @@ final class GoogleRewardedAdPresenter: NSObject, RewardedAdPresenting {
             ad.present(from: topViewController(), userDidEarnRewardHandler: { [weak self] in
                 // **여기서 조각을 주지 않는다.** 서버가 Google 서명을 확인해야 지급이다.
                 self?.didEarnReward = true
-                AdLog.event("reward condition met — 서버 확인 대기")
+                AdLog.diagnostic("reward condition met")
             })
         }
+    }
+
+    /// load 실패를 **분류값으로만** 요약한다.
+    ///
+    /// 담는 것: error domain / code, adapter 응답 개수, 낙찰 adapter 유무,
+    /// 첫 adapter의 class 이름과 error domain/code.
+    /// **담지 않는 것**: `dictionaryRepresentation` 전체 dump · `responseIdentifier` ·
+    /// `extras` · localizedDescription. 진단에 필요하지 않고 무엇이 들어 있는지 보장할 수 없다.
+    private static func summary(of error: any Error) -> String {
+        let failure = error as NSError
+        var parts = ["domain=\(failure.domain)", "code=\(failure.code)"]
+
+        guard let info = failure.userInfo[GADErrorUserInfoKeyResponseInfo] as? ResponseInfo else {
+            // ResponseInfo가 없다는 것도 정보다 — 요청이 Google까지 가지 못한 경우가 많다.
+            parts.append("responseInfo=none")
+            return parts.joined(separator: " ")
+        }
+
+        parts.append("adapters=\(info.adNetworkInfoArray.count)")
+        parts.append("loadedAdapter=\(info.loadedAdNetworkResponseInfo != nil)")
+        if let first = info.adNetworkInfoArray.first {
+            parts.append("adapter=\(first.adNetworkClassName)")
+            if let adapterError = first.error as NSError? {
+                parts.append("adapterDomain=\(adapterError.domain)")
+                parts.append("adapterCode=\(adapterError.code)")
+            }
+        }
+        return parts.joined(separator: " ")
     }
 
     private func finish(_ result: RewardedAdResult) {
@@ -185,13 +250,15 @@ final class GoogleRewardedAdPresenter: NSObject, RewardedAdPresenting {
 
 extension GoogleRewardedAdPresenter: FullScreenContentDelegate {
     func adDidDismissFullScreenContent(_ ad: any FullScreenPresentingAd) {
+        AdLog.diagnostic("rewarded dismissed earned=\(didEarnReward)")
         // 보상 조건을 채웠을 때만 `.watched`다.
         // 중간에 닫은 경우까지 `.watched`로 만들면, 오지 않을 SSV를 기다리게 된다.
         finish(didEarnReward ? .watched : .dismissed)
     }
 
     func ad(_ ad: any FullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: any Error) {
-        AdLog.event("rewarded ad present failed")
+        let failure = error as NSError
+        AdLog.diagnostic("rewarded present failed domain=\(failure.domain) code=\(failure.code)")
         finish(.unavailable)
     }
 }

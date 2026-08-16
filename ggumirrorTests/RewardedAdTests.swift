@@ -469,6 +469,9 @@ final class FakeConsentGateway: AdsConsentGateway, @unchecked Sendable {
     func presentFormIfRequired() async { formCount += 1 }
     var canRequestAds: Bool { get async { allowsAds } }
     var privacyOptionsRequired: Bool { get async { requiresPrivacyOptions } }
+    var diagnosticStatus: String {
+        get async { "consentStatus=obtained privacyOptions=\(requiresPrivacyOptions ? "required" : "notRequired")" }
+    }
     func presentPrivacyOptions() async { privacyOptionsCount += 1 }
 }
 
@@ -620,6 +623,16 @@ struct AdsBuildConfigTests {
         return try String(contentsOf: root.appending(path: path), encoding: .utf8)
     }
 
+    /// 주석은 검사 대상이 아니다 — 문서에 쓴 단어가 test를 깨면 안 된다.
+    private func codeOnly(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard let comment = line.range(of: "//") else { return String(line) }
+                return String(line[..<comment.lowerBound])
+            }
+            .joined(separator: "\n")
+    }
+
     private let productionAppID = "ca-app-pub-5460686409666356~3170610279"
     private let productionAdUnit = "ca-app-pub-5460686409666356/5740149472"
 
@@ -657,6 +670,97 @@ struct AdsBuildConfigTests {
         // 중복 없이 들어갔는지 — 같은 값이 두 번 있으면 검증에서 걸린다.
         let ids = plist.components(separatedBy: ".skadnetwork").count - 1
         #expect(ids >= 40, "SKAdNetwork 항목이 너무 적다: \(ids)")
+    }
+
+    // MARK: - Release 진단 로깅
+
+    private func adsSources() throws -> [(String, String)] {
+        try ["ggumirror/Ads/RewardedAds.swift",
+             "ggumirror/Ads/GoogleAds.swift",
+             "ggumirror/Ads/AdsConsent.swift"].map { ($0, codeOnly(try repoFile($0))) }
+    }
+
+    @Test("Release 빌드가 광고에 대해 완전히 침묵하지 않는다")
+    func releaseIsNotSilent() throws {
+        let log = codeOnly(try repoFile("ggumirror/Ads/RewardedAds.swift"))
+
+        // os.Logger 경로가 있고, DEBUG 밖에서도 남는다.
+        #expect(log.contains("import os"))
+        #expect(log.contains("Logger(subsystem:"))
+        #expect(log.contains("static func diagnostic("))
+
+        // diagnostic 본문의 Logger 호출이 #if DEBUG 안에 갇혀 있지 않아야 한다.
+        let body = try #require(log.range(of: "static func diagnostic(").map { log[$0.lowerBound...] })
+        let head = String(body.prefix(240))
+        let loggerLine = try #require(head.range(of: "logger.info"))
+        let debugGuard = head.range(of: "#if DEBUG")
+        if let debugGuard {
+            #expect(loggerLine.lowerBound < debugGuard.lowerBound,
+                    "Release 진단 로그가 DEBUG 안에 갇혔다")
+        }
+    }
+
+    @Test("진단해야 할 lifecycle 이벤트가 Release 경로로 남는다")
+    func lifecycleEventsAreDiagnostic() throws {
+        let sources = try adsSources().map(\.1).joined(separator: "\n")
+
+        for event in ["consent update started", "consent update completed", "consent resolved",
+                      "mobile ads start requested", "mobile ads started",
+                      "rewarded preload started", "rewarded load succeeded", "rewarded load failed",
+                      "rewarded present started", "reward condition met", "rewarded dismissed",
+                      "verification pending", "server reward reflected"] {
+            #expect(sources.contains(event), "Release 진단 이벤트가 없다: \(event)")
+        }
+    }
+
+    @Test("load 실패의 domain / code / adapter 요약을 버리지 않는다")
+    func loadFailureKeepsDiagnostics() throws {
+        let adapter = codeOnly(try repoFile("ggumirror/Ads/GoogleAds.swift"))
+
+        #expect(adapter.contains(#"domain=\(failure.domain)"#) || adapter.contains(#"domain=\(error.domain)"#))
+        #expect(adapter.contains(#"code=\(failure.code)"#) || adapter.contains(#"code=\(error.code)"#))
+        #expect(adapter.contains("GADErrorUserInfoKeyResponseInfo"))
+        #expect(adapter.contains("adapters="))
+        #expect(adapter.contains("loadedAdapter="))
+
+        // ResponseInfo를 통째로 쏟지 않는다.
+        #expect(!adapter.contains("dictionaryRepresentation"))
+        #expect(!adapter.contains("responseIdentifier"))
+        #expect(!adapter.contains(".extras"))
+    }
+
+    @Test("Release 상시 로그에 localizedDescription을 넣지 않는다")
+    func localizedDescriptionStaysInDebug() throws {
+        let adapter = codeOnly(try repoFile("ggumirror/Ads/GoogleAds.swift"))
+        // localizedDescription을 쓰더라도 DEBUG 전용 통로(AdLog.event)로만.
+        for line in adapter.split(separator: "\n") where line.contains("localizedDescription") {
+            #expect(line.contains("AdLog.event"), "localizedDescription이 Release 로그로 나간다: \(line)")
+        }
+    }
+
+    @Test("광고 로그에 사용자를 가리키는 값이 없다")
+    func adLogsNeverCarryUserData() throws {
+        for (path, source) in try adsSources() {
+            for line in source.split(separator: "\n")
+            where line.contains("AdLog.diagnostic") || line.contains("AdLog.event") {
+                for forbidden in ["accessToken", "identityToken", "context)", "customRewardText",
+                                 "transaction", "signature", "userID", "email"] {
+                    #expect(!line.contains(forbidden), "\(path) 로그에 \(forbidden)이 들어간다: \(line)")
+                }
+            }
+        }
+    }
+
+    @Test("ad unit을 통째로 로그에 넣지 않는다")
+    func adUnitIsTruncatedInLogs() throws {
+        let sources = try adsSources().map(\.1).joined(separator: "\n")
+
+        // 로그에는 unitSuffix만 쓴다.
+        #expect(sources.contains("AdLog.unitSuffix("))
+        #expect(sources.contains(#"unitSuffix=\(AdLog.unitSuffix("#))
+        // 전체 ID 문자열이 로그 문구에 박혀 있지 않다.
+        #expect(!sources.contains("ca-app-pub-5460686409666356/5740149472"))
+        #expect(!sources.contains("ca-app-pub-3940256099942544/1712485313"))
     }
 
     @Test("잠금화면 extension에는 광고 SDK를 연결하지 않는다")

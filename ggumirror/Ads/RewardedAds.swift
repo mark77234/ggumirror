@@ -20,6 +20,7 @@
 //
 
 import Foundation
+import os
 
 // MARK: - 광고를 띄우는 쪽 (SDK 경계)
 
@@ -108,8 +109,11 @@ final class RewardedAdController {
         guard canRequestAds else { return }
         guard let adUnit, let presenter, phase == .idle || phase == .unavailable else { return }
         phase = .loading
+        AdLog.diagnostic("rewarded preload started unitSuffix=\(AdLog.unitSuffix(adUnit))")
         await presenter.load(adUnit: adUnit)
-        phase = await presenter.isReady ? .idle : .unavailable
+        let ready = await presenter.isReady
+        phase = ready ? .idle : .unavailable
+        AdLog.diagnostic("rewarded preload finished ready=\(ready)")
     }
 
     /// CTA. 로그인돼 있어야 하고, 남은 횟수가 있어야 한다.
@@ -127,7 +131,8 @@ final class RewardedAdController {
         do {
             context = try await backend.rewardedAdContext(accessToken: session.accessToken)
         } catch {
-            AdLog.event("reward context failed")
+            // context를 못 받았다. **값은 남기지 않는다** — 실패했다는 사실만.
+            AdLog.diagnostic("reward context request failed")
             phase = .unavailable
             return
         }
@@ -138,12 +143,15 @@ final class RewardedAdController {
         }
 
         phase = .presenting
+        AdLog.diagnostic("rewarded present started unitSuffix=\(AdLog.unitSuffix(adUnit))")
         let result = await presenter.present(context: context)
+        AdLog.diagnostic("rewarded present finished result=\(result)")
 
         switch result {
         case .watched:
             // 광고 UX가 끝났을 뿐이다. 보상은 서버가 확인해준다.
             phase = .verifying
+            AdLog.diagnostic("verification pending")
             await waitForServerReward(session: session, wallet: wallet)
             phase = .idle
         case .dismissed:
@@ -165,21 +173,53 @@ final class RewardedAdController {
             if delay != .zero { await sleep(delay) }
             await wallet.refresh(session: session)
             if wallet.rewardedToday > before {
-                AdLog.event("reward confirmed by server")
+                AdLog.diagnostic("server reward reflected")
                 return
             }
         }
         // 아직 안 왔다. 화면은 그대로 두고, 다음 새로고침(scene 복귀 등)이 가져간다.
-        AdLog.event("reward not confirmed yet")
+        AdLog.diagnostic("server reward not reflected yet")
     }
 }
 
 // MARK: - 로그
 
+/// 광고 로그는 두 갈래다.
+///
+/// - `event` — **DEBUG 전용** 상세 로그. Xcode console에서만 본다
+/// - `diagnostic` — **Release에서도 남는** 진단 로그. `os.Logger`로 나간다
+///
+/// Release 갈래를 둔 이유는 하나다. 예전에는 광고 로그가 전부 `#if DEBUG`라
+/// **Release에서 광고가 안 뜨면 원인을 볼 방법이 없었다.** Debug는 Google demo unit을,
+/// Release는 실제 ad unit을 쓰기 때문에 정작 봐야 할 쪽이 침묵하고 있었다.
+///
+/// 진단 로그에 담는 것은 **분류값뿐**이다 — 상태 이름 · error domain/code ·
+/// adapter 개수 · ad unit의 뒷자리. 사용자를 가리키는 값은 어느 갈래에도 넣지 않는다:
+/// access token · Apple identity token · reward context(custom_data) · transaction_id ·
+/// SSV signature · raw callback URL · 내부 user UUID · email.
 nonisolated enum AdLog {
+    private static let logger = Logger(subsystem: "com.mark77234.ggumirror", category: "ads")
+
+    /// DEBUG 전용 상세 로그.
     static func event(_ message: String) {
         #if DEBUG
         print("[Ads] \(message)")
         #endif
+    }
+
+    /// Release에서도 남는 진단 로그.
+    ///
+    /// `privacy: .public`을 쓰는 이유는 **여기 오는 값이 이미 분류값뿐**이기 때문이다.
+    /// 사용자 데이터를 넣지 않는 것은 이 함수가 아니라 **부르는 쪽의 책임**이다.
+    static func diagnostic(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        #if DEBUG
+        print("[Ads] \(message)")
+        #endif
+    }
+
+    /// ad unit을 통째로 남기지 않는다. 어느 단위인지 알아볼 만큼만 뒤에서 자른다.
+    static func unitSuffix(_ adUnit: String) -> String {
+        adUnit.split(separator: "/").last.map(String.init) ?? "unknown"
     }
 }

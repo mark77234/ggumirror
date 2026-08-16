@@ -32,6 +32,8 @@ nonisolated protocol AdsConsentGateway: Sendable {
     var canRequestAds: Bool { get async }
     /// 설정에 "광고 개인정보 설정" 항목을 보여줘야 하는가.
     var privacyOptionsRequired: Bool { get async }
+    /// 진단용 상태 이름(동의 내용이 아니라 분류만).
+    var diagnosticStatus: String { get async }
     /// 사용자가 그 항목을 눌렀을 때.
     func presentPrivacyOptions() async
 }
@@ -74,11 +76,13 @@ final class AdsConsent {
 
         canRequestAds = await gateway.canRequestAds
         showsPrivacyOptions = await gateway.privacyOptionsRequired
+        AdLog.diagnostic(
+            "consent resolved \(await gateway.diagnosticStatus) canRequestAds=\(canRequestAds)"
+        )
 
         guard canRequestAds, !hasStartedMobileAds else { return }
         hasStartedMobileAds = true
         startMobileAds()
-        AdLog.event("mobile ads started")
     }
 
     /// 설정 → 광고 개인정보 설정.
