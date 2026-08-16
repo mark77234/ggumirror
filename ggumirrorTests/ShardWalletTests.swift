@@ -21,6 +21,16 @@ final class FakeShardBackend: ShardBackend, @unchecked Sendable {
     var result: Result<ShardBalance, BackendError>
     private(set) var receivedTokens: [String] = []
 
+    /// 출석. 서버가 하루의 진실을 쥐고 있으므로 test도 서버 응답만 바꾼다.
+    var attendanceResult: Result<AttendanceStatus, BackendError> =
+        .success(AttendanceStatus(attendanceDate: "2026-08-16", claimed: false))
+    var claimResult: Result<AttendanceClaim, BackendError> =
+        .success(AttendanceClaim(attendanceDate: "2026-08-16", claimed: true, reward: 1, balance: 1))
+    private(set) var claimCount = 0
+    private(set) var attendanceTokens: [String] = []
+    /// claim이 이만큼 기다린 뒤에 응답한다. 두 번 누르기를 시험할 때만 쓴다.
+    var claimDelay: Duration?
+
     init(balance: Int = 0, lifetimeEarned: Int = 0, lifetimeSpent: Int = 0) {
         result = .success(ShardBalance(
             balance: balance, lifetimeEarned: lifetimeEarned, lifetimeSpent: lifetimeSpent
@@ -30,6 +40,18 @@ final class FakeShardBackend: ShardBackend, @unchecked Sendable {
     func shards(accessToken: String) async throws -> ShardBalance {
         receivedTokens.append(accessToken)
         return try result.get()
+    }
+
+    func attendance(accessToken: String) async throws -> AttendanceStatus {
+        attendanceTokens.append(accessToken)
+        return try attendanceResult.get()
+    }
+
+    func claimAttendance(accessToken: String) async throws -> AttendanceClaim {
+        claimCount += 1
+        attendanceTokens.append(accessToken)
+        if let claimDelay { try? await Task.sleep(for: claimDelay) }
+        return try claimResult.get()
     }
 }
 

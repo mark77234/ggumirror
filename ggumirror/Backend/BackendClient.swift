@@ -140,6 +140,31 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend {
         }
     }
 
+    // MARK: 출석
+
+    /// 오늘 조각을 받을 수 있는지. 날짜 판단은 **서버**가 한다.
+    func attendance(accessToken: String) async throws -> AttendanceStatus {
+        let data = try await send("users/me/attendance", method: "GET", accessToken: accessToken)
+        do {
+            return try JSONDecoder.backend.decode(AttendanceStatus.self, from: data)
+        } catch {
+            BackendLog.event("GET /users/me/attendance decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
+    /// 오늘의 조각 받기. **body를 보내지 않는다** —
+    /// userId · date · amount · reason을 client가 정하는 자리를 만들지 않는다.
+    func claimAttendance(accessToken: String) async throws -> AttendanceClaim {
+        let data = try await send("users/me/attendance", method: "POST", accessToken: accessToken)
+        do {
+            return try JSONDecoder.backend.decode(AttendanceClaim.self, from: data)
+        } catch {
+            BackendLog.event("POST /users/me/attendance decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
     // MARK: 전송
 
     private func send(

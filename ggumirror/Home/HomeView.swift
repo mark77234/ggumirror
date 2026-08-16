@@ -10,6 +10,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(ShardWallet.self) private var shards
+    @Environment(AuthSession.self) private var session
     var library: MirrorLibrary
     var onOpenMirror: () -> Void
     var onEdit: (RootView.EditorRequest) -> Void
@@ -74,6 +75,8 @@ struct HomeView: View {
         VStack(spacing: 14) {
             header
 
+            dailyShard
+
             // 남는 공간을 미리보기가 차지한다. 비율은 다른 화면과 같은 9:19.5.
             currentMirror
                 .frame(maxWidth: .infinity, maxHeight: previewMaxHeight ?? .infinity)
@@ -114,6 +117,57 @@ struct HomeView: View {
             .accessibilityLabel("설정")
         }
         .padding(.vertical, 2)
+    }
+
+    // MARK: - 오늘의 조각
+
+    /// 하루 한 번 출석 +1. **client는 잔액을 올리지 않는다** —
+    /// 눌러도 서버가 지급하고, 화면에 반영되는 숫자는 서버가 준 잔액뿐이다.
+    ///
+    /// 로그인하지 않았으면 **설정의 기존 Apple 로그인**으로 보낸다.
+    /// 조각 때문에 거울 · 촬영 · 꾸미기 앞에 로그인 벽을 세우지 않는다.
+    @ViewBuilder
+    private var dailyShard: some View {
+        if session.state.isSignedIn, session.server?.isValid() == true {
+            let isDone = shards.attendance == .claimed
+            Button {
+                Task { await shards.claimAttendance(session: session.server) }
+            } label: {
+                dailyShardLabel(isDone ? "오늘 출석 완료" : "오늘의 조각 받기 · +1", isDone: isDone)
+            }
+            .buttonStyle(InkPressStyle())
+            .disabled(isDone || shards.isClaiming)
+            .opacity(shards.isClaiming ? 0.6 : 1)
+            .accessibilityIdentifier("claimAttendance")
+        } else {
+            NavigationLink(value: SettingsRoute.settings) {
+                dailyShardLabel("로그인하고 오늘의 조각 받기", isDone: false)
+            }
+            .buttonStyle(InkPressStyle())
+            .accessibilityIdentifier("attendanceSignIn")
+        }
+    }
+
+    private func dailyShardLabel(_ title: String, isDone: Bool) -> some View {
+        Text(title)
+            .font(InkFont.button)
+            .foregroundStyle(isDone ? PaperTheme.disabled : PaperTheme.paper)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .padding(.vertical, 4)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(18, 21, 17, 22)
+                Group {
+                    if isDone {
+                        shape
+                            .fill(PaperTheme.pressed)
+                            .overlay(shape.stroke(PaperTheme.disabled, lineWidth: 1.8))
+                    } else {
+                        shape.fill(PaperTheme.ink)
+                    }
+                }
+                .rotationEffect(.degrees(-0.3))
+            }
+            .contentShape(.rect)
     }
 
     private var currentMirror: some View {
@@ -157,4 +211,6 @@ struct HomeView: View {
 
 #Preview {
     HomeView(library: MirrorLibrary(), onOpenMirror: {}, onEdit: { _ in })
+        .environment(ShardWallet())
+        .environment(AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore()))
 }

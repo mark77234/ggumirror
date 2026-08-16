@@ -669,26 +669,12 @@ struct QuickMirrorTests {
         #expect(!project.lowercased().contains("opicmobile"))
     }
 
-    @Test("extension 버전이 본앱과 같다 — 다르면 App Store 검증에서 막힌다")
-    func extensionVersionsMatchApp() throws {
-        let project = try projectFile()
-
-        // extension target의 build config 안에서만 확인한다(test target은 무관하다).
-        for bundleID in ["com.mark77234.ggumirror.capture", "com.mark77234.ggumirror.controls"] {
-            var searched = project[...]
-            var found = 0
-            while let hit = searched.range(of: "PRODUCT_BUNDLE_IDENTIFIER = \(bundleID);") {
-                // 이 config block의 시작으로 되짚어 올라간다.
-                let blockStart = project[..<hit.lowerBound].range(of: "buildSettings = {", options: .backwards)
-                let block = String(project[(blockStart?.upperBound ?? hit.lowerBound)..<hit.upperBound])
-                #expect(block.contains("CURRENT_PROJECT_VERSION = 3;"), "\(bundleID) 버전이 본앱과 다르다")
-                #expect(block.contains("MARKETING_VERSION = 1.0.2;"), "\(bundleID) marketing 버전이 다르다")
-                found += 1
-                searched = project[hit.upperBound...]
-            }
-            #expect(found == 2, "\(bundleID)의 Debug/Release config를 찾지 못했다")
-        }
-    }
+    // extension ↔ 본앱 버전 parity는 `AppConfigTests.extensionsMatchTheApp`이 지킨다.
+    //
+    // 여기 있던 test는 extension 버전이 `3` / `1.0.2`인지를 **숫자로 박아** 확인했다.
+    // 본앱만 `4` / `1.0.3`으로 올라갔을 때 그 test는 그대로 통과했고,
+    // 정작 지키려던 "본앱과 같다"는 규칙만 조용히 깨졌다.
+    // 기대값을 상수로 적지 않고 **본앱 설정과 비교**해야 이런 일이 생기지 않는다.
 
 
     // MARK: - 하드웨어 촬영 버튼 (Apple 요구사항)

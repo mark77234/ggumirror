@@ -21,6 +21,7 @@ struct RootView: View {
     @State private var quickMirrorRequest = QuickMirrorRequest.shared
     /// 조각 잔액. 서버가 정한 값을 보여주기만 한다.
     @State private var shards = ShardWallet.live
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
     struct EditorRequest: Identifiable {
@@ -54,6 +55,12 @@ struct RootView: View {
             // **서버 지갑은 그대로 있다** — 이 기기의 표시만 바뀐다.
             .onChange(of: session.server) { _, server in
                 Task { await shards.refresh(session: server) }
+            }
+            // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
+            // 되돌아올 때 한 번 물어볼 뿐이고, 주기적으로 서버를 두드리지 않는다.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task { await shards.refresh(session: session.server) }
             }
             // 현재 거울이 바뀌면(다른 거울 선택 · 꾸미기 저장) 잠금화면 프레임도 따라간다.
             // 사용자가 "동기화"를 누를 일은 없다.

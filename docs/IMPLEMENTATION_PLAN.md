@@ -1428,6 +1428,86 @@ external event id로 사용 → 하루 5회 상한 → reason `rewarded_ad`.
 지급 · 차감 endpoint · 출석 · 광고 보상 · IAP · Pass · 실제 구매 · 판매 정산.
 사용자 화면에서 조각이 실제로 늘거나 줄지 않는다 — 지금은 **서버 잔액을 보여주기만** 한다.
 
+## Phase B-4 — Daily Attendance Reward (확정)
+
+로그인한 사용자가 하루 한 번 출석하면 **거울조각 +1**.
+B-3 원장 위에 얹은 **첫 실제 shard mutation**이다.
+
+### 왜 "하루"가 이 Phase의 전부인가
+
+지급 자체는 B-3이 이미 한다. 새로 정해야 하는 것은 **하루의 정의**뿐이고,
+그것을 client에 두면 기기 시계를 바꾸거나 앱을 지웠다 깔아서 무한히 받을 수 있다.
+
+| | |
+|---|---|
+| 보상 | **+1** |
+| 한도 | **Asia/Seoul calendar day 당 1회** |
+| authority | **server** |
+| client 날짜 | **신뢰하지 않는다** |
+| ledger reason | `daily_attendance` |
+| external event id | server KST 날짜 `YYYY-MM-DD` |
+
+### Backend (`ggumirror-be/app/shards/attendance.py`)
+
+```
+server 시각(UTC) → Asia/Seoul → YYYY-MM-DD → external_event_id
+```
+
+- UTC 2026-08-13 15:01 = **KST 2026-08-14 00:01** → 출석일 `2026-08-14`
+- `attendance_date(now=None)` — `now`는 **test 전용**. production은 server 시계다.
+  timezone-naive datetime은 거부한다
+- KST는 고정 offset(+09:00). 한국은 1988년 이후 DST가 없고, container tzdata에
+  의존하지 않는다
+- 정책은 **Asia/Seoul calendar day**, 구현은 server-authoritative **UTC+09:00 고정
+  offset**이다(현행 한국 civil time과 일치). rule이 바뀌면 `ZoneInfo`로 옮긴다
+- 지급은 `credit(1, daily_attendance, external_event_id=<KST 날짜>)` 한 줄.
+  하루 한 번 보장은 **원장의 idempotency**가 한다 — 별도 잠금 장치를 만들지 않았다
+- **출석 collection을 만들지 않았다.** 상태 조회는 `has_event`로 원장에 묻는다.
+  같은 경제 사실의 authority를 두 곳에 두지 않는다
+- **"이번 요청이 지급했는가"는 원장 transaction의 결과에서 나온다**
+  (`ShardMutationResult.applied`). 지급 전에 조회해서 짐작하면 동시 요청이 둘 다
+  "내가 지급했다"고 답한다 — 잔액은 맞지만 응답이 거짓말이 된다
+
+| method | path | auth | body |
+|---|---|---|---|
+| GET | `/users/me/attendance` | Bearer | — |
+| POST | `/users/me/attendance` | Bearer | **없음** |
+
+```json
+{ "attendanceDate": "2026-08-16", "claimed": true, "reward": 1, "balance": 1 }
+```
+
+같은 날 두 번째 POST → `claimed: false, reward: 0`, 잔액 그대로.
+**중복은 오류가 아니라 idempotent success다** — 재시도가 정상 동작이기 때문이다.
+
+`claimed=true`는 **이 요청이 지급했다**, `claimed=false`는 **이미 지급돼 이 요청은
+지급하지 않았다**는 뜻이다. 동시 10요청이면 HTTP 200 × 10에 `claimed=true`는
+**정확히 하나**다. client는 `claimed=false`를 실패로 보지 않고 "오늘 출석 완료"로 간다.
+
+`userId` · `date` · `amount` · `reason`을 받는 자리가 없다.
+누구인지는 Bearer session, 며칠인지는 server 시계, 얼마인지는 서버 상수가 정한다.
+
+### Client
+
+- `ShardWallet`에 `attendance`(`.unknown` / `.available` / `.claimed`)와
+  `claimAttendance(session:)` 추가. 응답의 `balance`를 **그대로 대입**한다 —
+  `balance += 1`은 없다. 실패하면 아무 것도 바꾸지 않는다
+- `BackendClient` — `GET` / `POST users/me/attendance`. POST에 body를 싣지 않는다
+- `HomeView` 잔액 칩 아래 CTA 한 줄:
+  `오늘의 조각 받기 · +1` / `오늘 출석 완료` / `로그인하고 오늘의 조각 받기`.
+  **새 화면을 만들지 않았다**
+- 로그인하지 않았으면 설정의 **기존 Apple 로그인**으로 보낸다. 새 auth 구현 없음
+- 다시 읽는 시점: view 진입 · **scene active 복귀** · 로그인 상태 변화.
+  Timer polling 없음 — 앱을 켜 둔 채 KST 자정을 넘겨도 다음 활성화 때 서버가 알려준다
+- client는 날짜를 계산하지 않는다 (`Date()` · `Calendar` · `TimeZone` ·
+  `DateFormatter` · `UserDefaults` 사용 없음. test가 소스 레벨로 고정한다)
+
+### 아직 아닌 것
+
+streak · 연속 출석 · 7일 보너스 · 달력 · 지난 출석 복구 · 알림.
+AdMob · Rewarded Ad · SSV · IAP · StoreKit · RevenueCat · Pass · 마켓.
+딱 하루 한 번 +1이다.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

@@ -28,6 +28,18 @@ final class ShardWallet {
     private(set) var lifetimeSpent = 0
     private(set) var isLoading = false
 
+    /// 오늘 출석 조각을 받을 수 있는지. **서버가 답한다.**
+    ///
+    /// 기기 날짜 · timezone · UserDefaults로 판단하지 않는다 — 하루의 기준은
+    /// 서버 시계의 Asia/Seoul 날짜 하나뿐이다. 아직 물어보지 못했으면 `.unknown`이고,
+    /// 그 상태에서 눌러도 안전하다(받을 수 있는지는 어차피 서버가 정한다).
+    enum Attendance: Sendable { case unknown, available, claimed }
+
+    private(set) var attendance: Attendance = .unknown
+    /// 출석 요청 중. 버튼을 두 번 누르는 것을 막는 **표시용** 장치다 —
+    /// 보안 경계가 아니다. 서버 API를 직접 반복 호출해도 +1은 정확히 한 번이다.
+    private(set) var isClaiming = false
+
     private let backend: any ShardBackend
 
     init(backend: any ShardBackend = BackendClient()) {
@@ -54,6 +66,37 @@ final class ShardWallet {
             // 임의로 0으로 만들면 "조각이 사라졌다"처럼 보인다.
             ShardLog.event("wallet refresh failed")
         }
+
+        // 출석은 따로 묻는다. 한쪽이 실패해도 다른 쪽 표시를 잃지 않는다.
+        do {
+            attendance = try await backend.attendance(accessToken: session.accessToken).claimed
+                ? .claimed
+                : .available
+        } catch {
+            ShardLog.event("attendance refresh failed")
+        }
+    }
+
+    /// 오늘의 조각을 받는다. **여기서 잔액을 더하지 않는다** —
+    /// 반영하는 것은 서버가 계산해서 돌려준 `balance`뿐이다.
+    ///
+    /// 이미 받은 날이면 서버가 `claimed=false, reward=0`과 **실제 잔액**을 돌려준다.
+    /// 그래서 응답을 못 받아 다시 눌러도 잔액이 부풀지 않고 오히려 제자리를 찾는다.
+    func claimAttendance(session: ServerSession?) async {
+        guard let session, session.isValid() else { return }
+        guard !isClaiming else { return }
+
+        isClaiming = true
+        defer { isClaiming = false }
+
+        do {
+            let result = try await backend.claimAttendance(accessToken: session.accessToken)
+            balance = result.balance
+            attendance = .claimed
+        } catch {
+            // 실패했으면 아무 일도 없었던 것이다. 가짜로 +1 하지 않는다.
+            ShardLog.event("attendance claim failed")
+        }
     }
 
     /// 로그아웃. **서버 지갑은 그대로 있고** 이 기기의 표시만 지운다.
@@ -61,6 +104,8 @@ final class ShardWallet {
         balance = 0
         lifetimeEarned = 0
         lifetimeSpent = 0
+        // 다음 사람의 출석 상태를 물려주지 않는다. 다시 로그인하면 서버에 다시 묻는다.
+        attendance = .unknown
     }
 }
 
@@ -72,10 +117,30 @@ nonisolated struct ShardBalance: Decodable, Equatable, Sendable {
     let lifetimeSpent: Int
 }
 
-/// 조각을 **읽는** 통로만 있다. 더하거나 빼는 함수는 없다 —
-/// 그런 것이 client에 있으면 서버가 client를 믿는 구조가 된다.
+/// `GET /users/me/attendance`. `attendanceDate`는 **서버가 정한 KST 날짜**다 —
+/// 표시용 참고값이고, 하루가 바뀌었는지 client가 계산하지 않는다.
+nonisolated struct AttendanceStatus: Decodable, Equatable, Sendable {
+    let attendanceDate: String
+    let claimed: Bool
+}
+
+/// `POST /users/me/attendance`. `claimed`는 **이번 호출이 지급했는가**이고,
+/// `balance`는 언제나 서버 원장이 계산한 현재 잔액이다.
+nonisolated struct AttendanceClaim: Decodable, Equatable, Sendable {
+    let attendanceDate: String
+    let claimed: Bool
+    let reward: Int
+    let balance: Int
+}
+
+/// 조각을 **읽는** 통로와, 이유가 정해진 **전용** 통로 하나뿐이다.
+/// 금액 · 사용자 · 날짜를 client가 정하는 함수는 없다 —
+/// 그런 것이 있으면 서버가 client를 믿는 구조가 된다.
 nonisolated protocol ShardBackend: Sendable {
     func shards(accessToken: String) async throws -> ShardBalance
+    func attendance(accessToken: String) async throws -> AttendanceStatus
+    /// 보내는 값이 없다. 누구인지는 session, 며칠인지는 서버 시계, 얼마인지는 서버가 정한다.
+    func claimAttendance(accessToken: String) async throws -> AttendanceClaim
 }
 
 // MARK: - 로그

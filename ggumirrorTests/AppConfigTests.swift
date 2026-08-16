@@ -211,6 +211,59 @@ struct AppConfigTests {
         }
     }
 
+    // MARK: - 앱 / extension 버전 parity
+
+    /// `PRODUCT_BUNDLE_IDENTIFIER` → (build number, marketing version).
+    ///
+    /// pbxproj를 **build configuration 블록 단위**로 나눠 bundle id를 열쇠로 읽는다.
+    /// 줄 번호나 target 이름 순서에 기대지 않으므로 Xcode가 파일을 다시 써도 견딘다.
+    private func projectVersions() throws -> [String: [(build: String, marketing: String)]] {
+        let text = try repoFile("ggumirror.xcodeproj/project.pbxproj")
+        var versions: [String: [(build: String, marketing: String)]] = [:]
+
+        for block in text.components(separatedBy: "isa = XCBuildConfiguration;").dropFirst() {
+            guard let bundle = value(of: "PRODUCT_BUNDLE_IDENTIFIER", in: block),
+                  let build = value(of: "CURRENT_PROJECT_VERSION", in: block),
+                  let marketing = value(of: "MARKETING_VERSION", in: block)
+            else { continue }
+            versions[bundle, default: []].append((build, marketing))
+        }
+        return versions
+    }
+
+    private func value(of key: String, in block: String) -> String? {
+        guard let start = block.range(of: "\(key) = "),
+              let end = block[start.upperBound...].firstIndex(of: ";")
+        else { return nil }
+        return String(block[start.upperBound..<end]).trimmingCharacters(in: .whitespaces)
+    }
+
+    @Test("앱과 extension의 build number / version이 같다")
+    func extensionsMatchTheApp() throws {
+        let versions = try projectVersions()
+
+        let app = try #require(versions["com.mark77234.ggumirror"]?.first)
+        // Debug / Release 두 configuration 모두 잡혔는지 먼저 확인한다.
+        #expect(versions["com.mark77234.ggumirror"]?.count == 2)
+
+        // 앱 안에 embed되는 extension은 **반드시** 부모와 같아야 한다.
+        // 다르면 `CFBundleVersion ... must match` 경고가 나고 App Store 검증에서 막힌다.
+        for target in ["com.mark77234.ggumirror.capture", "com.mark77234.ggumirror.controls"] {
+            let configurations = try #require(versions[target], "\(target) 설정을 찾지 못했다")
+            #expect(configurations.count == 2)
+            for configuration in configurations {
+                #expect(
+                    configuration.build == app.build,
+                    "\(target) build \(configuration.build) ≠ app \(app.build)"
+                )
+                #expect(
+                    configuration.marketing == app.marketing,
+                    "\(target) version \(configuration.marketing) ≠ app \(app.marketing)"
+                )
+            }
+        }
+    }
+
     @Test("client에 credential이 없다")
     func noCredentialsInConfig() throws {
         for file in ["Config/Base.xcconfig", "Config/Debug.xcconfig", "Config/Release.xcconfig", "Config/Info.plist"] {

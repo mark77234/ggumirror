@@ -308,11 +308,65 @@ C-1B 확정 사실:
 
 `ggumirrorTests/ShardWalletTests.swift`가 위 규칙을 소스 레벨로 고정한다.
 
+### 출석 (B-4) — 하루의 기준도 서버가 정한다
+
+하루 한 번 출석하면 조각 **+1**. 잔액과 마찬가지로 **날짜도 client 권위가 아니다.**
+
+- 하루의 기준은 **server의 Asia/Seoul 날짜**다. client는 `Date()` · `Calendar` ·
+  `DateFormatter` · `TimeZone` · `UserDefaults`로 "오늘 받았는지"를 판단하지 않는다.
+  기기 시계를 바꾸거나 앱을 지웠다 깔아도 결과가 같다
+- 통로는 `GET /users/me/attendance`와 `POST /users/me/attendance` 둘뿐이고,
+  **POST에 body를 싣지 않는다** — userId · date · amount · reason을 만드는 자리가 없다
+- `ShardWallet.claimAttendance(session:)`는 응답의 `balance`를 **그대로 대입**한다.
+  `balance += 1` 같은 낙관적 증가는 하지 않는다. 실패하면 아무 것도 바꾸지 않는다
+- 서버 응답의 `claimed` 뜻:
+  **`true` = 이 요청이 지급했다**, **`false` = 이미 지급돼 이 요청은 지급하지 않았다**
+- **`claimed=false`는 실패가 아니다.** 정상 HTTP 응답이면 오류 화면을 띄우지 않고
+  "오늘 출석 완료"로 간다. client에는 출석 실패를 표시할 상태 자체가 없다 —
+  실패는 조용히 아무 일도 하지 않는 것이다
+- 두 경우 모두 `balance`는 **서버가 준 값**을 쓴다. `reward=0`이라고 0으로 되돌리지 않는다.
+  그래서 응답을 못 받고 다시 눌러도 잔액이 부풀지 않고 오히려 제자리를 찾는다
+- `isClaiming`은 **표시용 guard**다. 보안 경계가 아니다 —
+  서버 API를 직접 반복 호출해도 +1은 정확히 한 번이다(원장 idempotency)
+- 로그아웃하면 출석 표시도 `.unknown`으로 지운다. 다음 사람에게 물려주지 않는다
+- 로그인하지 않은 사용자가 CTA를 누르면 **설정의 기존 Apple 로그인**으로 간다.
+  홈에 새 로그인 UI를 만들지 않는다. Mirror · 촬영 · 꾸미기 앞에는 여전히 로그인 벽이 없다
+- 다시 읽는 시점은 **view 진입 · scene active 복귀 · 로그인 상태 변화**뿐이다.
+  Timer로 서버를 주기적으로 두드리지 않는다. 앱을 켜 둔 채 KST 자정을 넘겨도
+  다시 활성화될 때 서버가 새 날짜를 알려준다
+- streak · 7일 보너스 · 달력 · 알림은 **없다**
+
+`ggumirrorTests/DailyAttendanceTests.swift`가 위 규칙을 고정한다.
+
 ### AdMob Rewarded (B-5) — client는 지급하지 않는다
 
 `onUserEarnedReward`로 조각을 주지 않는다. 그 callback은 UI 갱신용이고,
 실제 지급은 **Google SSV callback을 검증한 server**만 한다.
 광고 시청 후 client가 할 일은 `shards.refresh(session:)` 하나다.
+
+## Build Number Parity (영구 규칙)
+
+본앱과 embed되는 extension **셋의 버전이 항상 같아야 한다.**
+
+| target | bundle id |
+|---|---|
+| 본앱 | `com.mark77234.ggumirror` |
+| 잠금화면 촬영 | `com.mark77234.ggumirror.capture` |
+| Control | `com.mark77234.ggumirror.controls` |
+
+`CURRENT_PROJECT_VERSION`(CFBundleVersion)과 `MARKETING_VERSION`
+(CFBundleShortVersionString)을 **Debug · Release 모두** 같은 값으로 맞춘다.
+다르면 빌드 warning이 나고 **App Store 검증에서 막힌다.**
+
+버전을 올릴 때 본앱만 올리면 이 규칙이 깨진다 — 실제로 1.0.3 bump에서 extension이
+1.0.2 / build 3에 남아 warning이 생겼다. 현재는 셋 다 **1.0.3 / build 4**다.
+
+test target(`ggumirrorTests` · `ggumirrorUITests`)은 앱에 embed되지 않으므로
+이 규칙에서 제외한다.
+
+`ggumirrorTests/AppConfigTests.swift::extensionsMatchTheApp`이 고정한다 —
+pbxproj를 build configuration 블록 단위로 읽고 **bundle id를 열쇠로** 비교하므로
+줄 번호나 target 순서가 바뀌어도 견딘다.
 
 ## Build Configuration (현재 정책)
 
