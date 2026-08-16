@@ -21,6 +21,10 @@ struct RootView: View {
     @State private var quickMirrorRequest = QuickMirrorRequest.shared
     /// 조각 잔액. 서버가 정한 값을 보여주기만 한다.
     @State private var shards = ShardWallet.live
+    /// 광고 흐름만 맡는다. 조각을 지급하지 않는다 — 지급은 서버가 SSV로 확인한 뒤에만 한다.
+    @State private var rewardedAds = RewardedAdController()
+    /// 광고 동의(UMP). 광고를 요청해도 되는지 정하는 유일한 근거다.
+    @State private var adsConsent = AdsConsent.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -40,6 +44,8 @@ struct RootView: View {
         ZStack { content }
             .environment(session)
             .environment(shards)
+            .environment(rewardedAds)
+            .environment(adsConsent)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -54,7 +60,13 @@ struct RootView: View {
             // 로그인 / 로그아웃에 따라 지갑을 다시 읽거나 화면에서 지운다.
             // **서버 지갑은 그대로 있다** — 이 기기의 표시만 바뀐다.
             .onChange(of: session.server) { _, server in
-                Task { await shards.refresh(session: server) }
+                Task {
+                    await shards.refresh(session: server)
+                    // 로그인 직후 광고를 미리 받아 둔다. 로그아웃하면 받지 않는다.
+                    if server != nil, shards.remainingAdsToday > 0 {
+                        await rewardedAds.prepare()
+                    }
+                }
             }
             // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
             // 되돌아올 때 한 번 물어볼 뿐이고, 주기적으로 서버를 두드리지 않는다.
@@ -80,6 +92,15 @@ struct RootView: View {
                 await QuickMirrorSync.update(for: library.currentMirror)
                 // 로그인돼 있으면 서버 지갑을 받아온다. 아니면 0으로 둔다 — 로그인을 강요하지 않는다.
                 await shards.refresh(session: session.server)
+
+                // 광고 동의는 **맨 마지막**이다. 동의 양식이 뜨더라도 그때는 이미
+                // 거울이 화면에 있다 — 실행하자마자 동의창이 뜨는 앱이 되지 않는다.
+                await adsConsent.bootstrap()
+                rewardedAds.consentChanged(canRequestAds: adsConsent.canRequestAds)
+                // 로그인돼 있고 남은 횟수가 있으면 광고를 미리 받아 둔다.
+                if session.server != nil, shards.remainingAdsToday > 0 {
+                    await rewardedAds.prepare()
+                }
             }
     }
 

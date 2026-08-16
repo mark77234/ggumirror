@@ -165,6 +165,37 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend {
         }
     }
 
+    // MARK: 광고 보상
+
+    /// 오늘 광고 보상을 몇 번 받았는지. **읽기뿐이다.**
+    func rewardedAds(accessToken: String) async throws -> RewardedAdStatus {
+        let data = try await send("users/me/rewarded-ads", method: "GET", accessToken: accessToken)
+        do {
+            return try JSONDecoder.backend.decode(RewardedAdStatus.self, from: data)
+        } catch {
+            BackendLog.event("GET /users/me/rewarded-ads decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
+    /// 광고에 실어 보낼 opaque context를 받아온다.
+    ///
+    /// **조각을 지급하는 요청이 아니다.** 지급은 Google이 서명한 SSV callback이
+    /// 서버에 도착했을 때만 일어난다. 여기서 받은 값은 "누구의 광고인지"를 가리킬 뿐이고,
+    /// session token 대신 이것을 보내기 때문에 callback URL에 로그인 정보가 남지 않는다.
+    func rewardedAdContext(accessToken: String) async throws -> String {
+        struct Payload: Decodable { let context: String }
+        let data = try await send(
+            "users/me/rewarded-ads/context", method: "POST", accessToken: accessToken
+        )
+        do {
+            return try JSONDecoder.backend.decode(Payload.self, from: data).context
+        } catch {
+            BackendLog.event("POST /users/me/rewarded-ads/context decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
     // MARK: 전송
 
     private func send(

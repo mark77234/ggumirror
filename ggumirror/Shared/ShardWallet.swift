@@ -36,6 +36,12 @@ final class ShardWallet {
     enum Attendance: Sendable { case unknown, available, claimed }
 
     private(set) var attendance: Attendance = .unknown
+
+    /// 오늘 광고 보상을 몇 번 받았는지. **서버가 세는 값**이다 —
+    /// 앱이 광고를 몇 번 봤는지 세지 않는다. 광고를 봤다고 보상이 확정되는 것도 아니다.
+    private(set) var rewardedToday = 0
+    private(set) var remainingAdsToday = 0
+    private(set) var dailyAdLimit = 0
     /// 출석 요청 중. 버튼을 두 번 누르는 것을 막는 **표시용** 장치다 —
     /// 보안 경계가 아니다. 서버 API를 직접 반복 호출해도 +1은 정확히 한 번이다.
     private(set) var isClaiming = false
@@ -75,6 +81,16 @@ final class ShardWallet {
         } catch {
             ShardLog.event("attendance refresh failed")
         }
+
+        // 광고 보상 횟수도 서버가 답한다.
+        do {
+            let ads = try await backend.rewardedAds(accessToken: session.accessToken)
+            rewardedToday = ads.rewardedToday
+            remainingAdsToday = ads.remainingToday
+            dailyAdLimit = ads.dailyLimit
+        } catch {
+            ShardLog.event("rewarded ads refresh failed")
+        }
     }
 
     /// 오늘의 조각을 받는다. **여기서 잔액을 더하지 않는다** —
@@ -104,8 +120,11 @@ final class ShardWallet {
         balance = 0
         lifetimeEarned = 0
         lifetimeSpent = 0
-        // 다음 사람의 출석 상태를 물려주지 않는다. 다시 로그인하면 서버에 다시 묻는다.
+        // 다음 사람의 출석 / 광고 상태를 물려주지 않는다. 다시 로그인하면 서버에 다시 묻는다.
         attendance = .unknown
+        rewardedToday = 0
+        remainingAdsToday = 0
+        dailyAdLimit = 0
     }
 }
 
@@ -141,6 +160,16 @@ nonisolated protocol ShardBackend: Sendable {
     func attendance(accessToken: String) async throws -> AttendanceStatus
     /// 보내는 값이 없다. 누구인지는 session, 며칠인지는 서버 시계, 얼마인지는 서버가 정한다.
     func claimAttendance(accessToken: String) async throws -> AttendanceClaim
+    func rewardedAds(accessToken: String) async throws -> RewardedAdStatus
+    /// 광고에 실어 보낼 opaque context. **조각을 지급하는 요청이 아니다.**
+    func rewardedAdContext(accessToken: String) async throws -> String
+}
+
+/// `GET /users/me/rewarded-ads`. 오늘 몇 번 받았는지는 **서버가 센다.**
+nonisolated struct RewardedAdStatus: Decodable, Equatable, Sendable {
+    let rewardedToday: Int
+    let remainingToday: Int
+    let dailyLimit: Int
 }
 
 // MARK: - 로그

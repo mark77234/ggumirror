@@ -4,3 +4,8 @@ APP_ENV = production
 
 // production은 override를 허용하지 않는다 — Local.xcconfig를 include하지 않는다.
 BACKEND_BASE_URL = $(URL_SCHEME)$(GGUMIRROR_API_HOST)
+
+// 꾸미러 production rewarded ad unit.
+// **test ad unit을 여기 넣지 않는다** — 실제 사용자에게 test 광고가 나가면 정책 위반이다.
+// `AppConfigTests`와 `AppConfig.parseAdUnit`이 이중으로 막는다.
+ADMOB_REWARDED_AD_UNIT_ID = ca-app-pub-5460686409666356/5740149472

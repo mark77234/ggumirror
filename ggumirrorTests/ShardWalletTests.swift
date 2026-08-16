@@ -53,6 +53,29 @@ final class FakeShardBackend: ShardBackend, @unchecked Sendable {
         if let claimDelay { try? await Task.sleep(for: claimDelay) }
         return try claimResult.get()
     }
+
+    // MARK: 광고 보상 — 서버가 세는 값이다
+
+    var rewardedAdsResult: Result<RewardedAdStatus, BackendError> =
+        .success(RewardedAdStatus(rewardedToday: 0, remainingToday: 5, dailyLimit: 5))
+    var contextResult: Result<String, BackendError> = .success("reward-context-1")
+    private(set) var rewardedAdsFetchCount = 0
+    private(set) var contextCount = 0
+    /// SSV가 늦게 도착하는 상황: 지갑을 이만큼 더 읽은 뒤에야 보상이 반영된다.
+    var rewardArrivesAfterFetches: Int?
+
+    func rewardedAds(accessToken: String) async throws -> RewardedAdStatus {
+        rewardedAdsFetchCount += 1
+        if let arrival = rewardArrivesAfterFetches, rewardedAdsFetchCount > arrival {
+            return RewardedAdStatus(rewardedToday: 1, remainingToday: 4, dailyLimit: 5)
+        }
+        return try rewardedAdsResult.get()
+    }
+
+    func rewardedAdContext(accessToken: String) async throws -> String {
+        contextCount += 1
+        return try contextResult.get()
+    }
 }
 
 @MainActor

@@ -10,6 +10,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AuthSession.self) private var session
+    @Environment(AdsConsent.self) private var adsConsent
     @AppStorage(ProfileStore.nameKey) private var profileName = ProfileStore.defaultName
     @AppStorage(ProfileStore.tagsKey) private var profileTags = ""
     @AppStorage("notificationsOn") private var notificationsOn = true
@@ -46,6 +47,21 @@ struct SettingsView: View {
                 }
 
                 InkSeparator()
+
+                // UMP가 "이 사용자에게는 설정 진입점이 필요하다"고 할 때만 보인다.
+                // 필요 없는 지역에서 빈 항목을 보여주지 않는다 — 새 화면도 만들지 않고,
+                // 탭하면 Google이 관리하는 양식이 그대로 뜬다.
+                if adsConsent.showsPrivacyOptions {
+                    Button {
+                        Task { await adsConsent.presentPrivacyOptions() }
+                    } label: {
+                        InkListRow(title: "광고 개인정보 설정", showsChevron: true)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .accessibilityIdentifier("adsPrivacyOptions")
+
+                    InkSeparator()
+                }
 
                 NavigationLink(value: SettingsRoute.privacy) {
                     InkListRow(title: "개인정보 처리방침", showsChevron: true)

@@ -264,6 +264,113 @@ struct AppConfigTests {
         }
     }
 
+    // MARK: - Privacy manifest
+
+    /// 앱 bundle에 실제로 들어간 manifest를 읽는다(repo 파일이 아니라 **결과물**).
+    private func bundledPrivacyManifest() throws -> [String: Any] {
+        let url = try #require(
+            Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"),
+            "앱 bundle에 PrivacyInfo.xcprivacy가 없다 — App Store 제출에서 막힌다"
+        )
+        let data = try Data(contentsOf: url)
+        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return try #require(plist as? [String: Any])
+    }
+
+    private func reasons(_ manifest: [String: Any], for category: String) -> [String] {
+        let types = manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
+        let match = types.first { $0["NSPrivacyAccessedAPIType"] as? String == category }
+        return match?["NSPrivacyAccessedAPITypeReasons"] as? [String] ?? []
+    }
+
+    @Test("앱 bundle에 privacy manifest가 들어 있다")
+    func privacyManifestIsBundled() throws {
+        let manifest = try bundledPrivacyManifest()
+        #expect(manifest["NSPrivacyAccessedAPITypes"] != nil)
+    }
+
+    @Test("UserDefaults는 CA92.1로 선언한다 — App Group reason이 아니다")
+    func userDefaultsReason() throws {
+        let manifest = try bundledPrivacyManifest()
+        let reasons = reasons(manifest, for: "NSPrivacyAccessedAPICategoryUserDefaults")
+
+        #expect(reasons.contains("CA92.1"))
+        // App Group을 쓰지 않는다. 1C8F.1을 적으면 사실과 다르다.
+        #expect(!reasons.contains("1C8F.1"), "App Group을 쓰지 않는데 1C8F.1을 선언했다")
+    }
+
+    @Test("systemUptime은 35F9.1로 선언한다")
+    func systemBootTimeReason() throws {
+        // Editor의 햅틱 rate limiter가 ProcessInfo.systemUptime을 쓴다 —
+        // Required Reason API라서 선언이 필요하다.
+        let manifest = try bundledPrivacyManifest()
+        #expect(reasons(manifest, for: "NSPrivacyAccessedAPICategorySystemBootTime").contains("35F9.1"))
+    }
+
+    @Test("쓰지도 않는 API를 선언하지 않는다")
+    func declaresOnlyWhatWeUse() throws {
+        let manifest = try bundledPrivacyManifest()
+        let declared = Set(
+            (manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? [])
+                .compactMap { $0["NSPrivacyAccessedAPIType"] as? String }
+        )
+
+        #expect(declared == [
+            "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPICategorySystemBootTime",
+        ], "실제로 쓰지 않는 항목이 선언돼 있다")
+    }
+
+    @Test("추적한다고 임의로 선언하지 않는다")
+    func doesNotClaimTracking() throws {
+        let manifest = try bundledPrivacyManifest()
+        // ATT를 도입하지 않았고 IDFA도 읽지 않는다.
+        #expect(manifest["NSPrivacyTracking"] as? Bool == false)
+        #expect((manifest["NSPrivacyTrackingDomains"] as? [String] ?? []).isEmpty)
+        // 근거 없이 수집 항목을 지어내지 않는다. SDK 수집은 SDK manifest가 선언한다.
+        #expect((manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? []).isEmpty)
+    }
+
+    @Test("SDK manifest는 각 framework가 따로 들고 온다")
+    func sdkManifestsAreSeparate() throws {
+        // 우리 manifest가 SDK를 대신하지 않고, SDK 내용을 베껴 오지도 않는다.
+        let manifest = try bundledPrivacyManifest()
+        let raw = String(describing: manifest)
+        #expect(!raw.contains("NSPrivacyCollectedDataTypeAdvertisingData"))
+        #expect(!raw.contains("DeviceID"))
+
+        // Google framework 두 개는 자기 manifest를 들고 앱 안에 들어온다.
+        for framework in ["GoogleMobileAds", "UserMessagingPlatform"] {
+            let url = Bundle.main.bundleURL
+                .appending(path: "Frameworks/\(framework).framework/PrivacyInfo.xcprivacy")
+            #expect(FileManager.default.fileExists(atPath: url.path),
+                    "\(framework)의 privacy manifest가 없다")
+        }
+    }
+
+    @Test("extension에는 privacy manifest를 만들지 않았다 — 필요가 없다")
+    func extensionsNeedNoManifest() throws {
+        // 두 extension은 Required Reason API를 쓰지 않는다(코드/바이너리로 확인).
+        // 필요 없는 manifest를 넣지 않는다.
+        for path in ["GgumirrorCapture", "GgumirrorControls"] {
+            let root = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appending(path: path)
+            let manifest = root.appending(path: "PrivacyInfo.xcprivacy")
+            #expect(!FileManager.default.fileExists(atPath: manifest.path))
+
+            // 정말 안 쓰는지도 함께 고정한다 — 나중에 쓰기 시작하면 여기서 걸린다.
+            let sources = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+            for name in sources where name.hasSuffix(".swift") {
+                let source = try String(contentsOf: root.appending(path: name), encoding: .utf8)
+                for api in ["UserDefaults", "@AppStorage", "systemUptime", "mach_absolute_time"] {
+                    #expect(!source.contains(api), "\(path)/\(name)이 \(api)를 쓴다 — manifest가 필요해졌다")
+                }
+            }
+        }
+    }
+
     @Test("client에 credential이 없다")
     func noCredentialsInConfig() throws {
         for file in ["Config/Base.xcconfig", "Config/Debug.xcconfig", "Config/Release.xcconfig", "Config/Info.plist"] {

@@ -1508,6 +1508,145 @@ streak · 연속 출석 · 7일 보너스 · 달력 · 지난 출석 복구 · �
 AdMob · Rewarded Ad · SSV · IAP · StoreKit · RevenueCat · Pass · 마켓.
 딱 하루 한 번 +1이다.
 
+## Phase B-5 — AdMob Rewarded + SSV (backend 확정 / client seam)
+
+광고 1회 정상 시청 → **조각 +1**, 하루 최대 **5회**(Asia/Seoul).
+
+| | |
+|---|---|
+| 보상 | **+1** |
+| 하루 한도 | **5** |
+| 하루 기준 | Asia/Seoul, **서명된 SSV `timestamp`**에서 유도 |
+| authority | **검증된 Google SSV callback 하나뿐** |
+| client callback | **경제 authority가 아니다** |
+| idempotency | Google `transaction_id` |
+| ledger reason | `rewarded_ad` |
+
+### Backend
+
+```
+로그인 client → POST /users/me/rewarded-ads/context → opaque context (조각 안 움직임)
+                          ↓ customData
+                     Google 광고 시청
+                          ↓ 서명된 callback
+Google → GET /admob/rewarded/ssv   (Bearer 없음. 인증은 ECDSA 서명이 한다)
+   1. raw query 서명 검증  2. 제품 대조  3. context → user  4. 원장 transaction
+```
+
+- **raw query bytes를 그대로 검증한다.** 입력은 ASGI `scope["query_string"]`이고
+  `Request.url.query`조차 쓰지 않는다. `signature=` 앞을 **바이트로** 자르는 것이 전부고,
+  검증 성공 **후에야** 값을 해석한다
+- 서명이 유효한데 지급 대상이 아닌 상태(context 없음/불명/만료 · 상한 · 중복 · unit 불일치)는
+  전부 **200**이다. 재시도해도 같은데 4xx를 주면 Google이 계속 다시 보낸다.
+  **SSV Test Tool은 context 없이 호출**하므로 이 경로로 200 + 미지급이 된다
+- 공개키는 1시간 cache, 모르는 `key_id`면 한 번 갱신. **조회 실패는 서명 실패와 구분**한다
+  (전자만 5xx로 Google 재시도를 받는다)
+- 서명이 맞아도 `ad_unit` · `reward_item` · `reward_amount`가 다르면 지급하지 않는다.
+  지급액은 서버 상수다 — callback 숫자는 검증 대상이지 지급액의 출처가 아니다
+- 하루 5회는 `ShardStore.apply`의 `PeriodQuota`로 건다 —
+  **확인 · 증가 · 원장 · 잔액이 한 transaction**이다. 세어보고 지급하면 상한이 뚫린다
+- user binding은 short-lived opaque context(Firestore, hash 저장, 6시간).
+  **session token을 Google에 보내지 않는다.** signed token을 쓰지 않은 이유는
+  새 server secret이 필요하기 때문이다 — 이 서비스에는 secret이 하나도 없다
+- access log가 callback URL을 통째로 남기므로 `RedactSensitiveQuery`로 지운다
+
+### Client
+
+- `Ads/RewardedAds.swift` — `RewardedAdPresenting` 경계 + `RewardedAdController`.
+  **잔액을 만질 방법이 없다.** 광고가 끝나면 `wallet.refresh(session:)`만 부른다
+- `.verifying` 상태가 있다 — "보상을 확인하고 있어요". "+1 받았다"가 아니다
+- SSV 도착을 기다리는 bounded refresh: 즉시 · 1초 · 2초 · 4초. 오면 즉시 멈춘다.
+  **무한 polling 금지, 가짜 +1 금지**
+- 홈 조각 영역에 CTA 한 줄. 새 화면 없음. 로그인 전에는 기존 설정 로그인으로 보낸다
+- `ADMOB_REWARDED_AD_UNIT_ID`: Debug = Google 공식 test unit, Release = **비어 있음**.
+  비어 있으면 CTA를 아예 그리지 않는다. backend의 `ADMOB_SSV_EXPECTED_AD_UNIT`과는
+  **다른 값**으로 다룬다 — client는 load용 ID, backend는 callback 비교용이다
+
+### 아직 아닌 것
+
+**Google Mobile Ads SDK · UMP consent flow를 넣지 않았다.**
+꾸미러 전용 AdMob app / ad unit이 없어 붙일 ID가 없고, 추측한 ID를 넣지 않는다.
+SDK가 들어오면 `RewardedAdPresenting` 구현 하나만 추가하면 된다.
+
+interstitial · app-open · banner는 이번에도 없다. **rewarded만, CTA로만.**
+
+## Phase B-5C — Google Mobile Ads SDK + UMP (확정)
+
+B-5의 서버 쪽(SSV · quota · 원장)은 이미 있다. B-5C는 **실제 광고를 띄우는 client**다.
+
+### SDK
+
+| | |
+|---|---|
+| package | `swift-package-manager-google-mobile-ads` |
+| version | **13.7.0** (Up to Next Major) |
+| product | **`GoogleMobileAds` 하나** |
+| UMP | `GoogleUserMessagingPlatform` **3.1.0** — 위 package의 dependency로 따라온다 |
+| link 대상 | **앱 target만.** extension 둘에는 붙이지 않는다 |
+
+Swift API 이름은 설치된 header의 `NS_SWIFT_NAME`에서 직접 확인했다 — 기억이나 블로그가 아니라.
+
+### 설정
+
+| | Debug | Release |
+|---|---|---|
+| App ID | 꾸미러 production | 꾸미러 production (**같다**) |
+| Rewarded ad unit | Google 공식 test unit | 꾸미러 production unit |
+
+**App ID를 Debug에서 sample로 바꾸지 않았다.** 광고 안전은 ad unit이 담당하고,
+App ID를 바꾸면 UMP가 남의 app 설정으로 동의 메시지를 조회해 우리 동의 흐름을
+실기기에서 확인할 수 없다(UMP 메시지는 AdMob console의 **app 단위** 설정이다).
+
+`SKAdNetworkItems`는 Google 공식 quick-start의 현재 목록 **50개**를 그대로 넣었다.
+
+### 동의 → 초기화 → 광고
+
+```
+RootView .task (거울이 이미 화면에 뜬 뒤)
+  → requestConsentInfoUpdate
+  → 필요하면 동의 양식
+  → canRequestAds 확인
+  → (한 번만) MobileAds.start()
+  → 로그인 + 남은 횟수 있으면 preload
+```
+
+- **`canRequestAds`가 false면 load도 present도 하지 않는다**
+- `MobileAds.start()`는 `hasStartedMobileAds` 하나로 **정확히 한 번**
+- 동의 절차가 Mirror 진입을 막지 않는다 — `.task`의 맨 마지막이다
+- `privacyOptionsRequirementStatus == .required`일 때만 설정에 "광고 개인정보 설정"
+- **ATT는 도입하지 않았다.** `NSUserTrackingUsageDescription`도 없다
+
+### 보상 경로 (변하지 않은 것)
+
+`userDidEarnRewardHandler`는 **UI 신호일 뿐**이다. 여기서 조각을 주지 않는다.
+`GoogleAds.swift`에는 `ShardWallet`도 `balance +=`도 없고, 테스트가 그것을 고정한다.
+
+- 보상 조건 충족 + 광고 닫힘 → `.watched` → `verifying` → bounded refresh(즉시·1·2·4초)
+- **끝까지 안 보고 닫으면 `.dismissed`** — verifying으로 가지 않고 polling도 하지 않는다
+- context는 present 직전에 그 광고에 붙인다(`ServerSideVerificationOptions.customRewardText`)
+- 미리 받아 둔 광고는 50분이 지나면 다시 받는다. 오래된 광고를 무한 재사용하지 않는다
+
+### Privacy manifest
+
+`ggumirror/PrivacyInfo.xcprivacy` — **본앱만**. 전수 조사 후 실제 사용 항목만 선언했다.
+
+| category | reason | 근거 |
+|---|---|---|
+| UserDefaults | `CA92.1` | `@AppStorage` 4개. App Group 안 쓰므로 `1C8F.1` 아님 |
+| SystemBootTime | `35F9.1` | Editor 햅틱 rate limiter의 `ProcessInfo.systemUptime` |
+
+`NSPrivacyTracking = false`, 수집 항목 선언 없음.
+Google SDK 두 개는 자기 manifest를 따로 들고 오고, extension 둘은 Required Reason API를
+쓰지 않아 manifest가 없다(바이너리 `nm -u`로 확인).
+
+App Store Connect 개인정보 설문은 **별개**이고 출시 checklist에서 답한다.
+
+### SDK 격리
+
+SDK에 닿는 파일은 `ggumirror/Ads/GoogleAds.swift` **하나**다.
+`RewardedAds.swift` · `AdsConsent.swift` · Home · Settings · RootView는 protocol만 안다.
+그래서 광고 흐름 전체를 SDK 없이 테스트한다.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

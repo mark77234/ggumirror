@@ -11,6 +11,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(ShardWallet.self) private var shards
     @Environment(AuthSession.self) private var session
+    @Environment(RewardedAdController.self) private var rewardedAds
     var library: MirrorLibrary
     var onOpenMirror: () -> Void
     var onEdit: (RootView.EditorRequest) -> Void
@@ -75,7 +76,9 @@ struct HomeView: View {
         VStack(spacing: 14) {
             header
 
+            // 조각 영역: 출석 · 광고. 새 화면을 만들지 않고 홈에 얹는다.
             dailyShard
+            rewardedAd
 
             // 남는 공간을 미리보기가 차지한다. 비율은 다른 화면과 같은 9:19.5.
             currentMirror
@@ -126,9 +129,13 @@ struct HomeView: View {
     ///
     /// 로그인하지 않았으면 **설정의 기존 Apple 로그인**으로 보낸다.
     /// 조각 때문에 거울 · 촬영 · 꾸미기 앞에 로그인 벽을 세우지 않는다.
+    private var isSignedIn: Bool {
+        session.state.isSignedIn && session.server?.isValid() == true
+    }
+
     @ViewBuilder
     private var dailyShard: some View {
-        if session.state.isSignedIn, session.server?.isValid() == true {
+        if isSignedIn {
             let isDone = shards.attendance == .claimed
             Button {
                 Task { await shards.claimAttendance(session: session.server) }
@@ -146,6 +153,64 @@ struct HomeView: View {
             .buttonStyle(InkPressStyle())
             .accessibilityIdentifier("attendanceSignIn")
         }
+    }
+
+    // MARK: - 광고 보고 조각 받기
+
+    /// **client는 지급하지 않는다.** 광고를 끝까지 봐도 조각은 서버가 준다 —
+    /// 여기서는 서버가 센 `rewardedToday`만 보여주고, 광고가 끝나면 다시 물어본다.
+    ///
+    /// ad unit이 없는 빌드(현재 Release)에서는 CTA 자체를 보여주지 않는다.
+    @ViewBuilder
+    private var rewardedAd: some View {
+        if rewardedAds.isConfigured {
+            let isDone = shards.remainingAdsToday == 0 && shards.dailyAdLimit > 0
+            let isBusy = rewardedAds.phase == .presenting || rewardedAds.phase == .verifying
+
+            if isSignedIn {
+                Button {
+                    Task { await rewardedAds.watch(session: session.server, wallet: shards) }
+                } label: {
+                    rewardedAdLabel(isDone: isDone, isBusy: isBusy)
+                }
+                .buttonStyle(InkPressStyle())
+                .disabled(isDone || isBusy || rewardedAds.phase == .unavailable)
+                .opacity(isBusy ? 0.6 : 1)
+                .accessibilityIdentifier("watchRewardedAd")
+            } else {
+                NavigationLink(value: SettingsRoute.settings) {
+                    rewardedAdLabel(isDone: false, isBusy: false)
+                }
+                .buttonStyle(InkPressStyle())
+                .accessibilityIdentifier("rewardedAdSignIn")
+            }
+        }
+    }
+
+    private func rewardedAdLabel(isDone: Bool, isBusy: Bool) -> some View {
+        Text(rewardedAdTitle(isDone: isDone, isBusy: isBusy))
+            .font(InkFont.body)
+            .foregroundStyle(isDone ? PaperTheme.disabled : PaperTheme.ink)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 3)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(21, 18, 22, 17)
+                shape
+                    .fill(PaperTheme.subtleSurface)
+                    .overlay(shape.stroke(isDone ? PaperTheme.disabled : PaperTheme.ink, lineWidth: 1.7))
+                    .rotationEffect(.degrees(0.3))
+            }
+            .contentShape(.rect)
+    }
+
+    private func rewardedAdTitle(isDone: Bool, isBusy: Bool) -> String {
+        guard isSignedIn else { return "로그인하고 광고 보고 조각 받기" }
+        // 광고가 끝나도 서버 확인 전까지는 받았다고 말하지 않는다.
+        if rewardedAds.phase == .verifying { return "보상을 확인하고 있어요" }
+        if rewardedAds.phase == .unavailable { return "광고를 불러오지 못했어요" }
+        if isBusy { return "광고를 준비하고 있어요" }
+        if isDone { return "오늘 광고 보상 완료 \(shards.dailyAdLimit) / \(shards.dailyAdLimit)" }
+        return "광고 보고 조각 받기 · +1 · 오늘 \(shards.rewardedToday) / \(shards.dailyAdLimit)"
     }
 
     private func dailyShardLabel(_ title: String, isDone: Bool) -> some View {
@@ -213,4 +278,5 @@ struct HomeView: View {
     HomeView(library: MirrorLibrary(), onOpenMirror: {}, onEdit: { _ in })
         .environment(ShardWallet())
         .environment(AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore()))
+        .environment(RewardedAdController())
 }

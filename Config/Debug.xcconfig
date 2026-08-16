@@ -10,3 +10,8 @@ APP_ENV = development
 // 실기기 Debug 빌드로 실제 Apple 로그인을 디버깅하기 위해서다
 // (localhost는 iPhone에서 iPhone 자신을 가리켜 서버에 닿지 못한다).
 BACKEND_BASE_URL = $(URL_SCHEME)$(GGUMIRROR_API_HOST)
+
+// Google 공식 **test** rewarded ad unit.
+// 개발 중 실제 광고를 반복 재생/클릭하지 않기 위한 값이고, Google이 공개한 예제 ID다.
+// (슬래시가 하나라 xcconfig 주석(`//`)과 충돌하지 않는다.)
+ADMOB_REWARDED_AD_UNIT_ID = ca-app-pub-3940256099942544/1712485313

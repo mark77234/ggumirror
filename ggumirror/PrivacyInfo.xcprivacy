@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  꾸미러 본앱의 privacy manifest.
+
+  **우리 앱 코드가 직접 쓰는 Required Reason API만** 선언한다.
+  Google Mobile Ads / UserMessagingPlatform은 각 framework가 자기 PrivacyInfo.xcprivacy를
+  들고 들어오고, 그것이 그 SDK의 동작을 책임진다 — 여기에 옮겨 적지 않는다.
+
+  여기 적는 것과 App Store Connect의 개인정보 설문(Nutrition Label)은 **다른 것**이다.
+  이 파일은 "왜 이 API를 호출하는가"를 선언하고, 설문은 "어떤 데이터를 수집하는가"를 답한다.
+  설문은 출시 checklist에서 따로 처리한다.
+-->
+<plist version="1.0">
+<dict>
+	<!-- 추적하지 않는다. ATT를 도입하지 않았고 IDFA를 읽지 않는다. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!--
+	  우리 코드가 기기 밖으로 내보내는 데이터는 선언하지 않는다.
+	  광고 SDK가 수집하는 것은 그 SDK의 manifest가 선언한다.
+	-->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!--
+		  @AppStorage 4개(프로필 이름 · 태그 · 알림 토글 · 편집 힌트 확인 여부).
+		  전부 **이 앱 sandbox 안의 설정값**이다.
+		  App Group을 쓰지 않으므로 1C8F.1이 아니라 CA92.1이다.
+		-->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+
+		<!--
+		  `ProcessInfo.processInfo.systemUptime` — Editor의 햅틱 rate limiter가
+		  **앱 안에서 일어난 두 사건 사이의 경과 시간**을 재는 데만 쓴다
+		  (`MirrorEditorCanvas`). 기기를 식별하거나 밖으로 내보내지 않는다.
+		-->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

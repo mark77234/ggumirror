@@ -340,9 +340,129 @@ C-1B 확정 사실:
 
 ### AdMob Rewarded (B-5) — client는 지급하지 않는다
 
-`onUserEarnedReward`로 조각을 주지 않는다. 그 callback은 UI 갱신용이고,
+광고 1회 → 조각 **+1**, 하루 **5회**(Asia/Seoul). 전부 서버가 정한다.
+
+`onUserEarnedReward`로 조각을 주지 않는다. 그 callback은 "광고 UX가 끝났다"는 뜻이고,
 실제 지급은 **Google SSV callback을 검증한 server**만 한다.
-광고 시청 후 client가 할 일은 `shards.refresh(session:)` 하나다.
+광고 시청 후 client가 할 일은 **서버 값을 다시 읽는 것** 하나다.
+
+- `Ads/RewardedAds.swift`에 **잔액을 만질 방법 자체가 없다.** `ShardWallet`을 받지만
+  쓰는 것은 `refresh(session:)`뿐이다. `RewardedAdTests`가 소스 레벨로 고정한다
+- 오늘 몇 번 봤는지는 **서버가 센다**(`shards.rewardedToday`). 앱이 세지 않는다 —
+  광고를 봤다고 보상이 확정되는 것도 아니다
+- 광고에 실어 보내는 것은 서버가 발급한 **short-lived opaque context**뿐이다.
+  session token · Apple token · 내부 user id를 넣지 않는다 — callback URL은 로그에 남는다
+- 광고가 끝나면 상태는 **`.verifying`("보상을 확인하고 있어요")**이지 "+1 받았다"가 아니다
+- SSV는 client와 별개 경로라 도착 시점을 알 수 없다. **무한 polling 금지** —
+  즉시 · 1초 · 2초 · 4초 네 번만 확인하고, 오면 즉시 멈춘다.
+  못 받으면 그대로 두고 다음 새로고침(scene 복귀 등)이 가져간다. **가짜 +1 금지**
+- 중간에 닫으면(`.dismissed`) 확인을 시작조차 하지 않는다
+- 로그아웃하면 광고 횟수 표시도 지운다
+
+#### Privacy manifest
+
+`ggumirror/PrivacyInfo.xcprivacy`가 **본앱 target**에 있다(빌드하면 `.app` 루트에 들어간다).
+
+**우리 앱 코드가 실제로 쓰는 Required Reason API만** 선언한다:
+
+| category | reason | 어디서 |
+|---|---|---|
+| `NSPrivacyAccessedAPICategoryUserDefaults` | `CA92.1` | `@AppStorage` 4개 (프로필 이름 · 태그 · 알림 · 편집 힌트) |
+| `NSPrivacyAccessedAPICategorySystemBootTime` | `35F9.1` | `MirrorEditorCanvas`의 햅틱 rate limiter (`ProcessInfo.systemUptime`) |
+
+- App Group을 쓰지 않으므로 UserDefaults reason은 **`CA92.1`이고 `1C8F.1`이 아니다**
+- `NSPrivacyTracking = false`. ATT를 도입하지 않았고 IDFA도 읽지 않는다
+- `NSPrivacyCollectedDataTypes`는 **비어 있다.** 근거 없이 수집 항목을 지어내지 않는다
+- **Google SDK의 manifest는 각 framework가 따로 들고 온다**
+  (`Frameworks/GoogleMobileAds.framework/PrivacyInfo.xcprivacy` ·
+  `.../UserMessagingPlatform.framework/...`). 그 내용을 우리 manifest에 베껴 오지 않고,
+  우리 manifest가 그것을 대신하지도 않는다
+- **extension 둘에는 manifest를 만들지 않았다.** 코드에도 빌드된 바이너리에도
+  Required Reason API가 없다(`nm -u`로 0개 확인). 필요 없는 파일을 넣지 않는다
+- 이 파일과 **App Store Connect 개인정보 설문(Nutrition Label)은 다른 것**이다.
+  이 파일은 "왜 이 API를 부르는가", 설문은 "어떤 데이터를 수집하는가"다.
+  설문은 출시 checklist에서 따로 답한다 (광고 SDK 수집 항목 포함)
+
+`ggumirrorTests/AppConfigTests.swift`가 **빌드된 bundle을 읽어** 고정한다 —
+repo 파일이 아니라 결과물을 본다.
+
+#### Google Mobile Ads / UMP SDK (B-5C)
+
+SPM 하나만 붙인다: `swift-package-manager-google-mobile-ads` (13.7.0, Up to Next Major).
+**product는 `GoogleMobileAds` 하나뿐**이고 UMP(`GoogleUserMessagingPlatform` 3.1.0)는
+그 package의 dependency로 따라온다 — UMP를 따로 추가하지 않는다.
+
+- **앱 target에만 link한다.** `GgumirrorCapture` · `GgumirrorControls`에는 붙이지 않는다.
+  잠금화면 extension에 광고 framework를 끌고 들어가면 기동이 느려지고,
+  `GADApplicationIdentifier`가 없어 죽을 수도 있다.
+  빌드 산출물에서 `otool -L`로 확인했다 — extension 둘 다 광고 SDK가 없다
+- **SDK에 닿는 파일은 `ggumirror/Ads/GoogleAds.swift` 하나다.** 나머지
+  (`RewardedAds.swift` · `AdsConsent.swift` · Home · Settings · RootView)는
+  protocol만 알고 SDK 타입을 모른다. 그래서 광고 흐름 전체를 SDK 없이 테스트한다.
+  `RewardedAdTests.sdkIsIsolatedToOneFile`이 고정한다
+- Swift API 이름은 **설치된 header에서 직접 확인했다**(`NS_SWIFT_NAME`) —
+  `MobileAds.shared.start` · `RewardedAd.load(with:request:)` ·
+  `ServerSideVerificationOptions.customRewardText` ·
+  `ConsentInformation.shared.canRequestAds` · `ConsentForm.loadAndPresentIfRequired(from:)`
+
+#### UMP 동의
+
+- 앱 실행마다 `requestConsentInfoUpdate` → 필요하면 양식 표시 → `canRequestAds` 확인
+- **`canRequestAds`가 true가 되기 전에는 광고를 load하지도 present하지도 않는다**
+- `MobileAds.start()`는 **정확히 한 번**이다. "이미 동의가 있는 경우"와 "방금 받은 경우"가
+  같은 경로로 들어오므로 `hasStartedMobileAds` 하나로 막는다. 상태 기계를 만들지 않았다
+- 동의 확인은 **RootView `.task`의 맨 마지막**이다. 거울이 이미 화면에 뜬 뒤에 돈다 —
+  실행하자마자 동의창이 뜨는 앱이 되지 않는다
+- `privacyOptionsRequirementStatus == .required`일 때만 설정에
+  "광고 개인정보 설정"이 보인다. 새 화면을 만들지 않고 Google 양식을 그대로 띄운다
+- **ATT는 도입하지 않았다.** `NSUserTrackingUsageDescription`도 넣지 않았다.
+  UMP 규제 동의를 먼저 안정화하고, IDFA는 별도 phase에서 판단한다.
+  ATT가 없어도 광고 요청은 정상 동작한다(비개인화 광고로 나간다)
+
+#### ad unit 설정
+
+| | Debug | Release |
+|---|---|---|
+| `ADMOB_APP_ID` | 꾸미러 production | 꾸미러 production (**같다**) |
+| `ADMOB_REWARDED_AD_UNIT_ID` | Google 공식 test unit | 꾸미러 production unit |
+
+**App ID는 두 환경이 같다.** 광고를 안전하게 만드는 것은 App ID가 아니라 ad unit이고,
+App ID를 sample 값으로 바꾸면 **UMP가 남의 app 설정으로 동의 메시지를 조회**해
+우리 동의 흐름을 실기기에서 확인할 수 없다(UMP 메시지는 AdMob console에서 app 단위 설정).
+
+`SKAdNetworkItems`는 Google 공식 quick-start의 현재 목록 50개를 그대로 넣었다.
+블로그 복사본을 쓰지 않는다.
+
+`ADMOB_REWARDED_AD_UNIT_ID`는 `Config/*.xcconfig` → `Info.plist` → `AppConfig`로 온다.
+이름의 `_ID`는 **광고를 load할 때 쓰는 값**이라는 뜻이다 — backend의
+`ADMOB_SSV_EXPECTED_AD_UNIT`(SSV callback의 `ad_unit`과 비교할 값)과 **다른 것**이고,
+둘이 같은 문자열이라고 가정하지 않는다. 실제 callback을 한 번 받아봐야 확정된다.
+
+| | 값 |
+|---|---|
+| Debug | Google 공식 **test** rewarded unit |
+| Release | **비어 있다** — 꾸미러 전용 ad unit이 아직 없다 |
+
+- **Release에 test ad unit을 넣지 않는다.** 실제 사용자에게 test 광고가 나가면 정책 위반이다
+- 비어 있으면 `AppConfig.admobRewardedAdUnit`이 `nil`이고 **광고 CTA를 아예 보여주지 않는다.**
+  광고는 부가 기능이라 없다고 앱을 멈추지 않는다(다른 설정과 다른 점)
+- production에서 test unit이 들어와도 `parseAdUnit`이 무시한다 — 마지막 방어선
+- `RewardedAdTests`가 Debug/Release 설정을 고정한다
+
+#### Google Mobile Ads SDK는 아직 없다
+
+꾸미러 전용 AdMob app / ad unit이 만들어지기 전이라 붙일 ID가 없고,
+**추측한 ID를 넣지 않는다.** 대신 경계(`RewardedAdPresenting`)를 먼저 뒀다 —
+SDK가 들어오면 그 protocol 구현 하나만 추가하면 되고 나머지 흐름과 테스트는 그대로다.
+UMP consent flow도 SDK와 함께 들어온다.
+
+#### 광고 정책
+
+- **Rewarded만.** interstitial · app-open · banner를 넣지 않는다
+- Mirror Camera 시작 화면에 강제 광고를 붙이지 않는다.
+  광고는 사용자가 **CTA를 명시적으로 눌렀을 때만** 뜬다
+- 광고 보상은 server economy라 로그인이 필요하다. 로그인 전 CTA는
+  **설정의 기존 Apple 로그인**으로 보낸다. Mirror core에는 여전히 로그인 벽이 없다
 
 ## Build Number Parity (영구 규칙)
 

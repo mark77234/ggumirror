@@ -9,6 +9,14 @@ URL_SCHEME = https:$(SLASH)$(SLASH)
 // **public URL이므로 secret이 아니다.** commit해도 된다.
 GGUMIRROR_API_HOST = ggumirror-api-cmyv4amroa-du.a.run.app
 
+// 꾸미러 전용 AdMob app. **Debug / Release 모두 같은 값**이다.
+//
+// 광고를 안전하게 만드는 것은 App ID가 아니라 **ad unit**이다(Debug는 Google test unit).
+// App ID를 Debug에서 sample 값으로 바꾸면 UMP가 **남의 app 설정으로** 동의 메시지를
+// 조회하게 되어, 우리 동의 flow를 실기기에서 확인할 수 없다.
+// (UMP 메시지는 AdMob console에서 **app 단위**로 설정된다.)
+ADMOB_APP_ID = ca-app-pub-5460686409666356~3170610279
+
 // Info.plist로 넘긴다. Swift는 AppConfig를 통해서만 읽는다.
 //
 // `INFOPLIST_KEY_<custom>`은 동작하지 않는다 — Xcode가 아는 키만 generated plist에 넣는다

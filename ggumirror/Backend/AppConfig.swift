@@ -23,7 +23,15 @@ nonisolated enum AppConfig {
     enum Key {
         static let environment = "GGUMIRROR_APP_ENV"
         static let backendBaseURL = "GGUMIRROR_BACKEND_BASE_URL"
+        static let admobRewardedAdUnitID = "GGUMIRROR_ADMOB_REWARDED_AD_UNIT_ID"
+        /// Google SDK가 직접 읽는 표준 키다. 우리가 Swift에서 쓸 일은 없고,
+        /// 빌드 설정이 제대로 들어갔는지 test가 확인하는 데만 쓴다.
+        static let admobAppID = "GADApplicationIdentifier"
     }
+
+    /// Google이 공개한 **예제(test) ad unit**. Debug에서만 쓴다.
+    /// Release 빌드에 이 값이 들어가면 실제 사용자에게 test 광고가 나가고 정책 위반이 된다.
+    static let googleTestRewardedAdUnit = "ca-app-pub-3940256099942544/1712485313"
 
     enum Failure: Error, CustomStringConvertible {
         case missing(String)
@@ -42,6 +50,19 @@ nonisolated enum AppConfig {
     static let environment: AppEnvironment = resolve { try parseEnvironment(bundleValue(Key.environment)) }
 
     static let backendBaseURL: URL = resolve { try parseBaseURL(bundleValue(Key.backendBaseURL)) }
+
+    /// 광고 보상에 쓸 rewarded ad unit. **없으면 `nil`이고, 그러면 광고 기능을 꺼 둔다.**
+    ///
+    /// 다른 설정과 달리 비어 있어도 앱을 멈추지 않는다 — 광고는 부가 기능이고,
+    /// 아직 꾸미러 전용 ad unit이 없다. 거울 · 촬영 · 꾸미기 · 출석은 그대로 동작해야 한다.
+    static let admobRewardedAdUnitID: String? = parseAdUnit(bundleValue(Key.admobRewardedAdUnitID))
+
+    /// AdMob app 식별자. **Debug / Release가 같다.**
+    ///
+    /// 광고를 안전하게 만드는 것은 App ID가 아니라 ad unit이다(Debug는 Google test unit).
+    /// App ID까지 sample 값으로 바꾸면 UMP가 남의 app 설정으로 동의 메시지를 조회해
+    /// 우리 동의 흐름을 실기기에서 확인할 수 없다.
+    static let admobAppID: String? = bundleValue(Key.admobAppID)
 
     // MARK: - 읽기
 
@@ -81,6 +102,20 @@ nonisolated enum AppConfig {
             throw Failure.invalid(key: Key.backendBaseURL, reason: "scheme이 http(s)가 아니다")
         }
         return url
+    }
+
+    /// 비어 있으면 `nil`. **production에서 test ad unit이면 무시한다.**
+    ///
+    /// 실수로 test 값이 Release 설정에 들어가도 실제 사용자에게 test 광고가 나가지 않는다.
+    /// 빌드 설정 test(`AppConfigTests`)가 먼저 잡지만, 마지막 방어선을 코드에도 둔다.
+    static func parseAdUnit(_ raw: String?, environment: AppEnvironment = AppConfig.environment) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        if environment == .production, value == googleTestRewardedAdUnit {
+            return nil
+        }
+        return value
     }
 
     private static func nonEmpty(_ raw: String?, key: String) throws -> String {
