@@ -123,11 +123,48 @@ struct MyMirrorsView: View {
         if MirrorPublishPolicy.isEligible(mirror) {
             actions.append(InkDialogAction("상점에 올리기") { publishTarget = mirror })
         }
+        // 내가 만든 거울만 앱 밖으로 나간다 — 상점 artwork를 원본 파일로 꺼내가지 않는다.
+        if OwnContentExportPolicy.canExport(mirror) {
+            actions.append(InkDialogAction("사진에 저장") { save(mirror) })
+            actions.append(InkDialogAction("공유하기") { share(mirror) })
+        }
         if mirror.origin != .basic {
             actions.append(InkDialogAction("삭제", role: .destructive) { library.delete(mirror) })
         }
         actions.append(InkDialogAction("닫기"))
         return actions
+    }
+
+    // MARK: - 내보내기
+
+    /// 사진 앱에 PNG로 저장한다. **화면을 찍지 않는다** — 1080 × 2340으로 다시 그린다.
+    private func save(_ mirror: MyMirror) {
+        Task {
+            do {
+                let png = try OwnContentExport.mirrorPNG(mirror)
+                if let failure = await OwnContentExport.saveToPhotos(png: png) {
+                    notice = failure.message
+                } else {
+                    notice = "사진 앱에 저장했어요."
+                }
+            } catch {
+                notice = (error as? OwnContentExportFailure)?.message
+                    ?? OwnContentExportFailure.renderingFailed.message
+            }
+        }
+    }
+
+    /// 임시 파일 하나를 만들어 기본 공유 시트에 넘긴다. 끝나면 지운다.
+    private func share(_ mirror: MyMirror) {
+        do {
+            let file = try ExportedFile.png(try OwnContentExport.mirrorPNG(mirror), name: mirror.name)
+            if let failure = ShareSheet.present(file, onFinish: { file.cleanUp() }) {
+                notice = failure.message
+            }
+        } catch {
+            notice = (error as? OwnContentExportFailure)?.message
+                ?? OwnContentExportFailure.sharePreparationFailed.message
+        }
     }
 
     /// 거울이 있든 없든 항상 여기서 새 거울을 시작할 수 있다.

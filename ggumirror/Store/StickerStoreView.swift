@@ -201,6 +201,37 @@ struct StickerStoreView: View {
 
     // MARK: - 동작
 
+    // MARK: - 내보내기
+
+    /// 투명 PNG 그대로 사진 앱에 저장한다. JPEG로 바꾸면 투명 영역이 사라진다.
+    private func saveSticker(_ project: StickerProject) {
+        Task {
+            do {
+                let png = try OwnContentExport.stickerPNG(project)
+                if let failure = await OwnContentExport.saveToPhotos(png: png) {
+                    notice = failure.message
+                } else {
+                    notice = "사진 앱에 저장했어요."
+                }
+            } catch {
+                notice = (error as? OwnContentExportFailure)?.message
+                    ?? OwnContentExportFailure.renderingFailed.message
+            }
+        }
+    }
+
+    private func shareSticker(_ project: StickerProject) {
+        do {
+            let file = try ExportedFile.png(try OwnContentExport.stickerPNG(project), name: project.name)
+            if let failure = ShareSheet.present(file, onFinish: { file.cleanUp() }) {
+                notice = failure.message
+            }
+        } catch {
+            notice = (error as? OwnContentExportFailure)?.message
+                ?? OwnContentExportFailure.sharePreparationFailed.message
+        }
+    }
+
     private func actions(for project: StickerProject) -> [InkDialogAction] {
         [
             InkDialogAction("사용하기", role: .primary) {
@@ -214,6 +245,8 @@ struct StickerStoreView: View {
                 )
             },
             InkDialogAction("복제") { library.duplicate(project) },
+            InkDialogAction("사진에 저장") { saveSticker(project) },
+            InkDialogAction("공유하기") { shareSticker(project) },
             InkDialogAction("상점에 올리기") { publishTarget = project },
             InkDialogAction("삭제", role: .destructive) { library.delete(project) },
             InkDialogAction("닫기"),

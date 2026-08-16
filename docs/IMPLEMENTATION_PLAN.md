@@ -1647,6 +1647,54 @@ SDK에 닿는 파일은 `ggumirror/Ads/GoogleAds.swift` **하나**다.
 `RewardedAds.swift` · `AdsConsent.swift` · Home · Settings · RootView는 protocol만 안다.
 그래서 광고 흐름 전체를 SDK 없이 테스트한다.
 
+## Phase D-1 — Own Content Export (확정)
+
+내가 만든 거울 / 스티커를 PNG로 내보낸다. 경제 시스템과 무관하다.
+
+### 렌더
+
+**새 렌더러를 만들지 않았다.** 화면이 쓰는 `MirrorRenderer.draw`를 그대로 부른다.
+
+| | |
+|---|---|
+| 거울 | `MirrorCanvas.size`(**1080 × 2340**) · `ImageRenderer` · `scale = 1` · `isOpaque = false` |
+| 스티커 | `StickerRenderer.pngData` 재사용 — `canvas: .sticker`, 투명 유지 |
+
+- **화면을 찍지 않는다.** `UIScreen` · `snapshot` · `drawHierarchy` 없음(테스트가 고정)
+- 기기 크기 · Dynamic Type · scale이 결과를 바꾸지 못한다 — 크기가 상수 하나에서만 온다
+- 투명 프레임은 렌더러의 `frameFill == nil` 판단을 그대로 따른다. export가 따로 분기하지 않는다
+- 편집 화면 chrome은 **들어올 구조가 아니다** — 여기서 부르는 것은 장식 렌더뿐이다
+
+### 소유권
+
+`OwnContentExportPolicy.canExport` — 거울은 `origin == .made`만.
+`.basic`(기본 제공) · `.purchased`는 막는다.
+
+**`MirrorPublishPolicy`와 일부러 분리했다.** "팔아도 되는가"와 "밖으로 가져가도 되는가"는
+다른 질문이고, 지금 답이 같다고 한쪽을 재사용하면 나중에 조용히 같이 바뀐다.
+
+스티커 프로젝트는 전부 Sticker Creator에서 만든 것이라 지금은 무조건 허용이고,
+상점 스티커를 프로젝트로 들여오는 경로가 생기면 **그 함수에 조건을 추가한다.**
+
+### 저장 · 공유
+
+- 사진 앱: `MirrorCapture`의 **add-only** 권한 경로 재사용. `save(data:)`를 추가해
+  **PNG 그대로** 넘긴다 — JPEG로 바꾸면 스티커 투명도가 사라진다
+- `NSPhotoLibraryAddUsageDescription`은 이미 있고, 읽기 권한은 **추가하지 않았다**
+- 공유: `UIActivityViewController`. 임시 파일은 `temporaryDirectory/ggumirror-export`에 쓰고
+  공유가 끝나면 지운다. **Application Support(사용자 원본)와 섞지 않는다**
+- 공유 중 강제 종료로 남은 파일은 `RootView`가 시작할 때 한 번 정리한다
+
+### 실패
+
+`notExportable` · `renderingFailed` · `temporaryFileFailed` · `photosPermissionDenied` ·
+`photosSaveFailed` · `sharePreparationFailed`를 **구분해서** 안내한다.
+로그에 경로나 콘텐츠를 남기지 않는다(export 파일에 `print`/`Logger`가 없다).
+
+### 아직 아닌 것
+
+구매 콘텐츠 export · seller download license(D-2) · 동영상 export · 워터마크.
+
 ## C-1 Prep — Lock Screen Quick Mirror (조사 확정, 구현 전)
 
 ### Locked Camera Capture Extension의 sandbox 제약 (Apple 공식)

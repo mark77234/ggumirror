@@ -179,6 +179,22 @@ Draft 저장 성공을 실제 Store 공개 등록 성공처럼 표현하지 않�
 
 Actual Publish는 Backend phase 이후 구현한다.
 
+## 내 콘텐츠 내보내기 (D-1)
+
+- 내보내기는 **`MirrorRenderer`를 재사용한다.** 화면 스크린샷을 찍지 않는다
+- 거울은 **1080 × 2340**(`MirrorCanvas.size`), 스티커는 `StickerRenderer` 규칙을 따른다.
+  export가 자기만의 해상도를 정하지 않는다
+- **PNG만 쓴다.** JPEG로 바꾸면 스티커 투명도가 사라진다
+- `OwnContentExportPolicy`가 유일한 관문이다 — 거울은 `origin == .made`만.
+  `MirrorPublishPolicy`를 재사용하지 않는다(다른 질문이라 따로 둔다)
+- 상점 스티커를 프로젝트로 들여오는 경로가 생기면 **그 정책 함수에 조건을 추가한다**
+- 사진 저장은 **add-only** 권한만. `NSPhotoLibraryUsageDescription`(읽기)을 추가하지 않는다
+- 임시 파일은 `temporaryDirectory`에만 쓰고 공유 후 지운다.
+  Application Support의 사용자 원본과 섞지 않는다
+- 내보내기 코드에 `print` · `Logger`를 넣지 않는다 — 경로와 콘텐츠가 새어 나간다
+
+`ggumirrorTests/OwnContentExportTests.swift`가 위 전부를 고정한다.
+
 ## Persistence Safety
 
 Auth/login/logout 작업 때문에 다음 데이터를 삭제하지 않는다:

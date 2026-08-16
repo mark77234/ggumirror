@@ -43,9 +43,19 @@ enum MirrorCapture {
         return renderer.uiImage
     }
 
-    /// 최소 권한(.addOnly)만 요청한다. 라이브러리를 읽지 않는다.
+    /// 촬영한 거울 사진. 카메라 사진이라 JPEG로 충분하다.
     static func save(_ image: UIImage) async -> SaveResult {
         guard let data = image.jpegData(compressionQuality: 0.95) else { return .failed }
+        return await save(data: data)
+    }
+
+    /// 이미 만들어 둔 이미지 데이터를 저장한다.
+    ///
+    /// 형식을 여기서 정하지 않는다 — 내보내기(D-1)는 **PNG 그대로** 넘긴다.
+    /// JPEG로 바꾸면 투명 스티커의 alpha가 사라진다.
+    ///
+    /// 최소 권한(.addOnly)만 요청한다. 라이브러리를 읽지 않는다.
+    static func save(data: Data) async -> SaveResult {
         guard await isAddAuthorized() else { return .denied }
 
         do {

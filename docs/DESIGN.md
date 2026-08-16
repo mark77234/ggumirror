@@ -499,3 +499,19 @@ Reference(`docs/design-references/doodle-system/`)에서 가져온 것은 **재�
 docs/claude-design/Mirror App v2.dc.html
 
 HTML을 WebView로 포함하지 않고 SwiftUI 구현의 visual/interaction reference로만 사용.
+
+
+## 내 콘텐츠 내보내기 (D-1)
+
+새 화면을 만들지 않았다. 기존 action 목록에 두 줄만 더한다.
+
+- 내 거울 → 거울을 고르면 나오는 목록에 **`사진에 저장`** · **`공유하기`**
+- 내 스티커 → 같은 자리, 같은 문구
+
+Clean Pen Sketch / Warm Paper 그대로다. 내보내기 전용 카드 · 모달 · 탭을 만들지 않는다.
+
+**내가 만든 것에만 보인다.** 상점에서 받은 거울에는 두 항목이 아예 나타나지 않는다 —
+눌렀다가 거절당하는 것보다 처음부터 없는 편이 낫다.
+
+결과 안내는 기존 `inkDialog` 한 줄로 한다:
+저장 성공 · 권한 없음 · 렌더 실패 · 파일 준비 실패 · 공유 준비 실패를 **구분해서** 알려준다.

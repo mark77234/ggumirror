@@ -86,6 +86,8 @@ struct RootView: View {
                 await session.refreshCredentialState()
                 // 저장된 서버 세션이 아직 살아 있는지 확인한다. 실패해도 화면을 막지 않는다.
                 await session.refreshServerSession()
+                // 공유하다 앱이 죽으면 임시 파일이 남는다. 시작할 때 한 번 치운다.
+                ExportedFile.cleanUpLeftovers()
                 // 잠금화면에서 찍은 사진이 있으면 여기서 알게 된다.
                 quickMirror.refresh()
                 // 잠금화면 Quick Mirror가 쓸 프레임을 등록한다. 실패해도 앱은 그대로다.
