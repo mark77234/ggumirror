@@ -466,7 +466,9 @@ struct AIStickerTests {
 
         _ = try await service.resume(session: session(), wallet: wallet())
         storage.stored = PendingAIGeneration(requestID: "req-1", generationID: "gen-1")
-        let again = AIStickerService(backend: backend, storage: storage)
+        // cutout을 넣지 않으면 기본값인 **진짜 Vision**이 돌아 가짜 PNG에서 피사체를 찾지 못하고
+        // `.cutoutFailed`로 끝난다. 여기서 보려는 것은 배경제거가 아니라 "이미지를 다시 받는가"다.
+        let again = AIStickerService(backend: backend, storage: storage, cutout: FakeCutout())
         await again.refresh(session: session())
         _ = try await again.resume(session: session(), wallet: wallet())
 
