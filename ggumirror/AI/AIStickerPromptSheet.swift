@@ -35,7 +35,22 @@ struct AIStickerPromptSheet: View {
     private var canAfford: Bool { balance >= price }
     private var canGenerate: Bool { !trimmed.isEmpty && canAfford && !isGenerating }
 
+    /// 입력창이 있는 시트라 **키보드가 올라오면 남는 높이가 절반 이하**가 된다.
+    /// 그래서 설명·입력·가격은 스크롤로 흘리고, 만들기/취소는 `safeAreaInset`으로 바닥에 고정한다.
+    /// 예전에는 통짜 `VStack`이라 큰 글꼴이나 키보드에서 "만들기"가 시트 밖으로 밀렸다.
     var body: some View {
+        ScrollView {
+            fields
+        }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        // 키보드는 아래로 쓸어 내려 닫는다. 닫기 버튼을 따로 만들지 않는다.
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) { actions }
+        .onAppear { isFocused = true }
+    }
+
+    private var fields: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text("AI로 스티커 만들기")
@@ -74,8 +89,15 @@ struct AIStickerPromptSheet: View {
                     .monospacedDigit()
             }
             .foregroundStyle(canAfford ? PaperTheme.secondaryInk : PaperTheme.ink)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            HStack(spacing: 10) {
+    /// 조각을 쓰는 결정이다. 어떤 글꼴 크기에서도, 키보드가 올라와 있어도 눌릴 수 있어야 한다.
+    private var actions: some View {
+        HStack(spacing: 10) {
                 Button("취소") { dismiss() }
                     .font(InkFont.body)
                     .foregroundStyle(PaperTheme.ink)
@@ -99,10 +121,11 @@ struct AIStickerPromptSheet: View {
                     }
                     .buttonStyle(InkPressStyle())
                     .disabled(!canGenerate)
-            }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { isFocused = true }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, InkSheetMetrics.actionClearance)
+        // 스크롤 내용이 버튼 뒤로 비쳐 지나가지 않게 종이를 깐다.
+        .background(PaperTheme.paper)
     }
 }

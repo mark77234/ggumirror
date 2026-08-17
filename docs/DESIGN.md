@@ -540,3 +540,26 @@ Clean Pen Sketch / Warm Paper 그대로다. 내보내기 전용 카드 · 모달
 
 문구는 **조각이 어떻게 됐는지**를 먼저 말한다:
 `만드는 도중에 끊겼어요. 조각은 돌려드렸어요.`
+
+## Sheet / Modal Layout 규칙 (UI-P1)
+
+앱의 시트·다이얼로그는 전부 `Shared/InkModal.swift`가 띄운다
+(시스템 `.sheet` / `presentationDetents`를 쓰지 않는다). 그래서 layout 규칙도 여기 한곳이다.
+
+- **카드 내용은 아래 safe area를 지킨다.** 홈 인디케이터 아래로 내용이 들어가지 않고,
+  종이 면만 `InkModalSurface`가 그 아래까지 이어 그린다
+- **높이가 변할 수 있는 내용은 스크롤로 흘린다.** 고정 비율 미리보기(9 : 19.5 거울 캔버스),
+  긴 안내문, 큰 Dynamic Type은 전부 시트 높이를 넘길 수 있다
+- **필수 CTA는 스크롤 밖에 고정한다** — `safeAreaInset(edge: .bottom)`.
+  사용자가 끝까지 스크롤해야만 결정 버튼에 닿는 구조를 만들지 않는다
+- **고정 높이(`.fraction`)에 필수 UI를 의존시키지 않는다.** detent는 "보통 이만큼 보인다"는
+  뜻이지 "내용이 이 안에 들어간다"는 보장이 아니다
+- **키보드가 action을 가리지 않는다.** 입력창이 있는 시트는 스크롤 + `safeAreaInset` +
+  `scrollDismissesKeyboard`를 쓴다. 키보드 높이를 `NotificationCenter`로 직접 추적하지 않는다
+- **`UIScreen.main.bounds`로 높이를 계산하지 않는다.** safe area가 빠져 작은 기기에서 어긋난다
+- 고정 CTA의 아래 여백은 `InkSheetMetrics.actionClearance` 하나를 공유한다.
+  시트마다 다른 숫자를 적지 않는다
+- 화면마다 `.padding(.bottom, 30)` 같은 임시 처리를 뿌리지 않는다 —
+  잘림의 원인은 대부분 여백이 아니라 **스크롤이 없는 것**이다
+
+`ggumirrorTests/UIPolishTests.swift`가 위 규칙을 소스 레벨로 고정한다.

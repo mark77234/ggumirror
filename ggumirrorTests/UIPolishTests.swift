@@ -244,6 +244,60 @@ struct UIPolishTests {
         #expect(isPaper(y: image.height - 4), "시트 아래가 종이로 채워지지 않았다")
     }
 
+    /// repo 안의 소스 파일 하나를 읽는다.
+    private func sheetSource(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "ggumirror")
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    // MARK: - 시트 layout (UI-P1)
+
+    /// 시트 높이보다 커질 수 있는 내용은 **스크롤로 흘리고**,
+    /// 필수 CTA는 스크롤 **밖에** 고정한다.
+    ///
+    /// 회귀: "외부에서 거울 만들기" 미리보기가 통짜 VStack이라 9 : 19.5 캔버스가
+    /// 시트를 넘겼고 "이 디자인 사용" 버튼이 잘려 눌리지 않았다.
+    @Test("높이가 변하는 시트는 스크롤 + 고정 CTA 구조다", arguments: [
+        "MyMirrors/ExternalArtworkView.swift",
+        "AI/AIStickerPromptSheet.swift",
+    ])
+    func overflowingSheetsPinTheirActions(file: String) throws {
+        let source = try sheetSource(file)
+        #expect(source.contains("ScrollView"), "\(file): 넘치는 내용을 흘릴 스크롤이 없다")
+        #expect(
+            source.contains("safeAreaInset(edge: .bottom"),
+            "\(file): CTA가 스크롤 안에 있으면 내용이 길어질 때 밀려 나간다"
+        )
+    }
+
+    /// 입력창이 있는 시트는 키보드를 스크롤로 닫을 수 있어야 한다.
+    /// 키보드 높이를 NotificationCenter로 직접 추적하는 코드를 만들지 않는다.
+    @Test("입력 시트는 native 키보드 처리를 쓴다")
+    func promptSheetUsesNativeKeyboardHandling() throws {
+        let source = try sheetSource("AI/AIStickerPromptSheet.swift")
+        #expect(source.contains("scrollDismissesKeyboard"))
+        #expect(!source.contains("NotificationCenter"), "키보드 높이를 손으로 추적하지 않는다")
+        #expect(!source.contains("UIScreen.main"), "화면 크기를 직접 재지 않는다")
+    }
+
+    /// 시트 액션의 아래 여백은 값 하나를 공유한다 — 화면마다 다른 숫자를 쓰지 않는다.
+    @Test("고정 CTA 여백은 공유 상수를 쓴다", arguments: [
+        "MyMirrors/ExternalArtworkView.swift",
+        "AI/AIStickerPromptSheet.swift",
+    ])
+    func pinnedActionsShareOneClearance(file: String) throws {
+        #expect(try sheetSource(file).contains("InkSheetMetrics.actionClearance"))
+    }
+
+    /// 시트 높이를 화면 크기로 직접 계산하지 않는다 — safe area가 반영되지 않는다.
+    @Test("시트는 UIScreen으로 높이를 재지 않는다")
+    func sheetsNeverMeasureTheScreenDirectly() throws {
+        #expect(!(try sheetSource("Shared/InkModal.swift").contains("UIScreen")))
+    }
+
     @Test("시트 내용은 시스템 dismiss를 쓰지 않는다")
     func sheetContentsNeverUseSystemDismiss() throws {
         // 회귀: 커스텀 오버레이 안에서 `@Environment(\.dismiss)`를 쓰면 시트가 아니라

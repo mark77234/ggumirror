@@ -197,50 +197,67 @@ struct ExternalArtworkView: View {
     // MARK: - 확인
 
     /// 실제 거울 geometry 위에 얹어 보여준다. 여기서 정렬과 투명도를 눈으로 확인한다.
+    ///
+    /// 미리보기는 **9 : 19.5 고정 비율**이라 시트 높이보다 쉽게 커진다
+    /// (작은 iPhone에서는 캔버스만으로도 시트를 넘긴다). 그래서 두 층으로 나눈다:
+    /// 넘치는 것은 스크롤로 흘리고, **결정 버튼은 `safeAreaInset`으로 항상 바닥에 고정**한다.
+    /// 예전에는 통짜 `VStack`이라 캔버스가 커지면 버튼이 시트 밖으로 밀려 눌리지 않았다.
     private func preview(_ artwork: ImportedArtworkObject) -> some View {
-        VStack(spacing: 14) {
-            Text("이대로 쓸까요?")
-                .font(InkFont.cardTitle)
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.top, 20)
-
-            Text("점선 없이 실제 거울처럼 보여드려요. 가운데 어두운 부분은 실제로는 카메라가 보여요.")
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.secondaryInk)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            MirrorCanvasView(design: previewDesign(artwork))
-                .padding(.horizontal, 40)
-
-            HStack(spacing: 10) {
-                Button("다시 선택") { candidate = nil }
-                    .font(InkFont.body)
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("이대로 쓸까요?")
+                    .font(InkFont.cardTitle)
                     .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
-                    .buttonStyle(InkPressStyle())
+                    .padding(.top, 20)
 
-                Button("이 디자인 사용") {
-                    onUse(artwork)
-                    dismiss()
-                }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.subtleSurface)
+                Text("점선 없이 실제 거울처럼 보여드려요. 가운데 어두운 부분은 실제로는 카메라가 보여요.")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                MirrorCanvasView(design: previewDesign(artwork))
+                    .padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        .safeAreaInset(edge: .bottom, spacing: 0) { previewActions(artwork) }
+    }
+
+    /// 항상 눌릴 수 있어야 하는 결정 버튼. 스크롤 밖에 둔다.
+    private func previewActions(_ artwork: ImportedArtworkObject) -> some View {
+        HStack(spacing: 10) {
+            Button("다시 선택") { candidate = nil }
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 48)
                 .background {
-                    UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                    UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                        .stroke(PaperTheme.ink, lineWidth: 1.6)
                 }
                 .buttonStyle(InkPressStyle())
+
+            Button("이 디자인 사용") {
+                onUse(artwork)
+                dismiss()
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .font(InkFont.body.weight(.semibold))
+            .foregroundStyle(PaperTheme.subtleSurface)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 48)
+            .background {
+                UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+            }
+            .buttonStyle(InkPressStyle())
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, InkSheetMetrics.actionClearance)
+        // 스크롤 내용이 버튼 뒤로 비쳐 지나가지 않게 종이를 깐다.
+        .background(PaperTheme.paper)
     }
 
     private func previewDesign(_ artwork: ImportedArtworkObject) -> MirrorDesign {
