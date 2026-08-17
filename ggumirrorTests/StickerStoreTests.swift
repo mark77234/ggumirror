@@ -570,8 +570,8 @@ struct StickerStoreTests {
         #expect(BuiltInSticker(rawValue: "heart") == .heart)
         #expect(StoreCatalog.artworkTemplates.count == 24)
 
-        // 스티커 저장 형식은 1, 거울은 3
-        #expect(StickerSchema.current == 1)
+        // 스티커 저장 형식은 2(A-1A에서 출처가 생겼다), 거울은 그대로 3
+        #expect(StickerSchema.current == 2)
         #expect(MirrorSchema.current == 3)
     }
 

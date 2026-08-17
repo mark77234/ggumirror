@@ -27,7 +27,14 @@ import UniformTypeIdentifiers
 
 enum StickerSchema {
     /// 스티커 저장 파일 버전. 거울 schemaVersion과 **별개**다.
-    static let current = 1
+    ///
+    /// 2 — 스티커에 출처(`origin` · `generationIDs`)가 생겼다(A-1A).
+    ///
+    /// 읽기는 뒤로 호환된다(1로 적힌 파일은 `origin=made`로 읽는다). 그런데도 올린 이유는
+    /// **쓰기** 때문이다: 이 값을 모르는 예전 앱이 같은 파일을 다시 저장하면 출처가 조용히
+    /// 사라지고, AI 스티커가 사람이 만든 것으로 둔갑한다. 버전을 올려 두면 예전 앱은
+    /// `tooNew`로 보고 읽기 전용이 된다.
+    static let current = 2
 }
 
 struct PersistedStickerProjects: Codable {
@@ -241,11 +248,16 @@ final class StickerLibrary {
 
     /// 저장. **무엇이 될지는 context가 정한다** — 편집은 같은 id를 갱신하고,
     /// 새로 만들기 / 복제만 새 id를 만든다.
+    ///
+    /// - Parameter generationIDs: 이번에 얹은 AI 생성들. 하나라도 있으면(또는 예전에
+    ///   있었으면) 이 스티커는 `aiGenerated`다. **한 번 AI가 들어간 스티커는
+    ///   레이어를 지워도 사람이 만든 것으로 되돌아가지 않는다** — 출처는 기록이지 상태가 아니다.
     @discardableResult
     func save(
         _ design: MirrorDesign,
         name rawName: String,
-        context: StickerSaveContext
+        context: StickerSaveContext,
+        generationIDs: [String] = []
     ) -> StickerProject? {
         guard !isReadOnly else { return nil }
 
@@ -255,12 +267,14 @@ final class StickerLibrary {
             project = projects[index]
             project.design = design
             project.updatedAt = Date()
+            project.record(generationIDs: generationIDs)
             projects[index] = project
         } else {
             let name = StickerProjectPolicy.normalizedName(rawName) ?? suggestedName
             project = StickerProject(name: name, design: design)
             project.design.id = project.id
             project.design.name = name
+            project.record(generationIDs: generationIDs)
             projects.append(project)
         }
 
@@ -286,7 +300,8 @@ final class StickerLibrary {
         var design = project.design
         design.name = name
         // save가 새 id를 만들고 PNG도 새로 굽는다 — finalAssetID를 물려받지 않는다.
-        return save(design, name: name, context: .createNew)
+        // **출처는 물려받는다** — AI 스티커를 복제해도 AI 스티커다.
+        return save(design, name: name, context: .createNew, generationIDs: project.generationIDs)
     }
 
     /// 목록에서 지운다.
@@ -337,8 +352,12 @@ final class StickerLibrary {
     }
 
     /// 스티커 하나에 준비 정보 하나. 같은 스티커면 덮어쓴다.
+    ///
+    /// **AI 스티커는 받지 않는다.** 내보내기는 되지만 판매는 아직 열려 있지 않다 —
+    /// 화면에서 버튼을 감추는 것만으로는 부족하고, 여기서도 한 번 막는다.
     func saveDraft(_ draft: StickerPublishDraft) {
         guard !isReadOnly else { return }
+        guard project(id: draft.stickerProjectID)?.canPublishToStore != false else { return }
         var updated = draft
         updated.updatedAt = Date()
         if let index = drafts.firstIndex(where: { $0.stickerProjectID == draft.stickerProjectID }) {

@@ -115,6 +115,18 @@ final class ShardWallet {
         }
     }
 
+    /// 서버가 계산해 준 잔액을 그대로 옮겨 적는다.
+    ///
+    /// **더하거나 빼지 않는다.** 조각을 쓰는 기능(AI 스티커 …)이 서버에서 받은
+    /// `balance`를 화면에 반영하는 유일한 통로다 — `balance -= 6` 같은 코드를 만들지 않기 위해
+    /// 값을 계산할 수 없는 모양으로만 열어 둔다.
+    ///
+    /// `lifetimeSpent`는 여기서 건드리지 않는다. 다음 `refresh`가 서버 값으로 맞춘다 —
+    /// 두 숫자를 각자 다른 근거로 움직이면 서로 어긋난다.
+    func apply(balance newBalance: Int) {
+        balance = newBalance
+    }
+
     /// 로그아웃. **서버 지갑은 그대로 있고** 이 기기의 표시만 지운다.
     func clear() {
         balance = 0

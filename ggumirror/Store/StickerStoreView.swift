@@ -247,7 +247,13 @@ struct StickerStoreView: View {
             InkDialogAction("복제") { library.duplicate(project) },
             InkDialogAction("사진에 저장") { saveSticker(project) },
             InkDialogAction("공유하기") { shareSticker(project) },
-            InkDialogAction("상점에 올리기") { publishTarget = project },
+            // AI 스티커는 아직 팔 수 없다. 내보내기(사진 저장 · 공유)는 위에 그대로 있다 —
+            // 내가 쓰려고 만든 것과 남에게 파는 것은 다른 문제다.
+            project.canPublishToStore
+                ? InkDialogAction("상점에 올리기") { publishTarget = project }
+                : InkDialogAction("상점에 올리기") {
+                    notice = "AI로 만든 스티커는 아직 상점에 올릴 수 없어요. 사진 저장과 공유는 할 수 있어요."
+                },
             InkDialogAction("삭제", role: .destructive) { library.delete(project) },
             InkDialogAction("닫기"),
         ]

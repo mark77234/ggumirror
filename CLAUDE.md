@@ -195,6 +195,56 @@ Actual Publish는 Backend phase 이후 구현한다.
 
 `ggumirrorTests/OwnContentExportTests.swift`가 위 전부를 고정한다.
 
+## AI 스티커 (A-1A) — client는 provider를 모른다
+
+프롬프트 한 줄 → 투명 PNG 스티커. **앱은 AI provider가 무엇인지도 모른다.**
+
+- **provider API key를 앱에 넣지 않는다.** bundle에 들어가는 것은 누구나 꺼낼 수 있다.
+  client가 아는 주소는 꾸미러 backend 하나이고, provider 호출은 전부 서버가 한다.
+  `Config/*.xcconfig` · `Info.plist`에도 provider 관련 값을 넣지 않는다
+- **가격을 앱에 적지 않는다.** 몇 조각인지는 `GET /ai/stickers/config`가 알려주고
+  화면은 받은 값을 그대로 보여준다. 코드에 `6`을 적으면 서버가 값을 바꿀 때 거짓말이 된다
+- **잔액을 client가 계산하지 않는다.** `balance -= 6`을 쓰지 않고,
+  서버가 응답에 담아준 `balance`를 `ShardWallet.apply(balance:)`로 옮겨 적기만 한다.
+  실패했을 때의 **환불도 서버가 한다** — client에 되돌리는 코드가 없다
+- **CTA는 서버가 켠다.** `config.available`이 false면 Creator에 AI 버튼 자체가 없다.
+  앱을 다시 내지 않고 서버 설정(`AI_IMAGE_API_KEY` · `AI_IMAGE_MODEL`)만 채우면 열린다
+- 결과는 **새 `StickerSource` case를 만들지 않고** `.photo`로 들어간다 —
+  이미 "id로 참조하는 불변 bitmap + 비율"이라 저장 형식 · GC · 렌더 · 크기 조절 · 레이어가
+  그대로 동작한다. 사진 cutout이 지나는 `PhotoStickerAssetStore.register`와 같은 자리다
+- **프롬프트 원문을 저장하지 않는다.** 서버도 기기도 남기지 않는다 —
+  다시 편집할 때 필요한 것은 그림이지 그때 뭐라고 적었는지가 아니다.
+  로그에도 남기지 않는다(Release · Debug 모두)
+- 출처는 `StickerProject.origin`(`made` / `aiGenerated`) + `generationIDs`다.
+  **한 번 AI가 들어간 스티커는 되돌아가지 않는다** — 레이어를 지워도 출처는 기록으로 남는다
+- **AI 스티커는 상점에 올릴 수 없다**(`canPublishToStore`). 내보내기(D-1)는 된다 —
+  내가 쓰려고 만든 것과 남에게 파는 것은 다른 문제다. 화면에서 감추는 것으로 끝내지 않고
+  `StickerLibrary.saveDraft`에서도 막는다
+- 스티커 저장 파일은 **schemaVersion 2**다. 읽기는 뒤로 호환되지만(1은 `origin=made`),
+  이 값을 모르는 예전 앱이 다시 저장하면 출처가 조용히 사라지므로 버전을 올렸다
+
+### 생성은 서버가 소유한다 (A-1B)
+
+응답 한 번이 전부가 아니다. **끊겨도 잃지 않는다.**
+
+- **`requestId`(UUID)를 client가 만들어 기기에 적어 둔다.** 같은 값으로 다시 물으면
+  서버는 새로 만들지 않고 그 작업의 지금 상태를 준다 — 조각이 두 번 나가지 않는다
+- 적어 두는 것은 `requestId`와 `generationId`뿐이다.
+  **프롬프트는 기기에도 남기지 않는다**(`PendingAIGeneration`에 자리가 없다).
+  이어받을 때는 프롬프트를 **비워** 보낸다 — 서버도 우리도 원문을 들고 있지 않다
+- 이미지는 응답이 아니라 `GET /ai/stickers/{id}/image`로 받는다.
+  **signed URL을 쓰지 않는다** — URL 자체가 credential이 되면 로그 한 줄로 새어 나간다
+- 앱을 껐다 켜도 `UserDefaults`에 남은 pending을 집어 들고 이어받는다.
+  `generationId`를 알면 조회, 모르면 같은 `requestId`로 다시 POST
+- 실패는 **조각이 돌아왔는지**로 나눠 말한다(`.refunded` vs `.interrupted`).
+  `.isRecoverable`이 "다시 확인" 버튼을 보여줄지 정한다
+- **client는 여전히 잔액을 계산하지 않는다.** 차감도 환불도 서버가 하고,
+  `ShardWallet.apply(balance:)`로 서버 값을 옮겨 적기만 한다
+- AI 요청 timeout은 200초다(기본 15초로는 정상 생성도 끊긴다).
+  끊겨도 작업은 서버에 남으므로 "다시 확인"으로 되찾는다
+
+`ggumirrorTests/AIStickerTests.swift`가 위 전부를 고정한다.
+
 ## Persistence Safety
 
 Auth/login/logout 작업 때문에 다음 데이터를 삭제하지 않는다:

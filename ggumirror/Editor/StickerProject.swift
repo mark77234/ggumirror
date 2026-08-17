@@ -62,6 +62,20 @@ enum StickerSaveContext: Equatable {
     var makesNewProject: Bool { existingID == nil }
 }
 
+// MARK: - 출처
+
+/// 이 스티커가 **어디서 왔는가**. 저장 파일에 남는 값이라 rawValue를 바꾸지 않는다.
+///
+/// 무엇에 쓰는가: 내가 만든 것과 AI가 그린 것을 **구분해서 다루기 위해서**다.
+/// 내보내기(D-1)는 둘 다 되지만, 상점 판매는 AI 스티커에 아직 열려 있지 않다.
+/// 화면마다 "이거 AI였나"를 다시 추측하지 않도록 저장 시점에 한 번 적어 둔다.
+enum StickerProjectOrigin: String, Codable, Hashable {
+    /// 사람이 그리고 얹어서 만든 것.
+    case made
+    /// AI가 만든 레이어가 **하나라도** 들어 있는 것.
+    case aiGenerated
+}
+
 // MARK: - 프로젝트
 
 /// 다시 편집할 수 있는 스티커. 레이어를 그대로 들고 있다.
@@ -74,6 +88,14 @@ struct StickerProject: Identifiable, Hashable {
     var design: MirrorDesign
     /// 완성된 투명 PNG. 이미지 binary는 여기 없고 **참조만** 담는다.
     var finalAssetID: UUID?
+    /// 사람이 만든 것인지 AI가 들어갔는지.
+    var origin: StickerProjectOrigin
+    /// 이 스티커에 쓰인 AI 생성들. 서버 원장의 external event id와 같은 값이라
+    /// **어떤 조각이 어디에 쓰였는지** 나중에 원장만 보고 따라갈 수 있다.
+    ///
+    /// 프롬프트 원문은 여기에 없다. 서버도 저장하지 않고 기기도 저장하지 않는다 —
+    /// 다시 편집할 때 필요한 것은 그림이지 그때 뭐라고 적었는지가 아니다.
+    var generationIDs: [String]
 
     init(
         id: String = UUID().uuidString,
@@ -81,7 +103,9 @@ struct StickerProject: Identifiable, Hashable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         design: MirrorDesign? = nil,
-        finalAssetID: UUID? = nil
+        finalAssetID: UUID? = nil,
+        origin: StickerProjectOrigin = .made,
+        generationIDs: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -89,6 +113,24 @@ struct StickerProject: Identifiable, Hashable {
         self.updatedAt = updatedAt
         self.design = design ?? .blankSticker(id: id, name: name)
         self.finalAssetID = finalAssetID
+        self.origin = origin
+        self.generationIDs = generationIDs
+    }
+
+    /// 상점에 올릴 수 있는가.
+    ///
+    /// AI 스티커는 **아직 팔 수 없다.** 내보내기(사진 저장 · 공유)는 되고 판매만 막는다 —
+    /// 내가 쓰려고 만든 것과 남에게 파는 것은 다른 문제다.
+    var canPublishToStore: Bool { origin != .aiGenerated }
+
+    /// AI 생성을 기록한다. **되돌릴 수 없다** — 한 번 AI가 들어간 스티커는
+    /// 그 레이어를 지워도 출처가 `made`로 돌아가지 않는다.
+    mutating func record(generationIDs newIDs: [String]) {
+        guard !newIDs.isEmpty else { return }
+        // 같은 생성이 두 번 적히지 않게 한다(편집을 저장할 때마다 다시 넘어온다).
+        let known = Set(generationIDs)
+        generationIDs.append(contentsOf: newIDs.filter { !known.contains($0) })
+        origin = .aiGenerated
     }
 
     /// 레이어가 하나도 없는가. 빈 스티커는 저장할 이유가 없다.

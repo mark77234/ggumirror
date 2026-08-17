@@ -25,6 +25,8 @@ struct RootView: View {
     @State private var rewardedAds = RewardedAdController()
     /// 광고 동의(UMP). 광고를 요청해도 되는지 정하는 유일한 근거다.
     @State private var adsConsent = AdsConsent.live
+    /// AI 스티커. 쓸 수 있는지와 몇 조각인지를 **서버에서 받아온다** — 앱에 적지 않는다.
+    @State private var aiStickers = AIStickerService.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -46,6 +48,7 @@ struct RootView: View {
             .environment(shards)
             .environment(rewardedAds)
             .environment(adsConsent)
+            .environment(aiStickers)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -62,6 +65,8 @@ struct RootView: View {
             .onChange(of: session.server) { _, server in
                 Task {
                     await shards.refresh(session: server)
+                    // AI 스티커도 로그인 상태에 따라 켜지고 꺼진다. 로그아웃하면 CTA가 사라진다.
+                    await aiStickers.refresh(session: server)
                     // 로그인 직후 광고를 미리 받아 둔다. 로그아웃하면 받지 않는다.
                     if server != nil, shards.remainingAdsToday > 0 {
                         await rewardedAds.prepare()
@@ -94,6 +99,8 @@ struct RootView: View {
                 await QuickMirrorSync.update(for: library.currentMirror)
                 // 로그인돼 있으면 서버 지갑을 받아온다. 아니면 0으로 둔다 — 로그인을 강요하지 않는다.
                 await shards.refresh(session: session.server)
+                // AI 스티커를 쓸 수 있는지 묻는다. 실패하면 꺼진 상태로 둔다 — 화면을 막지 않는다.
+                await aiStickers.refresh(session: session.server)
 
                 // 광고 동의는 **맨 마지막**이다. 동의 양식이 뜨더라도 그때는 이미
                 // 거울이 화면에 있다 — 실행하자마자 동의창이 뜨는 앱이 되지 않는다.

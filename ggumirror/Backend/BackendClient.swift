@@ -196,19 +196,125 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend {
         }
     }
 
+    // MARK: AI 스티커
+
+    /// AI 스티커를 지금 쓸 수 있는지와 몇 조각인지. **조각을 움직이지 않는 읽기다.**
+    ///
+    /// 가격을 client가 알고 있지 않다 — 서버가 말해 주는 값을 그대로 쓴다.
+    func aiStickerConfig(accessToken: String) async throws -> AIStickerConfig {
+        let data = try await send("ai/stickers/config", method: "GET", accessToken: accessToken)
+        do {
+            return try JSONDecoder.backend.decode(AIStickerConfig.self, from: data)
+        } catch {
+            BackendLog.event("GET /ai/stickers/config decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
+    /// 스티커 생성을 **시작하거나 이어받는다.**
+    ///
+    /// `requestId`가 같으면 서버는 새로 만들지 않고 그 작업의 지금 상태를 돌려준다 —
+    /// 응답을 잃었을 때 조각을 또 쓰지 않고 복구하는 유일한 방법이다.
+    /// 이어받을 때는 `prompt`를 비워 보낸다(서버도 우리도 원문을 들고 있지 않다).
+    ///
+    /// **응답에 이미지가 없다.** 성공했으면 `aiStickerImage`로 따로 받는다 —
+    /// 그래야 응답을 잃어도 그림이 사라지지 않는다.
+    func generateAISticker(
+        requestID: String, prompt: String, accessToken: String
+    ) async throws -> AIGeneration {
+        struct Body: Encodable {
+            let requestId: String
+            let prompt: String
+        }
+        let data = try await send(
+            "ai/stickers",
+            method: "POST",
+            body: try JSONEncoder.backend.encode(Body(requestId: requestID, prompt: prompt)),
+            accessToken: accessToken,
+            interpretFailure: Self.aiFailure,
+            // 그림 한 장에 수십 초가 걸린다. 기본 15초로는 **정상 생성도 끊긴다.**
+            // 끊겨도 작업은 서버에 남아 있어 다시 확인할 수 있다.
+            timeout: 200
+        )
+        return try Self.decodeGeneration(data, path: "POST /ai/stickers")
+    }
+
+    /// 작업 상태를 다시 묻는다. 앱을 껐다 켠 뒤의 복구가 쓴다.
+    func aiStickerStatus(generationID: String, accessToken: String) async throws -> AIGeneration {
+        let data = try await send(
+            "ai/stickers/\(generationID)",
+            method: "GET",
+            accessToken: accessToken,
+            interpretFailure: Self.aiFailure
+        )
+        return try Self.decodeGeneration(data, path: "GET /ai/stickers/{id}")
+    }
+
+    /// 결과 PNG. **Bearer로 우리 서버에서 직접 받는다** — signed URL을 쓰지 않는다.
+    func aiStickerImage(generationID: String, accessToken: String) async throws -> Data {
+        try await send(
+            "ai/stickers/\(generationID)/image",
+            method: "GET",
+            accessToken: accessToken,
+            interpretFailure: Self.aiFailure,
+            timeout: 60
+        )
+    }
+
+    private static func decodeGeneration(_ data: Data, path: String) throws -> AIGeneration {
+        do {
+            return try JSONDecoder.backend.decode(AIGeneration.self, from: data)
+        } catch {
+            BackendLog.event("\(path) decode failure \(BackendLog.category(error))")
+            throw AIStickerFailure.failed
+        }
+    }
+
+    /// 서버가 보낸 `reason`을 사용자가 할 수 있는 일로 옮긴다.
+    /// **본문 문구를 그대로 믿지 않고** 우리가 아는 reason만 구분한다.
+    static func aiFailure(status: Int, data: Data) -> Error {
+        struct Envelope: Decodable {
+            struct Detail: Decodable {
+                let reason: String
+                let message: String
+            }
+            let detail: Detail
+        }
+        guard status != 401, status != 403 else { return AIStickerFailure.notSignedIn }
+        guard let envelope = try? JSONDecoder().decode(Envelope.self, from: data) else {
+            return status >= 500 ? AIStickerFailure.unavailable : AIStickerFailure.failed
+        }
+        return switch envelope.detail.reason {
+        case "insufficient_shards": AIStickerFailure.insufficientShards
+        case "empty_prompt", "prompt_too_long", "invalid_request_id", "provider_rejected":
+            AIStickerFailure.badPrompt(envelope.detail.message)
+        case "not_configured", "provider_unavailable": AIStickerFailure.unavailable
+        case "still_pending": AIStickerFailure.stillPending
+        // 조각이 돌아온 실패다. "돌려드렸어요"까지 서버 문구를 그대로 쓴다.
+        case "storage_failed", "interrupted": AIStickerFailure.refunded(envelope.detail.message)
+        case "result_expired": AIStickerFailure.resultExpired
+        default: AIStickerFailure.failed
+        }
+    }
+
     // MARK: 전송
 
     private func send(
         _ path: String,
         method: String,
         body: Data? = nil,
-        accessToken: String? = nil
+        accessToken: String? = nil,
+        /// 2xx가 아닌 응답을 **본문까지 보고** 해석해야 하는 경로가 쓴다.
+        /// 주지 않으면 기존과 똑같이 status만으로 판단한다.
+        interpretFailure: ((Int, Data) -> Error)? = nil,
+        /// 기본 15초. 조회 요청은 이보다 오래 걸릴 이유가 없다.
+        timeout: TimeInterval = 15
     ) async throws -> Data {
         guard let baseURL else { throw BackendError.notConfigured }
 
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method
-        request.timeoutInterval = 15
+        request.timeoutInterval = timeout
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -236,8 +342,11 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend {
         }
         BackendLog.event("\(method) /\(path) status=\(http.statusCode)")
 
+        if (200..<300).contains(http.statusCode) { return data }
+        // 본문까지 봐야 하는 경로(AI 스티커)는 자기가 해석한다. 나머지는 status만으로 판단한다.
+        if let interpretFailure { throw interpretFailure(http.statusCode, data) }
+
         switch http.statusCode {
-        case 200..<300: return data
         case 401, 403: throw BackendError.unauthorized
         case 500..<600: throw BackendError.unavailable
         default: throw BackendError.unexpected(status: http.statusCode)

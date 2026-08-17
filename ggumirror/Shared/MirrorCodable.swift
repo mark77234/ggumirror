@@ -339,6 +339,7 @@ extension MirrorDesign: Codable {
 extension StickerProject: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, createdAt, updatedAt, design, finalAssetID
+        case origin, generationIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -350,7 +351,11 @@ extension StickerProject: Codable {
             updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
             design: try container.decode(MirrorDesign.self, forKey: .design),
             // 완성 PNG는 파일에 있고 여기에는 참조만 들어온다.
-            finalAssetID: try container.decodeIfPresent(UUID.self, forKey: .finalAssetID)
+            finalAssetID: try container.decodeIfPresent(UUID.self, forKey: .finalAssetID),
+            // schemaVersion 1로 적힌 스티커에는 없는 값이다. 그때는 AI가 없었으므로
+            // 사람이 만든 것으로 읽는다 — 없다고 파일을 못 읽는다고 하지 않는다.
+            origin: try container.decodeIfPresent(StickerProjectOrigin.self, forKey: .origin) ?? .made,
+            generationIDs: try container.decodeIfPresent([String].self, forKey: .generationIDs) ?? []
         )
     }
 
@@ -362,5 +367,10 @@ extension StickerProject: Codable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(design, forKey: .design)
         try container.encodeIfPresent(finalAssetID, forKey: .finalAssetID)
+        try container.encode(origin, forKey: .origin)
+        // 빈 배열을 굳이 적지 않는다. 사람이 만든 스티커 파일이 그만큼 조용해진다.
+        if !generationIDs.isEmpty {
+            try container.encode(generationIDs, forKey: .generationIDs)
+        }
     }
 }

@@ -712,8 +712,9 @@ struct StickerCreatorTests {
 
     @Test("스티커 저장 형식은 거울과 별개다")
     func stickerSchemaIsIndependent() {
-        #expect(StickerSchema.current == 1)
-        // 스티커가 생겼다고 거울 저장 형식을 올리지 않았다.
+        // 2 — 스티커에 출처(origin · generationIDs)가 생겼다(A-1A).
+        #expect(StickerSchema.current == 2)
+        // 스티커 형식이 올라가도 **거울 저장 형식은 그대로다.** 둘은 서로 독립이다.
         #expect(MirrorSchema.current == 3)
     }
 

@@ -54,9 +54,21 @@ struct StickerCreatorView: View {
     @State private var isMakingPhotoSticker = false
     @State private var photoFailure: String?
 
+    @State private var isPromptingAI = false
+    @State private var aiPrompt = ""
+    @State private var aiTask: Task<Void, Never>?
+    @State private var isGeneratingAI = false
+    @State private var aiFailure: String?
+    /// 이번 편집에서 얹은 AI 생성들. 저장할 때 스티커의 출처로 함께 적힌다.
+    @State private var aiGenerationIDs: [String] = []
+
     @State private var isNaming = false
     @State private var draftName = ""
     @Environment(\.dismiss) private var dismiss
+    /// AI 스티커를 쓸 수 있는지와 몇 조각인지. **서버가 정한다** — 앱에 가격을 적지 않는다.
+    @Environment(AIStickerService.self) private var ai
+    @Environment(ShardWallet.self) private var shards
+    @Environment(AuthSession.self) private var session
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,7 +79,14 @@ struct StickerCreatorView: View {
             toolBar
         }
         .paperBackground()
-        .overlay { if isMakingPhotoSticker { photoProgress } }
+        .overlay { if isMakingPhotoSticker { progressOverlay("사진을 스티커로 만드는 중...") } }
+        .overlay {
+            if isGeneratingAI {
+                progressOverlay(ai.pending?.generationID == nil
+                    ? "AI가 스티커를 만들고 있어요"
+                    : "만들던 스티커를 확인하고 있어요")
+            }
+        }
         .onAppear {
             draftName = context.existingID == nil ? library.suggestedName : design.name
             if startsWithPhoto { isPickingPhoto = true }
@@ -75,6 +94,10 @@ struct StickerCreatorView: View {
         .onDisappear {
             photoTask?.cancel()
             photoTask = nil
+            // 화면을 닫아도 서버는 이미 조각을 썼을 수 있다 — 여기서 되돌리지 않는다.
+            // 취소하는 것은 **기다리는 일**뿐이고, 실패했다면 환불도 서버가 한다.
+            aiTask?.cancel()
+            aiTask = nil
         }
         // 사진은 시스템 PhotosPicker 그대로 쓴다 — 흉내 내지 않는다.
         .photosPicker(isPresented: $isPickingPhoto, selection: $photoItem, matching: .images)
@@ -126,6 +149,27 @@ struct StickerCreatorView: View {
         }
         .inkBottomSheet(isPresented: $isEditingDrawSettings, size: .fraction(0.66)) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
+        }
+        .inkBottomSheet(isPresented: $isPromptingAI, size: .fraction(0.52)) {
+            AIStickerPromptSheet(
+                prompt: $aiPrompt,
+                price: ai.config.price,
+                balance: shards.balance,
+                isGenerating: isGeneratingAI,
+                onGenerate: { generateAILayer() }
+            )
+        }
+        .inkDialog(
+            "AI 스티커",
+            message: aiFailure,
+            isPresented: Binding(get: { aiFailure != nil }, set: { if !$0 { aiFailure = nil } })
+        ) {
+            // 서버에 작업이 남아 있으면 다시 확인할 길을 준다. 아니면 닫기만 한다.
+            ai.pending != nil
+                ? [InkDialogAction("다시 확인", role: .primary) { resumeAILayer() },
+                   InkDialogAction("그만두기", role: .destructive) { ai.forgetPending() },
+                   InkDialogAction("닫기")]
+                : [InkDialogAction("확인", role: .primary)]
         }
         .inkBottomSheet(isPresented: $isNaming) {
             MirrorNameSheet(name: $draftName, isNewMirror: true, onSave: { saveProject() })
@@ -261,6 +305,19 @@ struct StickerCreatorView: View {
 
     private var toolBar: some View {
         HStack(spacing: 10) {
+            // 서버가 켜 주기 전에는 **버튼 자체가 없다.** provider가 없는데 눌러서
+            // 실패 대화상자를 보게 하지 않는다. 앱을 다시 내지 않고 서버 설정만으로 열린다.
+            if ai.config.available {
+                // 끊겼던 생성이 있으면 **새로 만들기보다 그것부터** 확인하게 한다 —
+                // 조각은 이미 나갔고, 서버에 결과가 남아 있을 수 있다.
+                if ai.pending != nil {
+                    toolButton("다시 확인", icon: "arrow.clockwise") { resumeAILayer() }
+                } else {
+                    // 프롬프트를 지우지 않고 연다. 실패했을 때 다시 타이핑하게 만들지 않는다 —
+                    // 성공했을 때만 비운다(그때는 다음 스티커를 새로 적는 것이 맞다).
+                    toolButton("AI", icon: "sparkles") { isPromptingAI = true }
+                }
+            }
             toolButton("사진", icon: "photo") { isPickingPhoto = true }
             toolButton("그리기", icon: "scribble", isActive: tool == .draw) { tool = .draw }
             toolButton("스티커", icon: "heart", isActive: tool == .sticker) {
@@ -414,10 +471,10 @@ struct StickerCreatorView: View {
         .accessibilityLabel(label)
     }
 
-    private var photoProgress: some View {
+    private func progressOverlay(_ message: String) -> some View {
         VStack(spacing: 12) {
             ProgressView().tint(PaperTheme.ink)
-            Text("사진을 스티커로 만드는 중...")
+            Text(message)
                 .font(InkFont.secondary)
                 .foregroundStyle(PaperTheme.ink)
         }
@@ -449,6 +506,50 @@ struct StickerCreatorView: View {
             } catch {
                 // 스티커는 배경 제거가 기본이라 원본 그대로 넣지 않는다.
                 photoFailure = "배경을 지우지 못했어요. 피사체가 뚜렷한 사진을 골라 주세요."
+            }
+        }
+    }
+
+    // MARK: - AI
+
+    /// 프롬프트 → 서버 → 투명 PNG → **사진 스티커와 같은 자리로** 들어간다.
+    ///
+    /// 새 `StickerSource` case를 만들지 않았다. AI 결과도 사진 cutout과 똑같이
+    /// "id로 참조하는 불변 bitmap + 비율"이라 `.photo`가 이미 맞는 그릇이고,
+    /// 저장 형식 · GC · 렌더 · 크기 조절 · 레이어가 전부 그대로 동작한다.
+    ///
+    /// 조각은 **서버가** 뺀다. 여기서 잔액을 계산하지 않는다.
+    private func generateAILayer() {
+        let prompt = aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty, !isGeneratingAI else { return }
+        isPromptingAI = false
+        runAI { try await ai.generate(prompt: prompt, session: session.server, wallet: shards) }
+    }
+
+    /// 끊겼던 생성을 다시 확인한다. **새로 만들지 않는다** — 조각이 또 나가지 않는다.
+    private func resumeAILayer() {
+        guard !isGeneratingAI else { return }
+        runAI { try await ai.resume(session: session.server, wallet: shards) }
+    }
+
+    private func runAI(_ request: @escaping () async throws -> CGImage) {
+        aiTask?.cancel()
+        isGeneratingAI = true
+        aiTask = Task {
+            defer { isGeneratingAI = false }
+            do {
+                let image = try await request()
+                try Task.checkCancellation()
+                addSticker(PhotoStickerAssetStore.shared.register(image))
+                // 저장할 때 출처로 함께 적힌다. 프롬프트 원문은 남기지 않는다.
+                if let generationID = ai.pending?.generationID { aiGenerationIDs.append(generationID) }
+                aiPrompt = ""
+            } catch is CancellationError {
+                return
+            } catch let failure as AIStickerFailure {
+                aiFailure = failure.message
+            } catch {
+                aiFailure = AIStickerFailure.failed.message
             }
         }
     }
@@ -554,7 +655,7 @@ struct StickerCreatorView: View {
     }
 
     private func saveProject() {
-        library.save(design, name: draftName, context: context)
+        library.save(design, name: draftName, context: context, generationIDs: aiGenerationIDs)
         onSaved()
         dismiss()
     }

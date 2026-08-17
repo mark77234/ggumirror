@@ -1863,3 +1863,33 @@ PART B — Store Content
 - 렌더 파이프라인은 4-2A 그대로: Bundle → `StoreArtworkResource` → `MirrorArtworkImporter.framedArtwork`
   → `registerBundled` → `MirrorPreview`. 새 렌더러를 만들지 않았다.
   구경할 때 memory only / 받을 때 persistToDisk 정책 유지.
+
+
+## Phase A-1A / A-1B — AI 스티커
+
+PART A-1A — 생성
+
+- Sticker Creator 툴바에 `AI` 버튼. 결과는 **새 `StickerSource` case 없이** `.photo`로 들어간다 —
+  사진 cutout이 지나는 `PhotoStickerAssetStore.register`와 같은 자리다.
+  저장 형식 · GC · 렌더 · 크기 조절 · 레이어가 전부 그대로 동작한다.
+- 6 조각. **가격은 서버(`GET /ai/stickers/config`)가 준다** — 앱에 적지 않는다.
+- provider API key는 서버에만 있다. client는 꾸미러 backend만 부른다.
+- 출처: `StickerProject.origin`(`made` / `aiGenerated`) + `generationIDs`.
+  스티커 저장 파일 **schemaVersion 1 → 2**(읽기 호환, 쓰기 보호).
+- AI 스티커는 상점에 올릴 수 없다(`canPublishToStore`). 내보내기(D-1)는 된다.
+
+PART A-1B — 내구성
+
+- 생성은 **서버가 소유하는 durable 작업**이다(`ggumirror_ai_generations`).
+  `generationId = sha256(len:userId|len:requestId)`이고 그것이 곧 문서 ID라
+  같은 requestId로 두 번 만들 수 없다.
+- client가 `requestId`(UUID)를 만들어 `UserDefaults`에 적어 둔다.
+  **프롬프트는 적지 않는다.** 이어받을 때는 비워 보낸다.
+- 결과는 응답보다 **먼저** private bucket에 올라간다. 그래서 process가 죽어도
+  결과 유무로 성공/환불을 정확히 판정할 수 있다.
+- 이미지는 `GET /ai/stickers/{id}/image`로만 나간다. signed URL을 만들지 않는다.
+- **Cloud Run timeout은 worker를 죽이지 않는다.** 늦게 성공하는 worker가 있을 수 있으므로
+  안전은 terminal 권위 + lease CAS가 만든다(`refunded → succeeded` 금지).
+  lease 만료만으로 환불하지 않고 `RECOVERY_GRACE`(15분) 뒤에 정리한다.
+  worker 없이 재시도 · 조회 · 앱 시작 sweep이 그 일을 한다.
+- 툴바의 `AI`가 끊긴 생성이 있을 때 `다시 확인`으로 바뀐다. 새 화면 없음.
