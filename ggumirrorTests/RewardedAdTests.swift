@@ -458,6 +458,13 @@ struct RewardedAdTests {
 // MARK: - 동의 (UMP)
 
 /// UMP를 흉내 낸다. 실제 SDK는 `UMPConsentGateway`가 감싼다.
+/// 초기화 횟수를 세는 자리. `var`를 closure로 잡으면 concurrent 문맥 경고가 난다 —
+/// 값이 아니라 참조를 넘긴다.
+final class StartCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func increment() { count += 1 }
+}
+
 final class FakeConsentGateway: AdsConsentGateway, @unchecked Sendable {
     var allowsAds = true
     var requiresPrivacyOptions = false
@@ -488,17 +495,17 @@ struct AdsConsentTests {
     @Test("동의를 받으면 광고를 요청할 수 있고, 초기화는 한 번뿐이다")
     func consentAllowsAdsAndStartsOnce() async {
         let gateway = FakeConsentGateway()
-        var starts = 0
-        let consent = AdsConsent(gateway: gateway, startMobileAds: { starts += 1 })
+        let starts = StartCounter()
+        let consent = AdsConsent(gateway: gateway, startMobileAds: { starts.increment() })
 
         await consent.bootstrap()
         #expect(consent.canRequestAds)
-        #expect(starts == 1)
+        #expect(starts.count == 1)
 
         // 다시 실행돼도(이미 동의가 있는 경로) 초기화는 늘지 않는다.
         await consent.bootstrap()
         await consent.bootstrap()
-        #expect(starts == 1, "Mobile Ads가 여러 번 초기화됐다")
+        #expect(starts.count == 1, "Mobile Ads가 여러 번 초기화됐다")
         #expect(gateway.updateCount == 3, "동의 정보는 매번 새로 확인한다")
     }
 
@@ -506,13 +513,13 @@ struct AdsConsentTests {
     func withoutConsentNothingStarts() async {
         let gateway = FakeConsentGateway()
         gateway.allowsAds = false
-        var starts = 0
-        let consent = AdsConsent(gateway: gateway, startMobileAds: { starts += 1 })
+        let starts = StartCounter()
+        let consent = AdsConsent(gateway: gateway, startMobileAds: { starts.increment() })
 
         await consent.bootstrap()
 
         #expect(consent.canRequestAds == false)
-        #expect(starts == 0, "동의 없이 광고 SDK를 시작했다")
+        #expect(starts.count == 0, "동의 없이 광고 SDK를 시작했다")
     }
 
     @Test("canRequestAds가 false면 광고를 받지도 보여주지도 않는다")
