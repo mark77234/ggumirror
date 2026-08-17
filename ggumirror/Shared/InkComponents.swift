@@ -172,13 +172,39 @@ struct InkChip: View {
 
 // MARK: - 조각 (currency)
 
-// ShardShape / ShardIcon은 Shared/InkProductIcons.swift로 옮겼다 (제품 아이콘 두 개를 한곳에서 본다).
+/// 조각(재화) 공식 아이콘.
+///
+/// **원본 색 그대로 쓴다.** `.renderingMode(.template)`으로 단색을 입히지 않는다 —
+/// 브랜드 재화가 화면마다 다른 색으로 보이면 같은 것으로 읽히지 않는다.
+/// 그래서 `tint` 인자가 **없다**(예전 두들 버전에는 있었다).
+///
+/// 크기는 쓰는 자리에 맞춘다 — 숫자 옆 inline 16~18, 버튼/보상 20~24, 잔액 강조 28~36.
+/// 모든 화면에서 같은 크기일 필요는 없다.
+///
+/// asset은 정사각형이 아니다(1312 × 1199). `scaledToFit`이라 정사각 frame 안에서
+/// 비율을 지키며 letterbox된다 — 찌그러지거나 잘리지 않는다.
+struct ShardIcon: View {
+    /// 테스트가 이 이름으로 asset 존재를 확인한다. 문자열을 두 곳에 적지 않는다.
+    static let assetName = "ic_ggumirror_token"
+
+    var size: CGFloat = 16
+
+    var body: some View {
+        Image(ShardIcon.assetName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            // 숫자 옆 장식이다. 낭독기는 부모의 "N 조각"만 읽으면 된다 —
+            // asset 이름이 읽히면 안 된다.
+            .accessibilityHidden(true)
+    }
+}
 
 /// "12 조각"처럼 가격 / 잔액을 보여준다. 재화 이름은 항상 "조각".
 struct ShardAmount: View {
     let amount: Int
     var font: Font = InkFont.caption
-    var iconSize: CGFloat = 13
+    var iconSize: CGFloat = 16
     /// 0을 "무료"로 읽을지. **가격일 때만 참이다.**
     ///
     /// 잔액은 0도 그냥 0이다 — 조각이 하나도 없는 것을 "무료"라고 하면 말이 되지 않는다.

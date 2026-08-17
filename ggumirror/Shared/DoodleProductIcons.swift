@@ -51,6 +51,10 @@ enum DoodleProductIcon: String, CaseIterable, Identifiable, Hashable {
 
         /// 깨진 거울 조각.
         ///
+        /// ⚠️ **재화 아이콘이 아니다.** 조각(재화)을 뜻하는 자리에는 공식 asset을 쓰는
+        /// `ShardIcon`(`InkComponents.swift`)을 쓴다. 이 획은 두들 세트의 일원으로만 남아 있다 —
+        /// 여기로 되돌려 쓰지 마라.
+        ///
         /// 실패 사례를 여러 번 지났다 — 톱니를 반복하면 **깃발**, 아래를 V로 파면 **커서**,
         /// 위를 두 번 파면 **왕관**, 네 점을 등거리로 두면 **다이아몬드**로 읽힌다.
         /// 파편은 모양이 아니라 **변 길이의 불균형**으로 만든다:
@@ -117,15 +121,8 @@ struct MirrorIcon: View {
     }
 }
 
-/// 조각 아이콘. 조각은 브랜드 재화라 잉크색 하나로만 쓴다.
-struct ShardIcon: View {
-    var size: CGFloat = 15
-    var tint: Color = PaperTheme.ink
-
-    var body: some View {
-        DoodleProductIconView(icon: .shard, size: size, tint: tint)
-    }
-}
+// 조각(재화) 아이콘 `ShardIcon`은 두들이 아니라 공식 asset이라
+// `InkComponents.swift`의 "조각 (currency)" 절에 있다.
 
 #Preview("제품 아이콘") {
     VStack(spacing: 22) {

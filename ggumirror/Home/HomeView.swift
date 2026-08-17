@@ -94,7 +94,7 @@ struct HomeView: View {
             ShardAmount(
                 amount: shards.balance,
                 font: InkFont.cardTitle,
-                iconSize: 17,
+                iconSize: 22,
                 treatsZeroAsFree: false
             )
             .padding(.horizontal, 14)

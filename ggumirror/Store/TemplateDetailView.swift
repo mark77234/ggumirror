@@ -33,7 +33,7 @@ struct TemplateDetailView: View {
                 tags
 
                 HStack(spacing: 6) {
-                    ShardIcon(size: 17)
+                    ShardIcon(size: 18)
                     Text(template.price == 0 ? "무료" : "\(template.price) 조각")
                         .font(InkFont.cardTitle)
                         .foregroundStyle(PaperTheme.ink)

@@ -67,7 +67,7 @@ struct StoreView: View {
 
             // 조각 잔액 (표시 전용)
             HStack(spacing: 6) {
-                ShardIcon(size: 15)
+                ShardIcon(size: 16)
                 Text("\(shards.balance) 조각")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.ink)

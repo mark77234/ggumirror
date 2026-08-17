@@ -104,7 +104,7 @@ struct PublishMirrorView: View {
     private var priceField: some View {
         field("가격", detail: draft.priceInShards == 0 ? "무료" : "\(draft.priceInShards) 조각") {
             Stepper(value: $draft.priceInShards, in: MirrorPublishPolicy.priceRange) {
-                ShardAmount(amount: draft.priceInShards, font: InkFont.body, iconSize: 15)
+                ShardAmount(amount: draft.priceInShards, font: InkFont.body, iconSize: 18)
             }
             .tint(PaperTheme.ink)
             .frame(minHeight: 44)
@@ -150,7 +150,7 @@ struct PublishMirrorView: View {
 
     private var feeNotice: some View {
         HStack(spacing: 8) {
-            ShardAmount(amount: MirrorPublishPolicy.feeInShards, font: InkFont.caption, iconSize: 13)
+            ShardAmount(amount: MirrorPublishPolicy.feeInShards, font: InkFont.caption, iconSize: 16)
             Text("상점 공개 등록 비용이에요. 지금은 차감되지 않아요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)

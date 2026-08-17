@@ -68,8 +68,7 @@ struct AIStickerPromptSheet: View {
                 }
 
             HStack(spacing: 6) {
-                Image(systemName: "diamond")
-                    .font(InkFont.caption)
+                ShardIcon(size: 16)
                 Text(canAfford ? "\(price)조각을 써요" : "\(price)조각이 필요해요 (지금 \(balance)조각)")
                     .font(InkFont.caption)
                     .monospacedDigit()

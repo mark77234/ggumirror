@@ -78,12 +78,59 @@ struct UIPolishTests {
         #expect(inked < Int(size * size * 0.7), "\(size)pt에서 너무 꽉 찼다 (\(inked)px)")
     }
 
-    @Test("조각 아이콘이 그려진다", arguments: [CGFloat(13), 15, 17, 20, 44])
+    /// 불투명한(알파가 있는) 픽셀 수. 조각 아이콘은 두들이 아니라 컬러 asset이라
+    /// "어두운 픽셀"이 아니라 "실제로 칠해진 픽셀"로 센다.
+    private func opaquePixels(_ image: CGImage) -> Int {
+        let data = pixels(image)
+        var count = 0
+        for index in stride(from: 0, to: data.count, by: 4) where data[index + 3] > 60 {
+            count += 1
+        }
+        return count
+    }
+
+    @Test("조각 아이콘이 그려진다", arguments: [CGFloat(16), 18, 20, 24, 36])
     func shardIconRenders(size: CGFloat) throws {
         let image = try #require(render(ShardIcon(size: size), size: CGSize(width: size, height: size)))
-        let inked = inkedPixels(image)
-        #expect(inked > Int(size * 0.5), "\(size)pt에서 거의 그려지지 않았다 (\(inked)px)")
-        #expect(inked < Int(size * size * 0.7), "\(size)pt에서 너무 꽉 찼다 (\(inked)px)")
+        let painted = opaquePixels(image)
+        // 아무것도 그려지지 않으면 화면에서 "빈 자리"로 보인다 — 가장 조용한 실패다.
+        // asset 이름을 잘못 적으면 정확히 이렇게 된다.
+        #expect(painted > Int(size * size * 0.15), "\(size)pt에서 거의 그려지지 않았다 (\(painted)px)")
+    }
+
+    @Test("조각 아이콘은 공식 asset을 쓴다")
+    func shardIconUsesTheOfficialAsset() throws {
+        #expect(ShardIcon.assetName == "ic_ggumirror_token")
+        // 이름이 틀리면 SwiftUI는 조용히 빈 이미지를 그린다 — 여기서 잡는다.
+        #expect(UIImage(named: ShardIcon.assetName) != nil, "asset을 찾지 못했다")
+    }
+
+    @Test("조각 아이콘은 원본 색을 유지한다")
+    func shardIconKeepsItsOwnColors() throws {
+        // template rendering으로 단색을 입히면 브랜드 재화가 화면마다 다른 색이 된다.
+        // 컬러 asset이면 채널이 서로 다른 픽셀이 반드시 있다.
+        let image = try #require(render(ShardIcon(size: 44), size: CGSize(width: 44, height: 44)))
+        let data = pixels(image)
+        var colored = 0
+        for index in stride(from: 0, to: data.count, by: 4) where data[index + 3] > 120 {
+            let r = Int(data[index]), g = Int(data[index + 1]), b = Int(data[index + 2])
+            if abs(r - g) > 8 || abs(g - b) > 8 { colored += 1 }
+        }
+        #expect(colored > 20, "단색으로 보인다 — template rendering이 걸렸을 수 있다 (\(colored)px)")
+    }
+
+    @Test("조각 아이콘은 정사각 frame에서도 비율을 지킨다", arguments: [CGFloat(16), 24, 36])
+    func shardIconKeepsAspectRatio(size: CGFloat) throws {
+        // asset이 정사각형이 아니다(1312 × 1199). scaledToFit이라 가로를 꽉 채우고
+        // 위아래가 남아야 한다 — 늘어나면(scaledToFill/aspect 무시) 남는 줄이 사라진다.
+        let image = try #require(render(ShardIcon(size: size), size: CGSize(width: size, height: size)))
+        let data = pixels(image)
+        let width = image.width
+        func rowIsEmpty(_ y: Int) -> Bool {
+            (0..<width).allSatisfy { data[(y * width + $0) * 4 + 3] <= 8 }
+        }
+        #expect(rowIsEmpty(0) && rowIsEmpty(image.height - 1),
+                "\(size)pt에서 위아래 여백이 없다 — 비율이 깨졌을 수 있다")
     }
 
     @Test("작은 크기에서도 선 굵기가 사라지지 않는다")
@@ -115,19 +162,9 @@ struct UIPolishTests {
         #expect(shard != flipped)
     }
 
-    @Test("조각 아이콘은 넘겨준 색을 따른다")
-    func shardIconUsesTint() throws {
-        let image = try #require(render(
-            ShardIcon(size: 40, tint: .red), size: CGSize(width: 40, height: 40)
-        ))
-        let data = pixels(image)
-        var reds = 0
-        for index in stride(from: 0, to: data.count, by: 4)
-        where data[index + 3] > 120 && data[index] > 150 && data[index + 1] < 120 {
-            reds += 1
-        }
-        #expect(reds > 8)
-    }
+    // `shardIconUsesTint`는 삭제했다. 조각 아이콘은 이제 공식 컬러 asset이라
+    // **tint를 받지 않는다** — 색을 갈아입히지 않는 것이 규칙이고,
+    // 그것은 위 `shardIconKeepsItsOwnColors`가 지킨다.
 
     // MARK: - 2. Bottom Sheet / Dialog
 

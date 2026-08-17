@@ -133,7 +133,7 @@ struct PublishStickerView: View {
         VStack(alignment: .leading, spacing: 8) {
             fieldLabel("가격", detail: "0 = 무료")
             HStack(spacing: 10) {
-                ShardIcon(size: 17)
+                ShardIcon(size: 18)
                 TextField("0", value: $draft.priceInShards, format: .number)
                     .font(InkFont.numeric)
                     .keyboardType(.numberPad)
