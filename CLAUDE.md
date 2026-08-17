@@ -209,6 +209,12 @@ Actual Publish는 Backend phase 이후 구현한다.
   실패했을 때의 **환불도 서버가 한다** — client에 되돌리는 코드가 없다
 - **CTA는 서버가 켠다.** `config.available`이 false면 Creator에 AI 버튼 자체가 없다.
   앱을 다시 내지 않고 서버 설정(`AI_IMAGE_API_KEY` · `AI_IMAGE_MODEL`)만 채우면 열린다
+- **AI는 불투명 PNG를 준다**(production model `gpt-image-2`가 투명을 지원하지 않는다).
+  투명은 기기가 만든다 — **기존 사진 배경제거(`PhotoStickerMaker`)를 그대로 쓴다.**
+  새 segmentation engine을 만들지 않았고 서버에 배경제거 API도 붙이지 않았다
+- **배경제거가 실패해도 AI를 다시 부르지 않는다.** 그림은 서버에 남아 있으므로
+  "다시 시도"는 같은 generation을 다시 받아 컷아웃만 재시도한다 —
+  provider 재호출도, 추가 6조각 차감도 없다
 - 결과는 **새 `StickerSource` case를 만들지 않고** `.photo`로 들어간다 —
   이미 "id로 참조하는 불변 bitmap + 비율"이라 저장 형식 · GC · 렌더 · 크기 조절 · 레이어가
   그대로 동작한다. 사진 cutout이 지나는 `PhotoStickerAssetStore.register`와 같은 자리다

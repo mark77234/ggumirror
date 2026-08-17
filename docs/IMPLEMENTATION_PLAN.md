@@ -1893,3 +1893,19 @@ PART A-1B — 내구성
   lease 만료만으로 환불하지 않고 `RECOVERY_GRACE`(15분) 뒤에 정리한다.
   worker 없이 재시도 · 조회 · 앱 시작 sweep이 그 일을 한다.
 - 툴바의 `AI`가 끊긴 생성이 있을 때 `다시 확인`으로 바뀐다. 새 화면 없음.
+
+
+## Phase A-1B.2 — GPT Image 2 + 기기 배경제거
+
+- production model을 **`gpt-image-2` / 1024×1024 / quality=low / png**로 확정.
+  요청에 `background`를 보내지 않는다 — 이 model이 거절한다
+  (`400 / param=background`). provider output contract는 **`valid PNG`**이고
+  **서버는 alpha를 요구하지 않는다.**
+- `gpt-image-1-mini`는 capability probe에서 transparent를 **지원했지만 deprecated라
+  채택하지 않았다.** `SUPPORTED_MODELS`에는 남아 있어 설정으로 고를 수는 있다(자동 전환 없음).
+- 투명 배경은 **기기가 만든다.** `PhotoStickerMaker`(Vision on-device)를 그대로 재사용한다 —
+  사진 스티커가 지나는 그 함수이고, 새 engine도 서버 배경제거 API도 만들지 않았다.
+- **배경제거 실패는 AI 재호출이 아니다.** 서버의 같은 generation 이미지를 다시 받아
+  컷아웃만 재시도한다. 추가 provider call 없음, 추가 6조각 차감 없음.
+- durable generation(A-1B)과 late-completion 안전장치(A-1B.1)는 그대로다 —
+  서버에는 **원본 불투명 PNG**가 durable result로 남는다.

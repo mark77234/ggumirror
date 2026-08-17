@@ -82,9 +82,16 @@ struct StickerCreatorView: View {
         .overlay { if isMakingPhotoSticker { progressOverlay("사진을 스티커로 만드는 중...") } }
         .overlay {
             if isGeneratingAI {
-                progressOverlay(ai.pending?.generationID == nil
-                    ? "AI가 스티커를 만들고 있어요"
-                    : "만들던 스티커를 확인하고 있어요")
+                // 단계마다 무엇을 하고 있는지 다르게 말한다 —
+                // 그림을 만드는 것과 기기에서 배경을 지우는 것은 다른 일이다.
+                switch ai.phase {
+                case .removingBackground:
+                    progressOverlay("스티커 배경을 정리하고 있어요")
+                case .generating where ai.pending?.generationID != nil:
+                    progressOverlay("만들던 스티커를 확인하고 있어요")
+                default:
+                    progressOverlay("AI가 스티커를 만들고 있어요")
+                }
             }
         }
         .onAppear {
@@ -164,9 +171,10 @@ struct StickerCreatorView: View {
             message: aiFailure,
             isPresented: Binding(get: { aiFailure != nil }, set: { if !$0 { aiFailure = nil } })
         ) {
-            // 서버에 작업이 남아 있으면 다시 확인할 길을 준다. 아니면 닫기만 한다.
+            // 서버에 작업이 남아 있으면 다시 할 길을 준다. 아니면 닫기만 한다.
+            // **다시 시도는 새 생성이 아니다** — 서버에 있는 같은 그림을 다시 받는다.
             ai.pending != nil
-                ? [InkDialogAction("다시 확인", role: .primary) { resumeAILayer() },
+                ? [InkDialogAction(aiRetryTitle, role: .primary) { resumeAILayer() },
                    InkDialogAction("그만두기", role: .destructive) { ai.forgetPending() },
                    InkDialogAction("닫기")]
                 : [InkDialogAction("확인", role: .primary)]
@@ -526,7 +534,14 @@ struct StickerCreatorView: View {
         runAI { try await ai.generate(prompt: prompt, session: session.server, wallet: shards) }
     }
 
+    /// 실패 대화상자의 첫 버튼 문구. 배경제거만 실패했으면 "다시 시도"가 맞다 —
+    /// 그림은 이미 서버에 있고 확인할 것이 남아 있지 않다.
+    private var aiRetryTitle: String {
+        aiFailure == AIStickerFailure.cutoutFailed.message ? "다시 시도" : "다시 확인"
+    }
+
     /// 끊겼던 생성을 다시 확인한다. **새로 만들지 않는다** — 조각이 또 나가지 않는다.
+    /// 배경제거만 실패했을 때도 이 길로 온다: 서버의 같은 그림을 다시 받아 컷아웃만 재시도한다.
     private func resumeAILayer() {
         guard !isGeneratingAI else { return }
         runAI { try await ai.resume(session: session.server, wallet: shards) }

@@ -22,6 +22,21 @@
 import Foundation
 import SwiftUI
 
+/// AI가 그려 준 **불투명** PNG → 배경을 지운 이미지.
+///
+/// 기본 구현은 **꾸미러에 이미 있는 사진 배경제거를 그대로 쓴다**(`PhotoStickerMaker`,
+/// Vision on-device). 새 segmentation engine을 만들지 않았고, 서버에 배경제거 API를
+/// 붙이지도 않았다 — 사진 스티커가 지나는 바로 그 함수다.
+nonisolated protocol StickerCutout: Sendable {
+    func removeBackground(from png: Data) async throws -> CGImage
+}
+
+nonisolated struct PhotoStickerCutout: StickerCutout {
+    func removeBackground(from png: Data) async throws -> CGImage {
+        try await PhotoStickerMaker.makeSticker(from: png)
+    }
+}
+
 nonisolated protocol AIStickerBackend: Sendable {
     func aiStickerConfig(accessToken: String) async throws -> AIStickerConfig
     func generateAISticker(requestID: String, prompt: String, accessToken: String) async throws -> AIGeneration
@@ -70,23 +85,37 @@ struct UserDefaultsPendingStorage: PendingGenerationStorage {
 final class AIStickerService {
     static let live = AIStickerService()
 
+    /// 지금 무엇을 하고 있는가. 화면 문구가 이 값으로 갈린다.
+    enum Phase: Equatable {
+        case idle
+        /// 서버/AI가 그림을 만드는 중.
+        case generating
+        /// 그림은 받았고, **기기에서** 배경을 지우는 중.
+        case removingBackground
+    }
+
     /// 서버가 정한 사용 가능 여부 · 가격 · 보관 기간. **물어보기 전에는 꺼져 있다.**
     private(set) var config: AIStickerConfig = .unavailable
-    /// 지금 만드는 중인가. 두 번 눌러 조각이 두 번 나가지 않게 한다.
-    private(set) var isGenerating = false
+    /// 지금 진행 중인 단계. 두 번 눌러 조각이 두 번 나가지 않게 하는 잠금도 겸한다.
+    private(set) var phase: Phase = .idle
+
+    var isGenerating: Bool { phase != .idle }
     /// 아직 결과를 받지 못한 생성. 있으면 화면이 "다시 확인"을 보여준다.
     private(set) var pending: PendingAIGeneration?
 
     private let backend: any AIStickerBackend
     private let storage: any PendingGenerationStorage
+    private let cutout: any StickerCutout
 
     /// `storage`는 기본 인자로 둘 수 없다 — `@MainActor` 타입이라 기본값이
     /// nonisolated 문맥에서 만들어진다. B-5C의 `GoogleRewardedAdPresenter`와 같은 이유다.
     init(
         backend: any AIStickerBackend = BackendClient(),
-        storage: (any PendingGenerationStorage)? = nil
+        storage: (any PendingGenerationStorage)? = nil,
+        cutout: any StickerCutout = PhotoStickerCutout()
     ) {
         self.backend = backend
+        self.cutout = cutout
         let storage = storage ?? UserDefaultsPendingStorage()
         self.storage = storage
         // 앱이 켜질 때 남아 있던 작업을 집어 든다. 조회는 화면이 요청할 때 한다.
@@ -118,7 +147,7 @@ final class AIStickerService {
     ) async throws -> CGImage {
         guard let session else { throw AIStickerFailure.notSignedIn }
         guard config.available else { throw AIStickerFailure.unavailable }
-        guard !isGenerating else { throw AIStickerFailure.stillPending }
+        guard phase == .idle else { throw AIStickerFailure.stillPending }
 
         // 이미 끝나지 않은 작업이 있으면 새로 시작하지 않는다. 그것부터 확인한다.
         if pending != nil { return try await resume(session: session, wallet: wallet) }
@@ -137,7 +166,7 @@ final class AIStickerService {
     func resume(session: ServerSession?, wallet: ShardWallet) async throws -> CGImage {
         guard let session else { throw AIStickerFailure.notSignedIn }
         guard let pending else { throw AIStickerFailure.failed }
-        guard !isGenerating else { throw AIStickerFailure.stillPending }
+        guard phase == .idle else { throw AIStickerFailure.stillPending }
 
         return try await run(session: session, wallet: wallet) {
             if let generationID = pending.generationID {
@@ -166,8 +195,8 @@ final class AIStickerService {
         wallet: ShardWallet,
         request: @escaping () async throws -> AIGeneration
     ) async throws -> CGImage {
-        isGenerating = true
-        defer { isGenerating = false }
+        phase = .generating
+        defer { phase = .idle }
 
         let generation: AIGeneration
         do {
@@ -213,13 +242,29 @@ final class AIStickerService {
             throw AIStickerFailure.interrupted
         }
 
-        guard let image = CGImage.fromPNG(png) else {
+        guard CGImage.fromPNG(png) != nil else {
             remember(nil)
             throw AIStickerFailure.failed
         }
-        // 여기까지 왔으면 그림이 손에 있다. 더 이상 복구할 것이 없다.
+
+        // AI는 **불투명** PNG를 준다(production model이 투명을 지원하지 않는다).
+        // 투명은 여기서 만든다 — 사진 스티커가 쓰는 바로 그 배경제거다.
+        phase = .removingBackground
+        let cutImage: CGImage
+        do {
+            cutImage = try await cutout.removeBackground(from: png)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // **작업을 잊지 않는다.** 그림은 서버에 남아 있으므로 다시 시도할 때
+            // 새로 만들지 않고 같은 그림을 다시 받아 배경제거만 한다 —
+            // provider를 다시 부르지도, 조각을 다시 쓰지도 않는다.
+            throw AIStickerFailure.cutoutFailed
+        }
+
+        // 여기까지 왔으면 투명 스티커가 손에 있다. 더 이상 복구할 것이 없다.
         remember(nil)
-        return image
+        return cutImage
     }
 
     private func remember(_ next: PendingAIGeneration?) {

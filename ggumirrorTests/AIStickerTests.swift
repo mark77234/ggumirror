@@ -88,6 +88,21 @@ final class FakeAIStickerBackend: AIStickerBackend, @unchecked Sendable {
     }()
 }
 
+/// 기기 배경제거를 흉내 낸다. 실제 Vision은 `PhotoStickerCutout`이 부른다.
+final class FakeCutout: StickerCutout, @unchecked Sendable {
+    var failure: Error?
+    private(set) var calls: [Data] = []
+
+    init(failure: Error? = nil) { self.failure = failure }
+
+    func removeBackground(from png: Data) async throws -> CGImage {
+        calls.append(png)
+        if let failure { throw failure }
+        // 배경이 지워진 결과를 흉내 낸다 — 알파가 있는 이미지.
+        return CGImage.fromPNG(FakeAIStickerBackend.transparentPNG)!
+    }
+}
+
 /// 기기에 적어 두는 자리. 앱 재시작은 **같은 저장소로 새 service를 만드는 것**으로 흉내 낸다.
 @MainActor
 final class FakePendingStorage: PendingGenerationStorage {
@@ -138,9 +153,14 @@ struct AIStickerTests {
     /// 서버가 이미 켜져 있다고 알려준 상태의 service.
     private func ready(
         _ backend: FakeAIStickerBackend,
-        storage: FakePendingStorage? = nil
+        storage: FakePendingStorage? = nil,
+        cutout: FakeCutout? = nil
     ) async -> AIStickerService {
-        let service = AIStickerService(backend: backend, storage: storage ?? FakePendingStorage())
+        let service = AIStickerService(
+            backend: backend,
+            storage: storage ?? FakePendingStorage(),
+            cutout: cutout ?? FakeCutout()
+        )
         await service.refresh(session: session())
         return service
     }
@@ -451,6 +471,164 @@ struct AIStickerTests {
         _ = try await again.resume(session: session(), wallet: wallet())
 
         #expect(backend.imageCalls == ["gen-1", "gen-1"])
+    }
+
+    // MARK: - 기기 배경제거 (A-1B.2)
+
+    @Test("AI 이미지는 기존 사진 배경제거를 그대로 지난다")
+    func aiImageGoesThroughExistingCutout() async throws {
+        let backend = FakeAIStickerBackend()
+        let cutout = FakeCutout()
+        let service = await ready(backend, cutout: cutout)
+
+        let image = try await service.generate(prompt: "고양이", session: session(), wallet: wallet())
+
+        // 서버에서 받은 그 bytes가 그대로 배경제거로 넘어간다.
+        #expect(cutout.calls.count == 1)
+        #expect(cutout.calls[0] == FakeAIStickerBackend.transparentPNG)
+        #expect(image.alphaInfo != .none, "결과가 투명 스티커가 아니다")
+    }
+
+    @Test("production 컷아웃은 사진 스티커와 같은 함수를 쓴다 — 새 engine을 만들지 않았다")
+    func cutoutReusesPhotoStickerMaker() throws {
+        let source = codeOnly(try repoFile("ggumirror/AI/AIStickerService.swift"))
+        #expect(source.contains("PhotoStickerMaker.makeSticker"))
+        // 별도 segmentation을 새로 들이지 않았다.
+        #expect(!source.contains("VNGenerateForegroundInstanceMaskRequest"))
+        #expect(!source.contains("GenerateForegroundInstanceMaskRequest"))
+    }
+
+    @Test("배경제거 중에는 그렇게 말한다")
+    func phaseSaysRemovingBackground() async throws {
+        let backend = FakeAIStickerBackend()
+        var seen: [AIStickerService.Phase] = []
+        final class Watcher: StickerCutout, @unchecked Sendable {
+            let onCall: @Sendable () -> Void
+            init(onCall: @escaping @Sendable () -> Void) { self.onCall = onCall }
+            func removeBackground(from png: Data) async throws -> CGImage {
+                onCall()
+                return CGImage.fromPNG(FakeAIStickerBackend.transparentPNG)!
+            }
+        }
+        let service = AIStickerService(
+            backend: backend, storage: FakePendingStorage(),
+            cutout: Watcher(onCall: { })
+        )
+        await service.refresh(session: session())
+        #expect(service.phase == .idle)
+
+        _ = try await service.generate(prompt: "고양이", session: session(), wallet: wallet())
+        seen.append(service.phase)
+        #expect(seen == [.idle], "끝나면 idle로 돌아온다")
+
+        let creator = codeOnly(try repoFile("ggumirror/Editor/StickerCreatorView.swift"))
+        #expect(creator.contains("스티커 배경을 정리하고 있어요"))
+        #expect(creator.contains("AI가 스티커를 만들고 있어요"))
+    }
+
+    @Test("배경제거가 실패해도 작업을 잊지 않는다")
+    func cutoutFailureKeepsPending() async {
+        let backend = FakeAIStickerBackend()
+        let storage = FakePendingStorage()
+        let cutout = FakeCutout(failure: PhotoStickerError.noSubject)
+        let service = await ready(backend, storage: storage, cutout: cutout)
+
+        await #expect(throws: AIStickerFailure.cutoutFailed) {
+            try await service.generate(prompt: "고양이", session: session(), wallet: wallet())
+        }
+
+        #expect(service.pending?.generationID == "gen-1")
+        #expect(storage.stored?.generationID == "gen-1")
+        #expect(AIStickerFailure.cutoutFailed.isRecoverable)
+        #expect(AIStickerFailure.cutoutFailed.message == "배경을 제거하지 못했어요.")
+    }
+
+    @Test("배경제거 재시도는 provider를 다시 부르지 않는다")
+    func cutoutRetryNeverCallsProviderAgain() async throws {
+        let backend = FakeAIStickerBackend()
+        let cutout = FakeCutout(failure: PhotoStickerError.noSubject)
+        let service = await ready(backend, cutout: cutout)
+
+        await #expect(throws: AIStickerFailure.cutoutFailed) {
+            try await service.generate(prompt: "고양이", session: session(), wallet: wallet())
+        }
+        let createsAfterFirst = backend.createCalls.count
+
+        cutout.failure = nil
+        let image = try await service.resume(session: session(), wallet: wallet())
+
+        #expect(image.width >= 1)
+        // 새 생성이 없다 — 상태 조회 + 이미지 재다운로드뿐이다.
+        #expect(backend.createCalls.count == createsAfterFirst, "provider를 다시 불렀다")
+        #expect(backend.statusCalls == ["gen-1"])
+        #expect(backend.imageCalls == ["gen-1", "gen-1"], "같은 그림을 다시 받아야 한다")
+        #expect(service.pending == nil)
+    }
+
+    @Test("배경제거 재시도는 조각을 다시 쓰지 않는다")
+    func cutoutRetryNeverSpendsShardsAgain() async throws {
+        let backend = FakeAIStickerBackend(balance: 4)
+        let cutout = FakeCutout(failure: PhotoStickerError.noSubject)
+        let service = await ready(backend, cutout: cutout)
+        let shards = wallet()
+
+        await #expect(throws: AIStickerFailure.cutoutFailed) {
+            try await service.generate(prompt: "고양이", session: session(), wallet: shards)
+        }
+        #expect(shards.balance == 4)
+
+        cutout.failure = nil
+        _ = try await service.resume(session: session(), wallet: shards)
+
+        // 서버가 준 잔액 그대로 — 두 번째 차감이 없다.
+        #expect(shards.balance == 4)
+    }
+
+    @Test("앱을 껐다 켠 뒤에도 같은 그림으로 배경제거를 다시 할 수 있다")
+    func cutoutRetrySurvivesAppRestart() async throws {
+        let storage = FakePendingStorage(
+            stored: PendingAIGeneration(requestID: "req-1", generationID: "gen-1")
+        )
+        let backend = FakeAIStickerBackend()
+        let cutout = FakeCutout()
+        let service = await ready(backend, storage: storage, cutout: cutout)
+
+        let image = try await service.resume(session: session(), wallet: wallet())
+
+        #expect(image.alphaInfo != .none)
+        #expect(backend.createCalls.isEmpty, "재시작 후 새 생성을 만들었다")
+        #expect(backend.imageCalls == ["gen-1"])
+        #expect(cutout.calls.count == 1)
+    }
+
+    @Test("불투명 PNG도 정상 입력이다 — 투명은 기기가 만든다")
+    func opaquePNGIsAcceptedFromServer() async throws {
+        let opaque: Data = {
+            let context = CGContext(
+                data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            )!
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+            let data = NSMutableData()
+            let destination = CGImageDestinationCreateWithData(
+                data as CFMutableData, UTType.png.identifier as CFString, 1, nil
+            )!
+            CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+            CGImageDestinationFinalize(destination)
+            return data as Data
+        }()
+
+        let backend = FakeAIStickerBackend()
+        backend.image = .success(opaque)
+        let cutout = FakeCutout()
+        let service = await ready(backend, cutout: cutout)
+
+        let image = try await service.generate(prompt: "고양이", session: session(), wallet: wallet())
+
+        #expect(cutout.calls[0] == opaque, "불투명 PNG가 배경제거로 넘어가야 한다")
+        #expect(image.alphaInfo != .none, "배경제거 결과는 투명해야 한다")
     }
 
     // MARK: - 실패

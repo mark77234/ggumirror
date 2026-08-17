@@ -96,6 +96,11 @@ nonisolated enum AIStickerFailure: Error, Equatable {
     case resultExpired
     /// 연결이 끊겼다. 작업은 서버에 남아 있으므로 다시 확인할 수 있다.
     case interrupted
+    /// **그림은 받았는데 기기에서 배경을 지우지 못했다.**
+    ///
+    /// AI 생성 자체는 성공이라 조각은 이미 값을 했다. 다시 시도할 때
+    /// **새로 만들지 않고** 서버에 있는 같은 그림을 다시 받아 배경제거만 한다.
+    case cutoutFailed
     /// 그 밖의 실패.
     case failed
 
@@ -109,6 +114,7 @@ nonisolated enum AIStickerFailure: Error, Equatable {
         case .refunded(let reason): reason
         case .resultExpired: "보관 기간이 지나 그림을 다시 받을 수 없어요."
         case .interrupted: "연결이 끊겼어요. 만들던 스티커를 다시 확인할 수 있어요."
+        case .cutoutFailed: "배경을 제거하지 못했어요."
         case .failed: "만들지 못했어요. 잠시 뒤 다시 시도해 주세요."
         }
     }
@@ -117,9 +123,12 @@ nonisolated enum AIStickerFailure: Error, Equatable {
     var needsShards: Bool { self == .insufficientShards }
 
     /// **작업이 서버에 남아 있어 다시 확인할 수 있는가.** UI가 "다시 확인"을 보여줄지 정한다.
+    ///
+    /// `cutoutFailed`도 여기 들어간다 — 그림은 서버에 있고, 다시 시도하면
+    /// **새로 만들지 않고** 그것을 다시 받아 배경제거만 한다(조각이 또 나가지 않는다).
     var isRecoverable: Bool {
         switch self {
-        case .stillPending, .interrupted: true
+        case .stillPending, .interrupted, .cutoutFailed: true
         default: false
         }
     }
