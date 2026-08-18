@@ -436,6 +436,144 @@ struct ShardPurchaseTests {
         #expect(code.contains("task?.cancel()"))
     }
 
+    // MARK: - 조각 상점 UI (B-6D)
+
+    @Test("홈 잔액이 조각 상점을 연다")
+    func homeBalanceOpensShardStore() throws {
+        let source = try Self.repoFile("ggumirror/Home/HomeView.swift")
+        #expect(source.contains("isShowingShardStore"))
+        #expect(source.contains("ShardStoreSheet("))
+        #expect(source.contains("openShardStore"), "잔액 영역에 접근성 식별자가 없다")
+        // 잔액 표시는 여전히 ShardAmount다 — 버튼처럼 다시 그리지 않았다.
+        #expect(source.contains("ShardAmount("))
+        #expect(source.contains("조각 구매"), "VoiceOver가 구매 가능함을 알려야 한다")
+    }
+
+    @Test("AI 조각 부족 CTA가 같은 상점을 연다")
+    func aiInsufficientOpensSameStore() throws {
+        let sheet = try Self.repoFile("ggumirror/AI/AIStickerPromptSheet.swift")
+        // 기존 문구는 유지한다.
+        #expect(sheet.contains("조각이 필요해요 (지금"))
+        #expect(sheet.contains("조각 채우기"))
+        #expect(sheet.contains("onBuyShards"))
+
+        let creator = try Self.repoFile("ggumirror/Editor/StickerCreatorView.swift")
+        // **같은** ShardStoreSheet를 연다 — 상점 UI를 두 번 만들지 않는다.
+        #expect(creator.contains("ShardStoreSheet("))
+        #expect(creator.contains("isShowingShardStore"))
+    }
+
+    @Test("상점은 기존 InkModal을 쓴다 (새 modal system 없음)")
+    func storeUsesExistingModalSystem() throws {
+        for path in ["ggumirror/Home/HomeView.swift", "ggumirror/Editor/StickerCreatorView.swift"] {
+            let code = Self.codeOnly(try Self.repoFile(path))
+            #expect(code.contains("inkBottomSheet(isPresented: $isShowingShardStore"))
+        }
+        let sheet = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        #expect(!sheet.contains(".sheet("), "native .sheet를 새로 들였다")
+        #expect(!sheet.contains("presentationDetents"))
+        #expect(!sheet.contains("fullScreenCover"))
+    }
+
+    @Test("상점 시트는 UI-P1 규칙을 지킨다")
+    func storeSheetFollowsLayoutRules() throws {
+        let source = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        #expect(source.contains("ScrollView"), "넘치는 내용을 흘릴 스크롤이 없다")
+        #expect(source.contains("safeAreaInset(edge: .bottom"), "CTA가 스크롤 안에 있다")
+        #expect(source.contains("InkSheetMetrics.actionClearance"))
+    }
+
+    @Test("상점은 ShardIcon을 재사용한다")
+    func storeReusesShardIcon() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        #expect(code.contains("ShardIcon(") || code.contains("ShardAmount("))
+        // 이모지/SF Symbol 대체 금지.
+        for banned in ["💎", "🪙", "diamond", "circle.fill"] {
+            #expect(!code.contains(banned), "다른 재화 아이콘을 썼다: \(banned)")
+        }
+    }
+
+    @Test("상점에 가격을 적지 않는다")
+    func storeHasNoHardcodedPrice() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        #expect(!code.contains("₩"))
+        #expect(!code.contains("KRW"))
+        #expect(code.contains("product.displayPrice"), "StoreKit 가격을 쓰지 않는다")
+    }
+
+    @Test("상점은 잔액을 직접 계산하지 않는다")
+    func storeNeverComputesBalance() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        for banned in ["balance +=", "balance -=", "+ amount", "wallet.balance ="] {
+            #expect(!code.contains(banned), "잔액을 화면이 계산한다: \(banned)")
+        }
+        // 서버가 apply한 값을 그대로 읽는다.
+        #expect(code.contains("wallet.balance"))
+    }
+
+    @Test("상점은 새 StoreKit 경로를 만들지 않는다")
+    func storeUsesExistingController() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        #expect(!code.contains("import StoreKit"))
+        #expect(code.contains("controller.purchase("))
+    }
+
+    @Test("로그아웃 상태에서는 기존 auth gate로 보낸다")
+    func signedOutUsesExistingAuthGate() throws {
+        let sheet = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        #expect(sheet.contains("onNeedsSignIn"))
+        let home = try Self.repoFile("ggumirror/Home/HomeView.swift")
+        // 새 auth flow를 만들지 않고 기존 gate를 쓴다.
+        #expect(home.contains("requireSignIn(for: .shardTransaction)"))
+    }
+
+    @Test("상품 목록 상태 세 가지를 모두 다룬다")
+    func storeHandlesAllProductStates() throws {
+        let source = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        #expect(source.contains("상품을 불러오고 있어요"))
+        #expect(source.contains("상품 정보를 불러오지 못했어요"))
+        #expect(source.contains("다시 시도"))
+    }
+
+    @Test("구매 중에는 카드를 잠근다")
+    func storeDisablesWhileBusy() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
+        #expect(code.contains("disabled(controller.isBusy)"))
+    }
+
+    @Test("상품 접근성 라벨에 수량과 가격이 들어간다")
+    func productAccessibilityLabel() throws {
+        let source = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        #expect(source.contains("조각 "), "수량이 라벨에 없다")
+        #expect(source.contains("가격 "), "가격이 라벨에 없다")
+        #expect(source.contains("product.displayPrice"))
+    }
+
+    @Test("controller가 정렬한 순서를 그대로 쓴다 — 10 / 50 / 100")
+    func storeShowsControllerOrder() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.100", displayName: "100", displayPrice: "A"),
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.10", displayName: "10", displayPrice: "B"),
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "C"),
+        ]
+        await controller.loadProducts()
+        #expect(controller.products.map(\.shardAmount) == [10, 50, 100])
+    }
+
+    @Test("실패 후 다시 시도하면 상품을 다시 받아온다")
+    func reloadRetriesProducts() async {
+        let (controller, store, _, _) = Self.world()
+        await controller.loadProducts()
+        #expect(controller.products.isEmpty)
+
+        store.catalog = [
+            ShardProductInfo(id: Self.product10, displayName: "10", displayPrice: "B")
+        ]
+        await controller.reloadProducts()
+        #expect(controller.products.count == 1)
+    }
+
     // MARK: - 구조 고정
 
     @Test("StoreKit에 닿는 파일은 하나뿐이다")

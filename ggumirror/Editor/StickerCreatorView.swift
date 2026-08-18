@@ -55,6 +55,8 @@ struct StickerCreatorView: View {
     @State private var photoFailure: String?
 
     @State private var isPromptingAI = false
+    /// 조각 충전. AI 부족 안내에서 연다 — 홈과 **같은 화면**이다.
+    @State private var isShowingShardStore = false
     @State private var aiPrompt = ""
     @State private var aiTask: Task<Void, Never>?
     @State private var isGeneratingAI = false
@@ -69,6 +71,7 @@ struct StickerCreatorView: View {
     @Environment(AIStickerService.self) private var ai
     @Environment(ShardWallet.self) private var shards
     @Environment(AuthSession.self) private var session
+    @Environment(ShardPurchaseController.self) private var shardStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -163,7 +166,21 @@ struct StickerCreatorView: View {
                 price: ai.config.price,
                 balance: shards.balance,
                 isGenerating: isGeneratingAI,
-                onGenerate: { generateAILayer() }
+                onGenerate: { generateAILayer() },
+                // 같은 조각 상점을 연다 — 상점 UI를 두 번 만들지 않는다.
+                // 시트를 겹쳐 띄우지 않고 AI 시트를 닫은 뒤 연다.
+                onBuyShards: {
+                    isPromptingAI = false
+                    isShowingShardStore = true
+                }
+            )
+        }
+        .inkBottomSheet(isPresented: $isShowingShardStore, size: .fraction(0.7)) {
+            ShardStoreSheet(
+                controller: shardStore,
+                wallet: shards,
+                session: session.server,
+                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
             )
         }
         .inkDialog(

@@ -27,6 +27,8 @@ struct RootView: View {
     @State private var adsConsent = AdsConsent.live
     /// AI 스티커. 쓸 수 있는지와 몇 조각인지를 **서버에서 받아온다** — 앱에 적지 않는다.
     @State private var aiStickers = AIStickerService.live
+    /// 조각 충전. StoreKit 거래 수신은 앱 수명 동안 하나만 돈다.
+    @State private var shardStore = ShardPurchaseController.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -49,6 +51,7 @@ struct RootView: View {
             .environment(rewardedAds)
             .environment(adsConsent)
             .environment(aiStickers)
+            .environment(shardStore)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -71,6 +74,8 @@ struct RootView: View {
                     if server != nil, shards.remainingAdsToday > 0 {
                         await rewardedAds.prepare()
                     }
+                    // 로그인이 준비되면 못 끝낸 결제를 되찾는다. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
+                    await shardStore.recoverUnfinished(session: server, wallet: shards)
                 }
             }
             // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
@@ -110,6 +115,9 @@ struct RootView: View {
                 if session.server != nil, shards.remainingAdsToday > 0 {
                     await rewardedAds.prepare()
                 }
+                // StoreKit 거래 수신은 가능한 한 일찍, 그리고 **한 번만** 시작한다.
+                shardStore.startListening(session: { session.server }, wallet: shards)
+                await shardStore.recoverUnfinished(session: session.server, wallet: shards)
             }
     }
 

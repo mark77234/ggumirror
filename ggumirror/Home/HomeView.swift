@@ -12,11 +12,14 @@ struct HomeView: View {
     @Environment(ShardWallet.self) private var shards
     @Environment(AuthSession.self) private var session
     @Environment(RewardedAdController.self) private var rewardedAds
+    @Environment(ShardPurchaseController.self) private var shardStore
     var library: MirrorLibrary
     var onOpenMirror: () -> Void
     var onEdit: (RootView.EditorRequest) -> Void
 
     @State private var tab: MainTab = .home
+    /// 조각 충전 sheet. 홈 잔액과 AI 부족 안내가 같은 화면을 연다.
+    @State private var isShowingShardStore = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -40,6 +43,17 @@ struct HomeView: View {
             InkTabBar(selection: $tab)
         }
         .paperBackground()
+        // 조각 충전. 홈 잔액과 AI 부족 안내가 **같은 화면**을 연다 — 상점 UI를 두 번 만들지 않는다.
+        .inkBottomSheet(isPresented: $isShowingShardStore, size: .fraction(0.7)) {
+            ShardStoreSheet(
+                controller: shardStore,
+                wallet: shards,
+                session: session.server,
+                // 기존 gate를 그대로 쓴다 — 새 auth flow도, 새 로그인 UI도 만들지 않는다.
+                // 로그인 뒤 결제를 자동으로 이어가지 않는다(사용자가 상품을 다시 고른다).
+                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+            )
+        }
     }
 
     // MARK: - 홈 탭
@@ -91,21 +105,30 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             // 여기는 **가격이 아니라 보유 잔액**이다. 0은 "무료"가 아니라 0이다.
-            ShardAmount(
-                amount: shards.balance,
-                font: InkFont.cardTitle,
-                iconSize: 22,
-                treatsZeroAsFree: false
-            )
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background {
-                UnevenRoundedRectangle.ink(17, 14, 18, 13)
-                    .stroke(PaperTheme.ink, lineWidth: 1.7)
-                    .rotationEffect(.degrees(-0.35))
+            // 탭하면 조각을 충전한다. **생김새는 그대로 둔다** — 잔액 표시가
+            // 갑자기 버튼처럼 보이면 화면의 무게중심이 바뀐다.
+            Button {
+                isShowingShardStore = true
+            } label: {
+                ShardAmount(
+                    amount: shards.balance,
+                    font: InkFont.cardTitle,
+                    iconSize: 22,
+                    treatsZeroAsFree: false
+                )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background {
+                    UnevenRoundedRectangle.ink(17, 14, 18, 13)
+                        .stroke(PaperTheme.ink, lineWidth: 1.7)
+                        .rotationEffect(.degrees(-0.35))
+                }
             }
+            .buttonStyle(InkPressStyle())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("보유 \(shards.balance) 조각")
+            .accessibilityLabel("보유 \(shards.balance) 조각. 조각 구매")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("openShardStore")
 
             Spacer(minLength: 12)
 

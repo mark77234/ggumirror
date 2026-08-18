@@ -578,6 +578,32 @@ UMP consent flow도 SDK와 함께 들어온다.
 - 세션이 없으면 거래를 **아무 사용자에게도 귀속하지 않는다.** 미완료로 남기고 로그인 뒤에 가져간다
 - 몇 번 다시 보내도 지급은 한 번이다(서버 전역 멱등 B-6A). client도 불필요한 중복 요청은 줄인다
 
+#### 조각 상점 화면 (B-6D)
+
+진입점은 **둘**이고 **같은 시트**를 연다 — 상점 UI를 두 번 만들지 않는다.
+
+| 진입 | 어디 |
+|---|---|
+| 홈 잔액 칩 탭 | `HomeView.header` — 생김새는 그대로 두고 탭만 받는다. 낭독기는 "보유 N 조각. 조각 구매" |
+| AI 조각 부족 "조각 채우기" | `AIStickerPromptSheet` → `StickerCreatorView`가 AI 시트를 닫고 상점을 연다 |
+
+- **기존 `inkBottomSheet`를 쓴다.** native `.sheet` · `presentationDetents` ·
+  `fullScreenCover`를 새로 들이지 않는다
+- UI-P1 규칙: `ScrollView` + `safeAreaInset(edge: .bottom)` + `InkSheetMetrics.actionClearance`
+- 카드는 `ShardIcon` + "N 조각" + **`Product.displayPrice`**.
+  가격 문자열을 코드에 적지 않는다(다른 나라에서 거짓말이 된다)
+- 순서는 controller가 조각 수로 정렬한 것을 그대로 쓴다 — 10 / 50 / 100
+- 상품 상태 셋: 불러오는 중 / 카드 / **실패 + 다시 시도**. StoreKit 오류 문자열을 그대로 보여주지 않는다
+- 구매 중에는 **모든 카드를 잠근다**(연타 방지). 진행 중인 카드만 spinner
+- **잔액은 `ShardWallet`이 들고 있는 서버 값**을 읽기만 한다. 화면에서 더하지 않는다
+- 시트는 로그아웃 상태에서도 **볼 수 있다.** 구매를 누르면 기존
+  `requireSignIn(for: .shardTransaction)` gate로 보내고 안내만 남긴다 —
+  **새 auth flow도 새 로그인 UI도 만들지 않았다.**
+  로그인 뒤 결제를 자동으로 이어가지 않는다(사용자가 상품을 다시 고른다).
+  임의의 pending purchase 저장소를 만들지 않았다
+
+`AIStickerPromptSheet`의 "6조각이 필요해요 (지금 2조각)" 문구는 **그대로 두고** CTA만 더했다.
+
 #### Xcode StoreKit 테스트 ≠ Apple Sandbox (acceptance 구분)
 
 `ggumirror/Ggumirror.storekit`은 **client pipeline / 로컬 복구 확인용**이다.

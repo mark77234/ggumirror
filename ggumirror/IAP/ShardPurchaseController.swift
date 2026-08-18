@@ -84,6 +84,11 @@ final class ShardPurchaseController {
     var isBusy: Bool { phase != .idle }
     var isConfigured: Bool { !products.isEmpty }
 
+    /// 앱이 쓰는 하나. 실제 StoreKit + 실제 backend.
+    static let live = ShardPurchaseController(
+        store: StoreKitShardStore(), backend: BackendClient()
+    )
+
     init(store: any ShardStoreKit, backend: any ShardPurchaseBackend) {
         self.store = store
         self.backend = backend
@@ -99,6 +104,12 @@ final class ShardPurchaseController {
     var isListening: Bool { listener.isRunning }
 
     // MARK: - 상품
+
+    /// 실패했을 때 다시 받아온다. "다시 시도"가 쓴다.
+    func reloadProducts() async {
+        products = []
+        await loadProducts()
+    }
 
     func loadProducts() async {
         guard products.isEmpty else { return }

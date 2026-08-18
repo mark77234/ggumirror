@@ -24,6 +24,8 @@ struct AIStickerPromptSheet: View {
     let balance: Int
     let isGenerating: Bool
     let onGenerate: () -> Void
+    /// 조각이 모자랄 때 충전 화면으로. **여기서 상점 UI를 다시 만들지 않는다.**
+    var onBuyShards: (() -> Void)?
 
     @Environment(\.inkModalDismiss) private var dismiss
     @FocusState private var isFocused: Bool
@@ -89,6 +91,21 @@ struct AIStickerPromptSheet: View {
                     .monospacedDigit()
             }
             .foregroundStyle(canAfford ? PaperTheme.secondaryInk : PaperTheme.ink)
+
+            // 부족할 때만 충전으로 가는 길을 낸다. 문구는 그대로 두고 CTA만 더한다.
+            if !canAfford, let onBuyShards {
+                Button("조각 채우기") { onBuyShards() }
+                    .font(InkFont.body.weight(.semibold))
+                    .foregroundStyle(PaperTheme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                            .stroke(PaperTheme.ink, lineWidth: 1.6)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .disabled(isGenerating)
+                    .accessibilityIdentifier("buyShardsFromAI")
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)

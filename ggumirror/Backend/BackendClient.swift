@@ -77,7 +77,7 @@ nonisolated protocol AuthBackend: Sendable {
 }
 
 /// nonisolated — MainActor 밖에서도 만들고 쓸 수 있다.
-nonisolated struct BackendClient: AuthBackend, ShardBackend {
+nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBackend {
     /// 기본값은 빌드 설정에서 온다(`AppConfig`). **여기에 주소를 적지 않는다.**
     /// 테스트는 원하는 주소를 넣어 쓴다.
     var baseURL: URL?
