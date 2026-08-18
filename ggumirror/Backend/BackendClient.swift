@@ -239,6 +239,37 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend {
         return try Self.decodeGeneration(data, path: "POST /ai/stickers")
     }
 
+    // MARK: 조각 IAP
+
+    /// Apple이 서명한 결제를 조각으로 바꾼다.
+    ///
+    /// **보내는 것은 서명된 transaction 하나뿐이다** — 수량 · 가격 · productId · userId를
+    /// 실을 자리가 없다. 지급 수량은 서버 catalog가 정하고, 결제의 주인은 서명 안의
+    /// `appAccountToken`으로 서버가 판단한다.
+    ///
+    /// 같은 거래를 다시 보내도 지급은 한 번이다(서버 전역 멱등). 그때는 `credited=false`이고
+    /// **실패가 아니다** — `balance`는 정상 현재 잔액이다.
+    func creditIAPShards(
+        signedTransaction: String, accessToken: String
+    ) async throws -> ShardPurchaseReceipt {
+        struct Body: Encodable {
+            let signedTransaction: String
+        }
+        let data = try await send(
+            "users/me/iap/shards",
+            method: "POST",
+            body: try JSONEncoder.backend.encode(Body(signedTransaction: signedTransaction)),
+            accessToken: accessToken
+        )
+        do {
+            return try JSONDecoder.backend.decode(ShardPurchaseReceipt.self, from: data)
+        } catch {
+            // 응답을 못 읽으면 **성공으로 보지 않는다** — 호출부가 finish하지 않게 던진다.
+            // 새 case를 만들지 않고 기존 `unavailable`을 쓴다(재시도 가능한 실패다).
+            throw BackendError.unavailable
+        }
+    }
+
     /// 작업 상태를 다시 묻는다. 앱을 껐다 켠 뒤의 복구가 쓴다.
     func aiStickerStatus(generationID: String, accessToken: String) async throws -> AIGeneration {
         let data = try await send(

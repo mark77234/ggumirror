@@ -536,6 +536,82 @@ UMP consent flow도 SDK와 함께 들어온다.
 - 광고 보상은 server economy라 로그인이 필요하다. 로그인 전 CTA는
   **설정의 기존 Apple 로그인**으로 보낸다. Mirror core에는 여전히 로그인 벽이 없다
 
+### 조각 IAP (B-6C) — client는 지급하지 않는다
+
+조각 충전 **10 / 50 / 100**, 전부 consumable. Apple 결제 성공과 조각 지급은 **다른 단계**다.
+
+- **StoreKit 2만 쓴다.** RevenueCat 같은 third-party 구매 SDK를 넣지 않는다
+- **StoreKit에 닿는 파일은 `IAP/StoreKitShardStore.swift` 하나다.** 나머지
+  (`ShardPurchase.swift` · `ShardPurchaseController.swift` · 화면)는 protocol만 알고
+  StoreKit 타입을 모른다 — 그래서 구매/복구 흐름 전체를 SDK 없이 시험한다 (B-5와 같은 격리)
+- **구매에 `.appAccountToken(<서버 user UUID>)`을 반드시 싣는다.** 서버가 이 값으로 결제의
+  주인을 판단한다. **로그인 전에는 구매를 시작하지 않고**, 임의의 로컬 UUID를 만들지 않는다.
+  이 값을 로그에 남기지 않는다
+- **서버에 보내는 것은 `VerificationResult`의 `jwsRepresentation` 하나뿐이다.**
+  수량 · 가격 · userId · 잔액 변화량을 보내는 자리가 없다.
+  JWS를 `print` · analytics · 로컬 저장에 넣지 않는다(요청 본문에만 실린다)
+- **잔액은 서버 응답을 대입만 한다.** `wallet.balance += amount`를 쓰지 않는다.
+  `credited=false`(중복)도 실패가 아니고 그때도 `balance`는 정상 현재 잔액이다
+
+#### `finish()` 계약 (가장 중요)
+
+**서버가 지급을 확정한 뒤에만 `transaction.finish()`를 부른다.**
+
+| 상황 | finish |
+|---|---|
+| `credited=true` | ✅ |
+| `credited=false` (같은 거래 재전송) | ✅ — 서버가 확정한 상태다 |
+| network 실패 · timeout · 5xx · 잘못된 응답 · 인증 실패 | ❌ |
+| `.unverified` | ❌ (서버에 보내지도 않는다) |
+| `appAccountToken`이 다른 사용자 | ❌ (원래 주인이 되찾아야 한다) |
+
+먼저 finish하면 응답을 잃었을 때 StoreKit이 다시 주지 않아 **사용자가 돈만 내고 조각을 잃는다.**
+그래서 실패는 거래를 미완료로 남기는 것으로 처리하고, UX도 "결제 실패"가 아니라
+**"구매를 확인하고 있어요"**로 말한다.
+
+#### 복구
+
+- 앱 수명 동안 `Transaction.updates` listener를 **하나만** 만든다
+- 로그인된 세션이 준비되면 `Transaction.unfinished`를 sweep한다 —
+  앱 재시작 · 응답 유실 · 결제가 로그인보다 먼저 온 경우가 여기로 온다
+- **`Transaction.currentEntitlements`를 consumable 복구에 쓰지 않는다** — 소모품은 거기 남지 않는다
+- 세션이 없으면 거래를 **아무 사용자에게도 귀속하지 않는다.** 미완료로 남기고 로그인 뒤에 가져간다
+- 몇 번 다시 보내도 지급은 한 번이다(서버 전역 멱등 B-6A). client도 불필요한 중복 요청은 줄인다
+
+#### Xcode StoreKit 테스트 ≠ Apple Sandbox (acceptance 구분)
+
+`ggumirror/Ggumirror.storekit`은 **client pipeline / 로컬 복구 확인용**이다.
+Debug scheme에만 연결한다(Edit Scheme → Run → Options → StoreKit Configuration).
+
+**Xcode StoreKit Testing이 만든 JWS는 production backend가 거절한다** —
+서명이 로컬에서 만들어져 Apple 신뢰 사슬이 없고, B-6B가 `Xcode` / `LocalTesting`
+environment를 값 단계에서 버린다. 받아 주게 만드는 bypass · flag · 별도 endpoint를
+**절대 추가하지 않는다**(`IAP_ALLOW_XCODE` · debug 검증 우회 · 무서명 허용 ·
+로컬 전용 credit endpoint · client 직접 지급 전부 금지).
+
+**⚠️ Xcode transaction으로 실제 조각 지급을 검증하지 않는다.**
+`.storekit` 구매로 production 잔액이 늘어나면 그것은 성공이 아니라 **보안 실패**다.
+
+| | Xcode StoreKit Testing | Apple Sandbox / TestFlight (B-6E) |
+|---|---|---|
+| 검증 대상 | client pipeline · 로컬 복구 | **실제 서버 fulfillment** |
+| product 3개 load · displayPrice | ✅ | ✅ |
+| 결제 흐름 진입 · appAccountToken 포함 | ✅ | ✅ |
+| verified transaction 획득 | ✅ | ✅ |
+| `updates` 전달 · `unfinished` 복구 · 중복 억제 · finish 타이밍 | ✅ | ✅ |
+| **production backend가 JWS를 거절** | ✅ **기대 동작** | ❌ |
+| ledger `iap_purchase` · wallet +10/+50/+100 | ❌ **0이어야 한다** | ✅ |
+| `transaction.finish()` | ❌ 불리지 않는다 | ✅ |
+| 거래 상태 | **unfinished로 남는 것이 정상** | finished |
+
+로컬에서 서버가 거절하면 controller는 `finish()`하지 않고 거래를 미완료로 남긴다 —
+그게 설계대로 동작한다는 증거다. 화면에는 "구매를 확인하고 있어요"가 남는다.
+
+fake backend를 쓰는 client test에서 `verified → 성공 → finish`를 검증하는 것은
+**client 상태 기계를 보기 위한 test seam**이고, production backend와 무관하다.
+
+`ggumirrorTests/ShardPurchaseTests.swift`가 위 전부를 고정한다.
+
 ## Build Number Parity (영구 규칙)
 
 본앱과 embed되는 extension **셋의 버전이 항상 같아야 한다.**
