@@ -35,7 +35,8 @@ struct ShardStoreSheet: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
-        .task { await controller.loadProducts() }
+        // **상품 조회는 상점을 열 때 시작한다** — 앱 시작에 묶지 않는다.
+        .task { await controller.loadProductsIfNeeded(reason: "store_open") }
     }
 
     // MARK: - 머리말
@@ -64,7 +65,10 @@ struct ShardStoreSheet: View {
     private var content: some View {
         if controller.products.isEmpty {
             if controller.phase == .loadingProducts {
-                message("상품을 불러오고 있어요")
+                HStack(spacing: 8) {
+                    ProgressView().tint(PaperTheme.ink)
+                    message("상품을 불러오고 있어요")
+                }
             } else {
                 // StoreKit이 준 오류 문자열을 그대로 보여주지 않는다.
                 VStack(alignment: .leading, spacing: 10) {
@@ -86,8 +90,37 @@ struct ShardStoreSheet: View {
                 ForEach(controller.products) { product in
                     card(product)
                 }
+                // 일부만 받은 상태. **받은 것은 그대로 살 수 있고**, 나머지는 기다리거나
+                // 다시 시도한다. 내부 product id나 "Apple 오류"를 사용자에게 보여주지 않는다.
+                if controller.hasMissingProducts {
+                    partialNotice
+                }
             }
         }
+    }
+
+    /// 일부 상품만 들어온 상태의 안내. 조회 중이면 진행 표시, 아니면 다시 시도.
+    @ViewBuilder
+    private var partialNotice: some View {
+        HStack(spacing: 8) {
+            if controller.phase == .loadingProducts {
+                ProgressView().tint(PaperTheme.ink)
+                Text("다른 상품을 불러오고 있어요")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+            } else {
+                Text("일부 상품 정보를 불러오지 못했어요")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                Spacer(minLength: 4)
+                Button("다시 시도") { Task { await controller.reloadProducts() } }
+                    .font(InkFont.caption.weight(.semibold))
+                    .foregroundStyle(PaperTheme.ink)
+                    .buttonStyle(InkPressStyle())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
     }
 
     private func card(_ product: ShardProductInfo) -> some View {

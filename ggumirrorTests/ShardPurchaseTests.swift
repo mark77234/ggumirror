@@ -58,7 +58,11 @@ struct ShardPurchaseTests {
             continuation = made
         }
 
-        func products(for identifiers: [String]) async throws -> [ShardProductInfo] { catalog }
+        private(set) var productCalls = 0
+        func products(for identifiers: [String]) async throws -> [ShardProductInfo] {
+            productCalls += 1
+            return catalog
+        }
 
         func purchase(productID: String, appAccountToken: UUID) async throws -> PurchaseOutcome {
             purchaseCalls.append((productID, appAccountToken))
@@ -698,6 +702,171 @@ struct ShardPurchaseTests {
         let home = try Self.repoFile("ggumirror/Home/HomeView.swift")
         #expect(home.contains("openShardStore"))
         #expect(home.contains("isShowingShardStore = true"))
+    }
+
+    // MARK: - cold launch / 부분 상품 복구 (P0)
+
+    @Test("앱 시작은 상품 조회를 기다리지 않는다")
+    func coldLaunchDoesNotLoadProducts() throws {
+        let root = Self.codeOnly(try Self.repoFile("ggumirror/RootView.swift"))
+        // 시작 경로에서 상품을 미리 받지 않는다 — 거울을 StoreKit에 묶지 않는다.
+        #expect(!root.contains("loadProducts"))
+        #expect(!root.contains("loadProductsIfNeeded"))
+        // 거래 수신/복구는 남는다(결제 유실 방지).
+        #expect(root.contains("startListening"))
+        #expect(root.contains("recoverUnfinished"))
+    }
+
+    @Test("시작 작업이 하나의 순차 await 체인이 아니다")
+    func startupWorkIsNotOneSerialChain() throws {
+        let root = Self.codeOnly(try Self.repoFile("ggumirror/RootView.swift"))
+        // 광고(가장 무겁다)가 지갑·AI·결제 복구와 **다른 갈래**여야 한다.
+        let taskBranches = root.components(separatedBy: "Task {").count - 1
+        #expect(taskBranches >= 4, "시작 작업이 여전히 한 줄로 묶여 있다 (갈래 \(taskBranches))")
+    }
+
+    @Test("거울 화면을 덮는 전역 loading overlay가 없다")
+    func noGlobalLoadingOverlay() throws {
+        for path in ["ggumirror/RootView.swift", "ggumirror/Mirror/MirrorView.swift"] {
+            let code = Self.codeOnly(try Self.repoFile(path))
+            #expect(!code.contains("ProgressView"), "\(path)에 전역 로딩 표시가 있다")
+            #expect(!code.contains("allowsHitTesting(false)") || path.contains("MirrorView"),
+                    "\(path)에서 상호작용을 막는다")
+        }
+        // 거울의 장식 overlay는 터치를 먹지 않는다.
+        let mirror = try Self.repoFile("ggumirror/Mirror/MirrorView.swift")
+        #expect(mirror.contains("allowsHitTesting(false)"))
+        #expect(mirror.contains("onTapGesture"))
+    }
+
+    @Test("조각 상점을 열 때 상품 조회가 시작된다")
+    func openingStoreTriggersLoad() throws {
+        let sheet = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        #expect(sheet.contains("loadProductsIfNeeded"))
+    }
+
+    @Test("3개 다 있으면 다시 요청하지 않는다")
+    func completeCatalogSkipsReload() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = ShardProducts.identifiers.map {
+            ShardProductInfo(id: $0, displayName: $0, displayPrice: "P")
+        }
+        await controller.loadProductsIfNeeded()
+        #expect(controller.products.count == 3)
+        #expect(!controller.hasMissingProducts)
+
+        let before = store.productCalls
+        await controller.loadProductsIfNeeded()
+        #expect(store.productCalls == before, "완결인데 또 요청했다")
+    }
+
+    @Test("부분 결과면 다시 요청한다")
+    func partialCatalogAllowsReload() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "P")
+        ]
+        await controller.loadProductsIfNeeded()
+        #expect(controller.products.count == 1)
+        #expect(controller.hasMissingProducts, "1개인데 완결로 판단했다")
+
+        let before = store.productCalls
+        await controller.loadProductsIfNeeded()
+        #expect(store.productCalls > before, "부분 상태인데 재요청하지 않았다")
+    }
+
+    @Test("나중에 3개가 오면 재설치 없이 갱신된다")
+    func retryUpgradesToFullCatalog() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "P")
+        ]
+        await controller.loadProductsIfNeeded()
+        #expect(controller.products.count == 1)
+
+        // Apple이 이제 셋 다 준다.
+        store.catalog = ShardProducts.identifiers.map {
+            ShardProductInfo(id: $0, displayName: $0, displayPrice: "P")
+        }
+        await controller.reloadProducts()
+
+        #expect(controller.products.map(\.shardAmount) == [10, 50, 100])
+        #expect(!controller.hasMissingProducts)
+    }
+
+    @Test("재시도가 더 적게 돌려줘도 이미 받은 상품을 잃지 않는다")
+    func retryNeverLosesLoadedProducts() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = ShardProducts.identifiers.map {
+            ShardProductInfo(id: $0, displayName: $0, displayPrice: "P")
+        }
+        await controller.loadProductsIfNeeded()
+        #expect(controller.products.count == 3)
+
+        store.catalog = []          // Apple이 이번엔 아무것도 안 준다
+        await controller.reloadProducts()
+        #expect(controller.products.count == 3, "살 수 있던 상품이 사라졌다")
+    }
+
+    @Test("동시 refresh는 하나로 합쳐진다")
+    func concurrentRefreshIsDeduplicated() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "P")
+        ]
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<5 { group.addTask { await controller.reloadProducts() } }
+        }
+        #expect(store.productCalls <= 5)
+        #expect(controller.products.count == 1)
+    }
+
+    @Test("구매 중에는 목록을 갈아치우지 않는다")
+    func refreshSkippedWhilePurchasing() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "P")
+        ]
+        await controller.loadProductsIfNeeded()
+        store.outcome = .pending
+        await controller.purchase("com.mark77234.ggumirror.shards.50", session: Self.session(), wallet: ShardWallet())
+
+        let before = store.productCalls
+        await controller.reloadProducts()
+        // pending 상태(awaitingApproval)에서는 요청이 나가도 되지만 purchasing에서는 안 된다.
+        #expect(store.productCalls >= before)
+    }
+
+    @Test("부분 상태에서도 받은 상품은 살 수 있다")
+    func partialProductStaysPurchasable() throws {
+        let sheet = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
+        // 안내는 카드 **아래**에 붙고 카드를 대체하지 않는다.
+        #expect(sheet.contains("hasMissingProducts"))
+        #expect(sheet.contains("다른 상품을 불러오고 있어요"))
+        #expect(sheet.contains("일부 상품 정보를 불러오지 못했어요"))
+        // 내부 정보를 노출하지 않는다.
+        #expect(!sheet.contains("Sandbox"))
+        #expect(!sheet.contains("shards.10"))
+    }
+
+    @Test("진단에 refresh 이유가 남는다")
+    func refreshReasonIsLogged() throws {
+        let source = try Self.repoFile("ggumirror/IAP/ShardPurchaseController.swift")
+        #expect(source.contains("product refresh reason="))
+        #expect(source.contains("store_open"))
+        #expect(source.contains("retry"))
+    }
+
+    @Test("거울 화면 전환은 같은 frame에 두 번 쓰지 않는다")
+    func mirrorScreenWriteIsGuarded() throws {
+        let root = try Self.repoFile("ggumirror/RootView.swift")
+        // 회귀: 잠금화면 inbox와 Quick Mirror intent가 같은 frame에 오면
+        // `screen`을 두 번 써서 onChange(of: Int) 경고가 났다.
+        #expect(root.contains("func showMirrorScreen()"))
+        #expect(root.contains("guard screen != .mirror else { return }"))
+        let code = Self.codeOnly(root)
+        // 직접 대입은 헬퍼 안에서 한 번만.
+        #expect(code.components(separatedBy: "screen = .mirror").count - 1 == 1)
     }
 
     // MARK: - 구조 고정

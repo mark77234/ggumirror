@@ -105,14 +105,43 @@ final class ShardPurchaseController {
 
     // MARK: - 상품
 
-    /// 실패했을 때 다시 받아온다. "다시 시도"가 쓴다.
+    /// 아직 못 받은 상품이 있는지. **`products.count > 0`을 "다 받았다"로 보지 않는다.**
+    ///
+    /// Apple이 3개 중 1개만 줄 수 있다(App Store Connect 전파 지연 등).
+    /// 완결 판단의 기준은 **기대 ID 전부가 들어왔는가**다.
+    var hasMissingProducts: Bool {
+        products.count < ShardProducts.identifiers.count
+    }
+
+    /// 상품 조회가 겹치지 않게 한다. 같은 요청을 두 번 날리지 않는다.
+    private var isLoadingProducts = false
+
+    /// 조각 상점을 열 때 부른다. **부족하면 다시 받아온다.**
+    ///
+    /// 완결(3개)이면 아무 요청도 하지 않는다 — 상점을 여닫을 때마다 두드리지 않는다.
+    func loadProductsIfNeeded(reason: String = "store_open") async {
+        guard hasMissingProducts else { return }
+        await fetchProducts(reason: reason)
+    }
+
+    /// "다시 시도". **부분 상태에서도 쓸 수 있다** — 0개일 때만 되는 게 아니다.
     func reloadProducts() async {
-        products = []
-        await loadProducts()
+        await fetchProducts(reason: "retry")
     }
 
     func loadProducts() async {
-        guard products.isEmpty else { return }
+        await loadProductsIfNeeded()
+    }
+
+    private func fetchProducts(reason: String) async {
+        // 동시에 두 번 들어오면 뒤엣것은 그냥 돌아간다(무한 polling도 여기서 막힌다).
+        guard !isLoadingProducts else { return }
+        // 구매 중에는 목록을 갈아치우지 않는다 — 진행 중인 카드 상태가 깨진다.
+        if case .purchasing = phase { return }
+        isLoadingProducts = true
+        defer { isLoadingProducts = false }
+
+        IAPLog.diagnostic("product refresh reason=\(reason)")
         phase = .loadingProducts
         defer { if phase == .loadingProducts { phase = .idle } }
         do {
@@ -129,11 +158,15 @@ final class ShardPurchaseController {
             }
 
             // App Store가 주는 순서를 믿지 않는다. 조각 수로 정렬한다.
-            products = loaded.sorted { ($0.shardAmount ?? 0) < ($1.shardAmount ?? 0) }
+            let sorted = loaded.sorted { ($0.shardAmount ?? 0) < ($1.shardAmount ?? 0) }
+            // **이미 갖고 있는 것보다 적게 주면 버리지 않는다.** 재시도가 더 나쁜 결과를
+            // 돌려줘도 사용자가 살 수 있던 상품이 화면에서 사라지면 안 된다.
+            if sorted.count >= products.count {
+                products = sorted
+            }
         } catch {
-            // 상품을 못 받아도 앱을 막지 않는다. CTA만 나오지 않는다.
+            // 상품을 못 받아도 앱을 막지 않는다. 이미 받은 것은 **그대로 둔다.**
             IAPLog.diagnostic("products load failed")
-            products = []
         }
     }
 

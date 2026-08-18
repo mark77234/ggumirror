@@ -55,13 +55,13 @@ struct RootView: View {
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
-                screen = .mirror
+                showMirrorScreen()
                 quickMirror.refresh()
             }
             // 시스템이 capture extension 대신 본앱을 고른 경우(잠금 해제 상태).
             // 홈에 있었더라도 Mirror로 되돌린다.
             .onChange(of: quickMirrorRequest.token) { _, _ in
-                screen = .mirror
+                showMirrorScreen()
             }
             // 로그인 / 로그아웃에 따라 지갑을 다시 읽거나 화면에서 지운다.
             // **서버 지갑은 그대로 있다** — 이 기기의 표시만 바뀐다.
@@ -92,33 +92,56 @@ struct RootView: View {
             .task {
                 // 첫 화면은 언제나 Mirror다. 로그인 확인은 화면이 뜬 뒤 비동기로 하고,
                 // 결과가 무엇이든 Mirror 진입을 막지 않는다.
+                // ── 거울에 필요한 것만 여기서 한다. 짧고 network가 아니다. ──
                 session.watchRevocation()
-                await session.refreshCredentialState()
-                // 저장된 서버 세션이 아직 살아 있는지 확인한다. 실패해도 화면을 막지 않는다.
-                await session.refreshServerSession()
                 // 공유하다 앱이 죽으면 임시 파일이 남는다. 시작할 때 한 번 치운다.
                 ExportedFile.cleanUpLeftovers()
                 // 잠금화면에서 찍은 사진이 있으면 여기서 알게 된다.
                 quickMirror.refresh()
-                // 잠금화면 Quick Mirror가 쓸 프레임을 등록한다. 실패해도 앱은 그대로다.
-                await QuickMirrorSync.update(for: library.currentMirror)
-                // 로그인돼 있으면 서버 지갑을 받아온다. 아니면 0으로 둔다 — 로그인을 강요하지 않는다.
-                await shards.refresh(session: session.server)
-                // AI 스티커를 쓸 수 있는지 묻는다. 실패하면 꺼진 상태로 둔다 — 화면을 막지 않는다.
-                await aiStickers.refresh(session: session.server)
 
-                // 광고 동의는 **맨 마지막**이다. 동의 양식이 뜨더라도 그때는 이미
-                // 거울이 화면에 있다 — 실행하자마자 동의창이 뜨는 앱이 되지 않는다.
-                await adsConsent.bootstrap()
-                rewardedAds.consentChanged(canRequestAds: adsConsent.canRequestAds)
-                // 로그인돼 있고 남은 횟수가 있으면 광고를 미리 받아 둔다.
-                if session.server != nil, shards.remainingAdsToday > 0 {
-                    await rewardedAds.prepare()
+                // ── 나머지는 **거울과 독립**이다. ──
+                //
+                // 예전에는 이 전부가 하나의 `await` 체인이었다: 세션 → 지갑 → AI config →
+                // UMP 동의 → 광고 preload → StoreKit 복구. 앞이 느리면 뒤가 전부 밀리고,
+                // 그 사이 화면은 이미 거울이라 사용자는 "왜 안 눌리지"를 겪는다.
+                //
+                // 이제 **서로 기다리지 않는다.** 하나가 느리거나 실패해도 나머지가 진행되고,
+                // 무엇도 거울 조작을 막지 않는다. 순서에 의존하는 것만 한 갈래로 묶는다.
+                Task { await session.refreshCredentialState() }
+                Task { await QuickMirrorSync.update(for: library.currentMirror) }
+                Task {
+                    // 세션 확인 → 그 결과로 지갑/AI/복구. 이 셋은 순서가 의미 있다.
+                    await session.refreshServerSession()
+                    await shards.refresh(session: session.server)
+                    await aiStickers.refresh(session: session.server)
+                    // StoreKit 거래 수신은 **한 번만** 시작한다(내부에서 보장).
+                    shardStore.startListening(session: { session.server }, wallet: shards)
+                    // 못 끝낸 결제 되찾기. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
+                    // **상품 조회(`Product.products`)는 여기서 하지 않는다** —
+                    // 조각 상점을 열 때만 한다(거울 시작을 StoreKit에 묶지 않는다).
+                    await shardStore.recoverUnfinished(session: session.server, wallet: shards)
                 }
-                // StoreKit 거래 수신은 가능한 한 일찍, 그리고 **한 번만** 시작한다.
-                shardStore.startListening(session: { session.server }, wallet: shards)
-                await shardStore.recoverUnfinished(session: session.server, wallet: shards)
+                Task {
+                    // 광고는 가장 무겁고(UMP 양식 · SDK 초기화 · ad load) 가장 덜 급하다.
+                    // 별도 갈래라 이게 느려도 지갑·AI·결제 복구가 기다리지 않는다.
+                    await adsConsent.bootstrap()
+                    rewardedAds.consentChanged(canRequestAds: adsConsent.canRequestAds)
+                    if session.server != nil, shards.remainingAdsToday > 0 {
+                        await rewardedAds.prepare()
+                    }
+                }
             }
+    }
+
+    /// 거울 화면으로 보낸다. **이미 거울이면 아무것도 쓰지 않는다.**
+    ///
+    /// 잠금화면 촬영 inbox와 Quick Mirror intent가 **같은 frame에 함께** 도착할 수 있고,
+    /// 그때 `screen`을 두 번 쓰면 SwiftUI가
+    /// "onChange(of: Int) action tried to update multiple times per frame"으로 경고한다
+    /// (`QuickMirrorRequest.token`이 Int counter다). 중복 write 자체를 없앤다.
+    private func showMirrorScreen() {
+        guard screen != .mirror else { return }
+        screen = .mirror
     }
 
     @ViewBuilder
@@ -129,7 +152,7 @@ struct RootView: View {
         case .home:
             HomeView(
                 library: library,
-                onOpenMirror: { screen = .mirror },
+                onOpenMirror: { showMirrorScreen() },
                 onEdit: { editing = $0 }
             )
             .fullScreenCover(item: $editing) { request in
