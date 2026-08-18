@@ -574,6 +574,132 @@ struct ShardPurchaseTests {
         #expect(controller.products.count == 1)
     }
 
+    // MARK: - 상품 로딩 진단 (B-6E.2)
+
+    @Test("요청하는 product id는 정확히 3개다")
+    func requestsExactlyThreeProductIDs() async {
+        let (controller, store, _, _) = Self.world()
+        store.catalog = []
+        await controller.loadProducts()
+        // 코드가 3개를 모두 요청한다 — 하나만 요청하는 filter가 없다.
+        #expect(ShardProducts.identifiers.count == 3)
+        let code = Self.codeOnly(try! Self.repoFile("ggumirror/IAP/ShardPurchaseController.swift"))
+        #expect(code.contains("store.products(for: ShardProducts.identifiers)")
+                || code.contains("store.products(for:requested)")
+                || code.contains("products(for: requested)"))
+    }
+
+    @Test("Apple이 일부만 돌려줘도 가짜 상품을 만들지 않는다")
+    func partialLoadNeverFabricatesProducts() async {
+        let (controller, store, _, _) = Self.world()
+        // Apple이 50 하나만 돌려준 상황.
+        store.catalog = [
+            ShardProductInfo(id: "com.mark77234.ggumirror.shards.50", displayName: "50", displayPrice: "P")
+        ]
+        await controller.loadProducts()
+
+        #expect(controller.products.count == 1, "받은 것만 판다")
+        #expect(controller.products.first?.id == "com.mark77234.ggumirror.shards.50")
+        // 10 / 100을 만들어내지 않았다.
+        #expect(!controller.products.contains { $0.id.hasSuffix(".10") })
+        #expect(!controller.products.contains { $0.id.hasSuffix(".100") })
+    }
+
+    @Test("구매한 consumable을 목록에서 숨기지 않는다")
+    func purchasedConsumableStaysPurchasable() async {
+        let (controller, store, backend, wallet) = Self.world()
+        let counter = FinishCounter()
+        store.catalog = [
+            ShardProductInfo(id: Self.product10, displayName: "10", displayPrice: "P")
+        ]
+        await controller.loadProducts()
+        store.outcome = .purchased(Self.transaction(counter: counter))
+        await controller.purchase(Self.product10, session: Self.session(), wallet: wallet)
+
+        // 소모품은 다시 살 수 있어야 한다 — 구매 후에도 목록에 남는다.
+        #expect(controller.products.contains { $0.id == Self.product10 })
+        #expect(backend.submitted.count == 1)
+    }
+
+    @Test("진단 로그는 product id만 남긴다")
+    func diagnosticsLogProductIDsOnly() throws {
+        let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardPurchaseController.swift"))
+        #expect(code.contains("IAPLog.diagnostic"))
+        // 가격 · 계정 · 거래 · 토큰은 절대 로그로 가지 않는다.
+        for banned in ["displayPrice)", "appAccountToken)", "signedPayload", "jws", "accessToken"] {
+            #expect(!code.contains("IAPLog.diagnostic(\"\\(\(banned)"), "진단에 \(banned)가 들어갔다")
+        }
+        let source = try Self.repoFile("ggumirror/IAP/ShardPurchaseController.swift")
+        #expect(source.contains("products missing ids="))
+    }
+
+    // MARK: - 상점 진입점 (B-6E.2)
+
+    @Test("Store 탭 잔액이 같은 조각 상점을 연다")
+    func storeTabBalanceOpensShardStore() throws {
+        let source = try Self.repoFile("ggumirror/Store/StoreView.swift")
+        #expect(source.contains("ShardStoreSheet("), "Store 탭이 같은 시트를 열지 않는다")
+        #expect(source.contains("isShowingShardStore"))
+        #expect(source.contains("openShardStoreFromStore"))
+        #expect(source.contains("조각 구매"), "낭독기가 구매 가능함을 알려야 한다")
+        // hit target
+        #expect(source.contains("minHeight: 44"))
+    }
+
+    @Test("Store 진입점은 기존 controller / wallet을 재사용한다")
+    func storeEntryReusesExistingState() throws {
+        let source = try Self.repoFile("ggumirror/Store/StoreView.swift")
+        // 새 controller를 만들지 않는다 — RootView 것을 environment로 받는다.
+        #expect(source.contains("@Environment(ShardPurchaseController.self)"))
+        #expect(source.contains("@Environment(ShardWallet.self)"))
+        #expect(!source.contains("ShardPurchaseController("), "새 controller를 생성했다")
+        #expect(!source.contains("StoreKitShardStore("), "새 StoreKit 경로를 만들었다")
+    }
+
+    @Test("세 진입점이 모두 같은 시트를 연다")
+    func allThreeEntryPointsShareOneSheet() throws {
+        for path in [
+            "ggumirror/Home/HomeView.swift",
+            "ggumirror/Store/StoreView.swift",
+            "ggumirror/Editor/StickerCreatorView.swift",
+        ] {
+            let code = Self.codeOnly(try Self.repoFile(path))
+            #expect(code.contains("ShardStoreSheet("), "\(path)가 다른 상점을 쓴다")
+            #expect(code.contains("inkBottomSheet(isPresented: $isShowingShardStore"))
+            #expect(!code.contains(".sheet("), "\(path)에 native modal이 들어왔다")
+        }
+    }
+
+    // MARK: - 홈 "조각" 라벨 (B-6E.2)
+
+    @Test("홈 잔액은 화면에 조각을 글자로 보여준다")
+    func homeBalanceShowsUnitText() throws {
+        let home = try Self.repoFile("ggumirror/Home/HomeView.swift")
+        #expect(home.contains("showsUnit: true"), "홈에서 단위 표시를 켜지 않았다")
+        // 접근성 라벨만이 아니라 실제 렌더 텍스트여야 한다.
+        let component = try Self.repoFile("ggumirror/Shared/InkComponents.swift")
+        #expect(component.contains("showsUnit ?"))
+        #expect(component.contains("조각"))
+    }
+
+    @Test("가격 표시는 단위 없이 그대로 둔다 (전역 변경 아님)")
+    func priceCallSitesUnchanged() throws {
+        let component = try Self.repoFile("ggumirror/Shared/InkComponents.swift")
+        // 기본값이 꺼져 있어야 기존 가격 카드가 그대로다.
+        #expect(component.contains("var showsUnit = false"))
+        for path in ["ggumirror/Store/StoreView.swift", "ggumirror/Store/PublishMirrorView.swift"] {
+            let source = try Self.repoFile(path)
+            #expect(!source.contains("showsUnit: true"), "\(path) 가격에 단위를 켰다")
+        }
+    }
+
+    @Test("홈 잔액은 여전히 탭 가능하다")
+    func homeBalanceStaysTappable() throws {
+        let home = try Self.repoFile("ggumirror/Home/HomeView.swift")
+        #expect(home.contains("openShardStore"))
+        #expect(home.contains("isShowingShardStore = true"))
+    }
+
     // MARK: - 구조 고정
 
     @Test("StoreKit에 닿는 파일은 하나뿐이다")
@@ -644,9 +770,31 @@ struct ShardPurchaseTests {
             "ggumirror/IAP/StoreKitShardStore.swift",
         ] {
             let code = Self.codeOnly(try Self.repoFile(path))
-            for banned in ["print(", "UserDefaults", "Logger("] {
+            // 로컬 저장 · 외부 logger는 여전히 금지다.
+            for banned in ["UserDefaults", "Logger(", "os_log"] {
                 #expect(!code.contains(banned), "\(path): \(banned)")
             }
+            // **민감한 값 자체**가 출력 경로로 가지 않는지 본다.
+            // `print`가 있는 것 자체는 문제가 아니다 — B-6E.2에서 product id만 남기는
+            // DEBUG 진단(`IAPLog`)이 들어왔고, 그건 개인정보가 아니다.
+            for leaked in ["signedPayload", "jwsRepresentation", "appAccountToken", "accessToken"] {
+                #expect(
+                    !code.contains("print(\\(\(leaked)") && !code.contains("(\\(\(leaked)))"),
+                    "\(path): \(leaked)를 출력한다"
+                )
+            }
+        }
+    }
+
+    @Test("print는 IAPLog 한 곳에만 있고 product id만 남긴다")
+    func printIsConfinedToDiagnostics() throws {
+        let controller = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardPurchaseController.swift"))
+        // `print(`가 나오는 곳은 IAPLog 구현 한 곳뿐이다.
+        let occurrences = controller.components(separatedBy: "print(").count - 1
+        #expect(occurrences == 1, "print가 \(occurrences)곳에 있다 — 진단 한 곳만 허용")
+
+        for path in ["ggumirror/IAP/ShardPurchase.swift", "ggumirror/IAP/StoreKitShardStore.swift"] {
+            #expect(!Self.codeOnly(try Self.repoFile(path)).contains("print("), "\(path)에 print가 있다")
         }
     }
 

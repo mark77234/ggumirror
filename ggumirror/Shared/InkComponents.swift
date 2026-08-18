@@ -210,13 +210,19 @@ struct ShardAmount: View {
     /// 잔액은 0도 그냥 0이다 — 조각이 하나도 없는 것을 "무료"라고 하면 말이 되지 않는다.
     /// 잔액의 진실은 서버에 있고(`ShardWallet`) 그 숫자를 그대로 보여준다.
     var treatsZeroAsFree = true
+    /// 숫자 뒤에 "조각"을 붙일지. **기본은 꺼둔다.**
+    ///
+    /// 가격 카드(상점 · 판매가 · 수수료)는 좁아서 숫자만 보여 왔고 그게 자연스럽다.
+    /// 반면 **잔액**은 무엇의 개수인지 말해 줘야 한다. 그래서 공통 component를
+    /// 전역으로 바꾸지 않고, 필요한 곳만 켜는 인자로 뒀다.
+    var showsUnit = false
 
     private var isFree: Bool { treatsZeroAsFree && amount == 0 }
 
     var body: some View {
         HStack(spacing: 4) {
             ShardIcon(size: iconSize)
-            Text(isFree ? "무료" : "\(amount)")
+            Text(isFree ? "무료" : (showsUnit ? "\(amount) 조각" : "\(amount)"))
                 .font(font)
                 .foregroundStyle(PaperTheme.ink)
         }

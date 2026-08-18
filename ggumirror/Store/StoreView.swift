@@ -18,11 +18,16 @@ enum StoreSection: String, CaseIterable, Identifiable, Hashable {
 
 struct StoreView: View {
     @Environment(ShardWallet.self) private var shards
+    // 조각 상점은 **RootView가 소유한 하나**를 그대로 쓴다 — 새 controller를 만들지 않는다.
+    @Environment(ShardPurchaseController.self) private var shardStore
+    @Environment(AuthSession.self) private var session
     var library: MirrorLibrary?
     /// 내가 만든 스티커. 저장하면 이 화면이 바로 갱신된다(@Observable).
     var stickers: StickerLibrary = .live
 
     @State private var section: StoreSection = .mirror
+    /// 조각 충전. Home · AI와 **같은 시트**다.
+    @State private var isShowingShardStore = false
     @State private var category: StoreCategory = .all
     @State private var tag: TagFilter = .all
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -55,6 +60,15 @@ struct StoreView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .tint(PaperTheme.ink)
+        // Home · AI와 **같은 시트**, 같은 controller/wallet. 상점 UI를 또 만들지 않는다.
+        .inkBottomSheet(isPresented: $isShowingShardStore, size: .fraction(0.7)) {
+            ShardStoreSheet(
+                controller: shardStore,
+                wallet: shards,
+                session: session.server,
+                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+            )
+        }
     }
 
     private var header: some View {
@@ -65,22 +79,32 @@ struct StoreView: View {
 
             Spacer(minLength: 12)
 
-            // 조각 잔액 (표시 전용)
-            HStack(spacing: 6) {
-                ShardIcon(size: 16)
-                Text("\(shards.balance) 조각")
-                    .font(InkFont.secondary)
-                    .foregroundStyle(PaperTheme.ink)
+            // 조각 잔액. 탭하면 충전 — **생김새는 그대로 둔다.**
+            Button {
+                isShowingShardStore = true
+            } label: {
+                HStack(spacing: 6) {
+                    ShardIcon(size: 16)
+                    Text("\(shards.balance) 조각")
+                        .font(InkFont.secondary)
+                        .foregroundStyle(PaperTheme.ink)
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background {
+                    UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                        .stroke(PaperTheme.ink, lineWidth: 1.7)
+                        .rotationEffect(.degrees(0.3))
+                }
+                // 칩이 작아도 손가락이 닿는 자리는 44pt 이상이어야 한다.
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 7)
-            .background {
-                UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                    .stroke(PaperTheme.ink, lineWidth: 1.7)
-                    .rotationEffect(.degrees(0.3))
-            }
+            .buttonStyle(InkPressStyle())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("보유 \(shards.balance) 조각")
+            .accessibilityLabel("보유 \(shards.balance) 조각. 조각 구매")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("openShardStoreFromStore")
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)

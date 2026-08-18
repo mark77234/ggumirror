@@ -116,11 +116,23 @@ final class ShardPurchaseController {
         phase = .loadingProducts
         defer { if phase == .loadingProducts { phase = .idle } }
         do {
-            let loaded = try await store.products(for: ShardProducts.identifiers)
+            let requested = ShardProducts.identifiers
+            IAPLog.diagnostic("products requested count=\(requested.count) ids=\(IAPLog.suffixes(requested))")
+            let loaded = try await store.products(for: requested)
+            IAPLog.diagnostic("products loaded count=\(loaded.count) ids=\(IAPLog.suffixes(loaded.map(\.id)))")
+
+            // Apple이 일부만 돌려주는 일이 있다(App Store Connect 전파 지연 등).
+            // **없는 상품을 만들어내지 않는다** — 받은 것만 판다. 누락은 진단으로만 남긴다.
+            let missing = requested.filter { id in !loaded.contains { $0.id == id } }
+            if !missing.isEmpty {
+                IAPLog.diagnostic("products missing ids=\(IAPLog.suffixes(missing))")
+            }
+
             // App Store가 주는 순서를 믿지 않는다. 조각 수로 정렬한다.
             products = loaded.sorted { ($0.shardAmount ?? 0) < ($1.shardAmount ?? 0) }
         } catch {
             // 상품을 못 받아도 앱을 막지 않는다. CTA만 나오지 않는다.
+            IAPLog.diagnostic("products load failed")
             products = []
         }
     }
@@ -256,5 +268,26 @@ final class ShardPurchaseController {
             // 전부 같은 처리다 — 거래를 미완료로 남겨 다음 기회에 되찾는다.
             notice = "구매를 확인하고 있어요. 잠시 뒤 자동으로 반영돼요."
         }
+    }
+}
+
+
+// MARK: - 진단
+
+/// 조각 IAP 진단 로그.
+///
+/// **product id만 남긴다.** 가격 · Apple 계정 · transaction · JWS · token은 절대 넣지 않는다
+/// (`AdLog`와 같은 규칙). id도 뒤 조각만 남겨 로그가 길어지지 않게 한다.
+nonisolated enum IAPLog {
+    /// DEBUG 전용. Release에는 남지 않는다 — 상품 목록은 운영 지표가 아니라 개발 진단이다.
+    static func diagnostic(_ message: String) {
+        #if DEBUG
+        print("[IAP] \(message)")
+        #endif
+    }
+
+    /// `com.mark77234.ggumirror.shards.10` → `10`
+    static func suffixes(_ identifiers: [String]) -> String {
+        identifiers.map { String($0.split(separator: ".").last ?? "?") }.joined(separator: ",")
     }
 }

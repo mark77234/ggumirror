@@ -114,7 +114,9 @@ struct HomeView: View {
                     amount: shards.balance,
                     font: InkFont.cardTitle,
                     iconSize: 22,
-                    treatsZeroAsFree: false
+                    treatsZeroAsFree: false,
+                    // 홈 잔액은 **무엇의 개수인지** 화면에 보여야 한다 — "136"이 아니라 "136 조각".
+                    showsUnit: true
                 )
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
