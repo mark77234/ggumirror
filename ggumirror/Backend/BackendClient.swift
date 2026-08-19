@@ -334,6 +334,8 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
         _ path: String,
         method: String,
         body: Data? = nil,
+        /// query string. **path에 `?`를 직접 붙이지 않는다** — 아래에서 따로 붙인다.
+        query: [URLQueryItem] = [],
         /// 본문 형식. 기본은 JSON이고, 상점 snapshot 업로드만 multipart를 쓴다.
         contentType: String = "application/json",
         accessToken: String? = nil,
@@ -345,7 +347,12 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
     ) async throws -> Data {
         guard let baseURL else { throw BackendError.notConfigured }
 
-        var request = URLRequest(url: baseURL.appending(path: path))
+        // **query를 path 문자열에 넣지 않는다.** `appending(path:)`는 `?`를 `%3F`로
+        // 인코딩해서 query가 경로의 일부가 되어 버린다(B-7H에서 발견).
+        var url = baseURL.appending(path: path)
+        if !query.isEmpty { url = url.appending(queryItems: query) }
+
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = timeout
         if let body {
@@ -396,6 +403,7 @@ nonisolated extension BackendClient {
         _ path: String,
         method: String,
         body: Data? = nil,
+        query: [URLQueryItem] = [],
         contentType: String = "application/json",
         accessToken: String? = nil,
         interpretFailure: ((Int, Data) -> Error)? = nil,
@@ -405,6 +413,7 @@ nonisolated extension BackendClient {
             path,
             method: method,
             body: body,
+            query: query,
             contentType: contentType,
             accessToken: accessToken,
             interpretFailure: interpretFailure,

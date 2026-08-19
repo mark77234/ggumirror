@@ -1272,3 +1272,167 @@ struct MyListingsRuleTests {
         }
     }
 }
+
+
+// MARK: - 실제 URL 구성 (B-7H에서 발견한 버그)
+//
+// fake backend는 URL을 만들지 않는다. 그래서 B-7G test 146개가 모두 통과하는 동안
+// **production에서는 per-listing endpoint 전부가 404였다** —
+// `-`를 미리 percent-encoding해서 `appending(path:)`가 그것을 다시 인코딩했고
+// `698fee25%252D862e…`가 나갔다.
+//
+// 여기서는 실제 `BackendClient`를 `StubURLProtocol`로 돌려 **나가는 경로를 본다.**
+
+@Suite(.serialized)
+struct MarketplaceURLTests {
+
+    private func client(status: Int = 200, json: String = "{}") -> BackendClient {
+        let session = StubURLProtocol.session()
+        StubURLProtocol.next = .init(status: status, body: Data(json.utf8))
+        return BackendClient(baseURL: URL(string: "https://backend.test")!, session: session)
+    }
+
+    private let listingID = "698fee25-862e-4e08-be7a-d8a213ff7c84"
+
+    @Test("listing id의 하이픈을 이중 인코딩하지 않는다")
+    func doesNotDoubleEncodeHyphens() async throws {
+        let subject = client(status: 200, json: publishJSON)
+
+        _ = try? await subject.publish(listingID: listingID, accessToken: "t")
+
+        let path = try #require(StubURLProtocol.requestedPaths.last)
+        #expect(path == "/marketplace/listings/\(listingID)/publish")
+        // 이중 인코딩의 흔적이 없어야 한다.
+        #expect(!path.contains("%252D"))
+        #expect(!path.contains("%2D"))
+        #expect(!path.contains("%25"))
+    }
+
+    @Test("per-listing endpoint 전부가 원본 id를 그대로 보낸다")
+    func everyListingPathKeepsTheRawID() async throws {
+        let cases: [(String, (BackendClient) async throws -> Void)] = [
+            ("preview", { _ = try await $0.preview(listingID: self.listingID) }),
+            ("publish", { _ = try await $0.publish(listingID: self.listingID, accessToken: "t") }),
+            ("unpublish", { _ = try await $0.unpublish(listingID: self.listingID, accessToken: "t") }),
+            ("purchase", { _ = try await $0.purchase(listingID: self.listingID, accessToken: "t") }),
+            ("like", { _ = try await $0.like(listingID: self.listingID, accessToken: "t") }),
+            ("unlike", { _ = try await $0.unlike(listingID: self.listingID, accessToken: "t") }),
+            ("template", { _ = try await $0.templateManifest(listingID: self.listingID, accessToken: "t") }),
+            ("asset", {
+                _ = try await $0.templateAsset(
+                    listingID: self.listingID,
+                    assetID: UUID(uuidString: "30204745-4090-457B-BB4E-4A4AD61C4827")!,
+                    accessToken: "t"
+                )
+            }),
+        ]
+
+        for (name, call) in cases {
+            let subject = client(status: 200, json: publishJSON)
+            _ = try? await call(subject)
+            let path = try #require(StubURLProtocol.requestedPaths.last, "\(name): 요청이 없다")
+            #expect(path.contains(listingID), "\(name): id가 변형됐다 — \(path)")
+            #expect(!path.contains("%"), "\(name): 인코딩이 섞였다 — \(path)")
+        }
+    }
+
+    @Test("asset UUID도 그대로 나간다")
+    func assetUUIDIsNotEncoded() async throws {
+        let asset = UUID(uuidString: "30204745-4090-457B-BB4E-4A4AD61C4827")!
+        let subject = client()
+
+        _ = try? await subject.templateAsset(
+            listingID: listingID, assetID: asset, accessToken: "t"
+        )
+
+        let path = try #require(StubURLProtocol.requestedPaths.last)
+        #expect(path.hasSuffix("/template/assets/\(asset.uuidString)"))
+    }
+
+    @Test("query가 path에 섞이지 않는다")
+    func browseQueryIsRealQuery() async throws {
+        let subject = client(status: 200, json: "[]")
+
+        _ = try? await subject.listings(contentType: "mirror", sort: "latest")
+
+        let path = try #require(StubURLProtocol.requestedPaths.last)
+        let query = try #require(StubURLProtocol.requestedQueries.last)
+
+        // path에는 query가 없다. `?`를 path 문자열에 넣으면 `%3F`가 되어 여기 섞인다.
+        #expect(path == "/marketplace/listings")
+        #expect(!path.contains("%3F"))
+        #expect(!path.contains("sort"))
+        // query로 제대로 나간다.
+        #expect(query.contains("sort=latest"))
+        #expect(query.contains("contentType=mirror"))
+    }
+
+    @Test("contentType이 없으면 sort만 붙는다")
+    func browseWithoutContentType() async throws {
+        let subject = client(status: 200, json: "[]")
+
+        _ = try? await subject.listings(contentType: nil, sort: "popular")
+
+        #expect(StubURLProtocol.requestedPaths.last == "/marketplace/listings")
+        let query = try #require(StubURLProtocol.requestedQueries.last)
+        #expect(query == "sort=popular")
+    }
+
+    @Test("판매자 목록 경로에 id가 들어가지 않는다 — 서버가 session으로 판단한다")
+    func myListingsPath() async throws {
+        let subject = client(status: 200, json: "[]")
+
+        _ = try? await subject.myListings(accessToken: "t")
+
+        #expect(StubURLProtocol.requestedPaths.last == "/users/me/marketplace/listings")
+    }
+
+    @Test("경로를 벗어나는 id로는 요청을 만들지 않는다")
+    func pathTraversalIsRefused() async throws {
+        for poison in ["../../admin", "a/b", "", "..", "."] {
+            let subject = client()
+            var refused = false
+            do {
+                _ = try await subject.publish(listingID: poison, accessToken: "t")
+            } catch let failure as MarketplaceFailure {
+                refused = failure == .notFound
+            } catch {
+                refused = false
+            }
+            #expect(refused, "거절되지 않았다: \(poison)")
+            // 네트워크로 나가지도 않는다.
+            #expect(StubURLProtocol.requestedPaths.isEmpty, "요청이 나갔다: \(poison)")
+        }
+    }
+
+    @Test("snapshot 업로드는 multipart로 나간다")
+    func snapshotUsesMultipart() async throws {
+        let subject = client(status: 201, json: snapshotJSON)
+
+        _ = try? await subject.createSnapshot(
+            contentType: "mirror",
+            manifest: Data("{}".utf8),
+            preview: Data([0x89]),
+            assets: [:],
+            accessToken: "t"
+        )
+
+        #expect(StubURLProtocol.requestedPaths.last == "/marketplace/snapshots")
+    }
+
+    private var publishJSON: String {
+        """
+        {"published":true,"feeCharged":true,"feeShards":10,"balance":142,
+         "listing":{"id":"698fee25-862e-4e08-be7a-d8a213ff7c84","contentType":"mirror",
+         "title":"t","description":"","priceShards":1,"status":"published",
+         "downloadCount":0,"likeCount":0,"publishedAt":"2026-08-19T14:33:27Z"}}
+        """
+    }
+
+    private var snapshotJSON: String {
+        """
+        {"snapshotId":"1d0553c5-d530-45e1-ad8f-83a98154b8e8","contentType":"mirror",
+         "assetCount":0,"totalBytes":2,"manifestChecksum":"abc"}
+        """
+    }
+}

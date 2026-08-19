@@ -26,10 +26,13 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var next = Response()
     /// 요청이 실제로 왔는지 확인용. 값은 담지 않는다.
     nonisolated(unsafe) static var requestedPaths: [String] = []
+    /// path + query. **query가 path에 섞이지 않았는지** 보려면 둘을 나눠 봐야 한다.
+    nonisolated(unsafe) static var requestedQueries: [String] = []
 
     static func session() -> URLSession {
         next = Response()
         requestedPaths = []
+        requestedQueries = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         return URLSession(configuration: configuration)
@@ -40,6 +43,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         Self.requestedPaths.append(request.url?.path ?? "")
+        Self.requestedQueries.append(request.url?.query ?? "")
         let stub = Self.next
         let response = HTTPURLResponse(
             url: request.url!, statusCode: stub.status, httpVersion: "HTTP/1.1",

@@ -22,14 +22,18 @@ extension BackendClient: MarketplaceBackend {
 
     /// **로그인 없이** 볼 수 있다. 상품이 없으면 빈 배열이다 — 가짜 상품을 만들지 않는다.
     func listings(contentType: String?, sort: String) async throws -> [MarketplaceListing] {
-        var path = "marketplace/listings?sort=\(sort)"
-        if let contentType { path += "&contentType=\(contentType)" }
-        let data = try await marketplaceRequest(path, method: "GET")
+        // **`?`를 path에 넣지 않는다** — `appending(path:)`가 `%3F`로 인코딩해서
+        // query가 경로의 일부가 된다(B-7H에서 발견).
+        var query = [URLQueryItem(name: "sort", value: sort)]
+        if let contentType { query.append(URLQueryItem(name: "contentType", value: contentType)) }
+        let data = try await marketplaceRequest(
+            "marketplace/listings", method: "GET", query: query
+        )
         return try decodeMarketplace([MarketplaceListing].self, from: data, path: "GET /marketplace/listings")
     }
 
     func listing(id: String) async throws -> MarketplaceListing {
-        let data = try await marketplaceRequest("marketplace/listings/\(escaped(id))", method: "GET")
+        let data = try await marketplaceRequest("marketplace/listings/\(try pathComponent(id))", method: "GET")
         return try decodeMarketplace(
             MarketplaceListing.self, from: data, path: "GET /marketplace/listings/{id}"
         )
@@ -38,7 +42,7 @@ extension BackendClient: MarketplaceBackend {
     /// 카드에 보여 줄 대표 이미지. **published만 공개**이고 signed URL을 쓰지 않는다.
     func preview(listingID: String) async throws -> Data {
         try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/preview", method: "GET", timeout: 30
+            "marketplace/listings/\(try pathComponent(listingID))/preview", method: "GET", timeout: 30
         )
     }
 
@@ -96,7 +100,7 @@ extension BackendClient: MarketplaceBackend {
     /// **body를 보내지 않는다** — 등록비 · 판매자 · 상태를 client가 정하는 자리가 없다.
     func publish(listingID: String, accessToken: String) async throws -> MarketplacePublishResult {
         let data = try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/publish",
+            "marketplace/listings/\(try pathComponent(listingID))/publish",
             method: "POST",
             accessToken: accessToken
         )
@@ -107,7 +111,7 @@ extension BackendClient: MarketplaceBackend {
 
     func unpublish(listingID: String, accessToken: String) async throws -> MarketplaceOwnedListing {
         let data = try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/unpublish",
+            "marketplace/listings/\(try pathComponent(listingID))/unpublish",
             method: "POST",
             accessToken: accessToken
         )
@@ -122,7 +126,7 @@ extension BackendClient: MarketplaceBackend {
     /// **body를 보내지 않는다** — 가격은 서버 listing이 authority다.
     func purchase(listingID: String, accessToken: String) async throws -> MarketplacePurchaseResult {
         let data = try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/purchase",
+            "marketplace/listings/\(try pathComponent(listingID))/purchase",
             method: "POST",
             accessToken: accessToken
         )
@@ -167,7 +171,7 @@ extension BackendClient: MarketplaceBackend {
         listingID: String, method: String, accessToken: String
     ) async throws -> MarketplaceLikeResult {
         let data = try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/like",
+            "marketplace/listings/\(try pathComponent(listingID))/like",
             method: method,
             accessToken: accessToken
         )
@@ -194,7 +198,7 @@ extension BackendClient: MarketplaceBackend {
     /// `published`를 요구하지 않는다 — 판매자가 내려도 산 사람은 계속 받는다.
     func templateManifest(listingID: String, accessToken: String) async throws -> Data {
         try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/template",
+            "marketplace/listings/\(try pathComponent(listingID))/template",
             method: "GET",
             accessToken: accessToken,
             timeout: 30
@@ -205,7 +209,7 @@ extension BackendClient: MarketplaceBackend {
         listingID: String, assetID: UUID, accessToken: String
     ) async throws -> Data {
         try await marketplaceRequest(
-            "marketplace/listings/\(escaped(listingID))/template/assets/\(assetID.uuidString)",
+            "marketplace/listings/\(try pathComponent(listingID))/template/assets/\(assetID.uuidString)",
             method: "GET",
             accessToken: accessToken,
             timeout: 60
@@ -219,6 +223,7 @@ extension BackendClient: MarketplaceBackend {
         _ path: String,
         method: String,
         body: Data? = nil,
+        query: [URLQueryItem] = [],
         contentType: String = "application/json",
         accessToken: String? = nil,
         timeout: TimeInterval = 15
@@ -228,6 +233,7 @@ extension BackendClient: MarketplaceBackend {
                 path,
                 method: method,
                 body: body,
+                query: query,
                 contentType: contentType,
                 accessToken: accessToken,
                 interpretFailure: MarketplaceFailure.from,
@@ -254,9 +260,23 @@ extension BackendClient: MarketplaceBackend {
         }
     }
 
-    /// listing id는 서버가 만든 값이지만 경로에 그대로 붙이지 않는다.
-    private func escaped(_ component: String) -> String {
-        component.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? component
+    /// 경로 한 칸에 넣기 전 확인.
+    ///
+    /// **미리 percent-encoding하지 않는다.** `URL.appending(path:)`가 이미 인코딩하므로
+    /// 두 번 하면 `-`가 `%2D`를 거쳐 `%252D`가 되고, 서버는 그런 id를 찾지 못한다.
+    /// production에서 publish가 정확히 이 이유로 404였다(B-7H에서 발견).
+    ///
+    /// 다만 `appending(path:)`는 `/`를 **구분자로 그대로 두고** `..`도 해석하지 않으므로
+    /// 그 둘만 막는다. listing id · assetId는 서버가 만든 UUID라 정상 경로에서는 없는
+    /// 문자이고, 있으면 우리가 아는 id가 아니라 요청을 만들지 않는다.
+    private func pathComponent(_ component: String) throws -> String {
+        guard !component.isEmpty,
+              !component.contains("/"),
+              !component.contains("\\"),
+              component != ".",
+              component != ".."
+        else { throw MarketplaceFailure.notFound }
+        return component
     }
 }
 
