@@ -157,6 +157,16 @@ extension BackendClient: MarketplaceBackend {
         )
     }
 
+    /// 판매자 전용 미리보기. draft · unlisted도 온다.
+    func myListingPreview(listingID: String, accessToken: String) async throws -> Data {
+        try await marketplaceRequest(
+            "users/me/marketplace/listings/\(try pathComponent(listingID))/preview",
+            method: "GET",
+            accessToken: accessToken,
+            timeout: 30
+        )
+    }
+
     // MARK: 좋아요
 
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult {

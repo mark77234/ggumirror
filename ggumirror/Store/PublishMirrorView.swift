@@ -236,6 +236,17 @@ struct PublishMirrorView: View {
             return
         }
 
+        // **publish를 보내기 전에** listing id를 남길 준비를 한다.
+        // 저장이 실패하면 store가 publish를 보내지 않는다 — 못 찾는 listing을
+        // 만들지 않는 것이 실패보다 낫다.
+        marketplace.onListingCreated = { [self] listingID in
+            draft.listingID = listingID
+            library.savePublishDraft(draft)
+            // 저장 경로가 동기라 여기까지 오면 남았다.
+            return draft.listingID == listingID
+        }
+        defer { marketplace.onListingCreated = nil }
+
         let result = await marketplace.publish(
             package: package,
             title: MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name,
@@ -250,9 +261,9 @@ struct PublishMirrorView: View {
             return
         }
         didPublish = true
-        // listing id를 남긴다 — 앱을 껐다 켠 뒤에도 자기 상품을 내릴 수 있어야 한다.
-        draft.listingID = result.listing.id
-        library.savePublishDraft(draft)
+        // id는 publish **전에** 이미 남겼다(`onListingCreated`). 여기서는 서버가
+        // 돌려준 값과 같은지만 확인한다 — 다르면 우리가 잘못된 listing을 올린 것이다.
+        assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")
         // **서버가 말해 준 값을 그대로 옮긴다.** 앱이 10을 빼지 않는다.
         publishNotice = result.feeCharged
             ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."

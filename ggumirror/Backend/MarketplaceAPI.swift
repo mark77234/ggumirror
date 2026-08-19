@@ -56,11 +56,17 @@ nonisolated extension MarketplaceOwnedListing {
     var isUnlisted: Bool { status == "unlisted" }
     var isDraft: Bool { status == "draft" }
 
+    /// 판매자에게 보일 상태 문구.
+    ///
+    /// `draft`를 "등록 준비"라고 했는데, **등록 도중 실패해 남은 것도 같은 상태**다
+    /// (production에서 실제로 그랬다 — snapshot과 listing은 만들어졌고 publish만
+    /// 실패했다). "준비"라고 하면 사용자가 자기가 안 올린 줄 안다.
+    /// "등록 미완료"는 두 경우 모두 맞고, 이어서 올려야 한다는 것도 전한다.
     var statusLabel: String {
         switch status {
         case "published": "공개 중"
-        case "unlisted": "내림"
-        case "draft": "등록 준비"
+        case "unlisted": "판매 중지"
+        case "draft": "등록 미완료"
         default: "알 수 없음"
         }
     }
@@ -251,6 +257,11 @@ nonisolated protocol MarketplaceBackend: Sendable {
     /// 공개 목록과 다른 것이다. 판매자가 자기 상품을 다시 찾는 **authority**다 —
     /// 앱이 기억해 둔 id에 의존하면 앱을 지웠거나 기기를 바꾼 뒤 관리가 끊긴다.
     func myListings(accessToken: String) async throws -> [MarketplaceOwnedListing]
+    /// **내가 올린 상품의 미리보기.** `draft` · `published` · `unlisted` 모두.
+    ///
+    /// 공개 미리보기(`preview`)는 `published`만이다 — 판매자 관리 화면에서만
+    /// 아직 올리지 않은 것과 내린 것의 생김새가 필요하다.
+    func myListingPreview(listingID: String, accessToken: String) async throws -> Data
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func unlike(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func likedListingIDs(accessToken: String) async throws -> [String]

@@ -47,6 +47,13 @@ final class MarketplaceStore {
     /// 카드 대표 이미지. listing id → PNG bytes.
     private(set) var previews: [String: Data] = [:]
     private var previewTasks: Set<String> = []
+    /// **판매자 전용** 미리보기. 공개 것과 섞지 않는다 — 공개는 `published`만
+    /// 받을 수 있고 이쪽은 draft · unlisted도 받는다. 한 사전에 넣으면
+    /// 어느 권한으로 받은 것인지 알 수 없다.
+    private(set) var myPreviews: [String: Data] = [:]
+    private var myPreviewTasks: Set<String> = []
+    /// 미리보기를 받으려다 실패한 것. 자리표시자를 "받는 중"과 구분한다.
+    private(set) var myPreviewFailures: Set<String> = []
 
     private let backend: any MarketplaceBackend
 
@@ -141,6 +148,29 @@ final class MarketplaceStore {
         }
     }
 
+    /// 내 상품 미리보기를 한 번만 받아온다.
+    ///
+    /// 실패는 카드 하나의 자리표시자로 끝난다 — 목록을 깨뜨릴 이유가 아니다.
+    func loadMyPreview(_ listingID: String, session: ServerSession?) async {
+        guard let token = session?.accessToken else { return }
+        guard myPreviews[listingID] == nil, !myPreviewTasks.contains(listingID) else { return }
+        myPreviewTasks.insert(listingID)
+        defer { myPreviewTasks.remove(listingID) }
+        do {
+            myPreviews[listingID] = try await backend.myListingPreview(
+                listingID: listingID, accessToken: token
+            )
+            myPreviewFailures.remove(listingID)
+        } catch {
+            myPreviewFailures.insert(listingID)
+        }
+    }
+
+    /// 이 상품의 미리보기를 받는 중인가. 자리표시자 문구를 가른다.
+    func isLoadingMyPreview(_ listingID: String) -> Bool {
+        myPreviewTasks.contains(listingID)
+    }
+
     // MARK: - 등록
 
     /// 꾸러미를 올리고 초안을 만든 뒤 게시까지. **등록비는 서버가 차감한다.**
@@ -184,6 +214,21 @@ final class MarketplaceStore {
                 ),
                 accessToken: token
             )
+            // **publish를 보내기 전에** listing id를 남긴다.
+            //
+            // production에서 정확히 이 자리가 문제였다: listing이 만들어진 뒤
+            // publish가 실패했고, id를 들고 있지 않아서 다시 시도할 때 앱이 snapshot과
+            // listing을 **또** 만들었다. 같은 콘텐츠가 두 건이 되고 GCS object도 두 배가
+            // 됐다. 실패가 반복되면 계속 쌓인다.
+            //
+            // 지금은 이 시점에 저장하므로, 앱이 죽어도 다음에 그 listing의 publish만
+            // 다시 보낸다. 저장이 실패하면 publish를 보내지 않는다 — 보내고 나서
+            // 응답을 잃으면 그 listing을 영원히 못 찾는다.
+            guard onListingCreated?(draft.id) ?? true else {
+                failure = .invalidPackage
+                return nil
+            }
+
             let result = try await backend.publish(listingID: draft.id, accessToken: token)
             // **서버가 말해 준 잔액만** 넣는다. 앱이 10을 빼지 않는다.
             wallet?.apply(balance: result.balance)
@@ -193,11 +238,65 @@ final class MarketplaceStore {
             return result
         } catch let error as MarketplaceFailure {
             failure = error
+            // publish가 실패했어도 **목록은 새로 받는다** — 서버에 draft가 남아 있고,
+            // 그것이 "등록 미완료"로 보여야 사용자가 이어서 올릴 수 있다.
+            await refreshMyListings(session: session)
             return nil
         } catch {
             failure = .network
+            await refreshMyListings(session: session)
             return nil
         }
+    }
+
+    /// listing이 만들어진 직후, **publish를 보내기 전에** 불린다.
+    ///
+    /// 호출부가 id를 지역에 저장한다. `false`를 돌려주면 publish를 보내지 않는다 —
+    /// 저장하지 못한 id로 publish를 보내면 실패했을 때 그 listing을 다시 찾을 수 없다.
+    var onListingCreated: ((String) -> Bool)?
+
+    /// 이미 서버에 있는 listing의 등록을 **이어서** 마친다.
+    ///
+    /// 새 snapshot도 새 listing도 만들지 않는다. 서버 상태를 authority로 보고 판단한다:
+    ///
+    /// | 서버 상태 | 하는 일 |
+    /// |---|---|
+    /// | `draft` | 그 listing의 publish만 다시 보낸다 |
+    /// | `unlisted` | 같은 publish endpoint(다시 올리기). 추가 등록비 없음 |
+    /// | `published` | 아무 것도 하지 않는다 — 이미 올라가 있다 |
+    /// | 없음 | 지역 기억이 낡았다. 호출부가 새 등록을 시작해도 된다(`nil`) |
+    ///
+    /// **제목으로 맞추지 않는다** — 같은 제목이 여러 개일 수 있다.
+    /// 등록비 판단은 서버가 `publishFeePaid`로 한다. 앱이 계산하지 않는다.
+    func resumePublish(
+        listingID: String, session: ServerSession?, wallet: ShardWallet? = nil
+    ) async -> ResumeOutcome {
+        guard session?.accessToken != nil else {
+            failure = .notSignedIn
+            return .needsSignIn
+        }
+        await refreshMyListings(session: session)
+        guard let listing = myListing(id: listingID) else { return .missing }
+
+        if listing.isPublished { return .alreadyPublished(listing) }
+
+        guard let result = await republish(
+            listingID: listingID, session: session, wallet: wallet
+        ) else {
+            return .failed(failure ?? .network)
+        }
+        return .published(result)
+    }
+
+    /// `resumePublish` 결과. 화면이 무엇을 말할지 정한다.
+    enum ResumeOutcome {
+        case published(MarketplacePublishResult)
+        /// 이미 올라가 있었다. 추가 요청도 추가 등록비도 없다.
+        case alreadyPublished(MarketplaceOwnedListing)
+        /// 서버에 그 listing이 없다 — 지역 기억이 낡았다.
+        case missing
+        case needsSignIn
+        case failed(MarketplaceFailure)
     }
 
     /// 상점에서 내린다. **snapshot을 지우지 않는다** — 산 사람이 계속 받아야 한다.

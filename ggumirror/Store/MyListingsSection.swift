@@ -15,6 +15,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MyListingsSection: View {
     /// `mirror` 또는 `sticker`. 해당 종류만 보여 준다.
@@ -64,6 +65,11 @@ struct MyListingsSection: View {
     private func row(_ listing: MarketplaceOwnedListing) -> some View {
         let isBusy = store.isBusy(.unpublish(listing.id)) || store.isBusy(.publish(listing.id))
         return VStack(alignment: .leading, spacing: 8) {
+            // **실제 생김새를 보여준다.** 숫자만 있으면 어느 상품인지 알 수 없다.
+            // draft · unlisted도 판매자 전용 endpoint로 받는다(공개는 published만).
+            preview(listing)
+                .task { await store.loadMyPreview(listing.id, session: session) }
+
             HStack(spacing: 8) {
                 Text(listing.title)
                     .font(InkFont.body)
@@ -95,7 +101,9 @@ struct MyListingsSection: View {
                     action("다시 올리기") { await republish(listing) }
                 }
                 if listing.isDraft {
-                    action("상점에 올리기") { await republish(listing) }
+                    // **등록을 이어서 마친다.** 새 snapshot도 새 listing도 만들지 않는다 —
+                    // 이 draft가 이미 가리키는 불변 snapshot을 그대로 올린다.
+                    action("상점에 올리기") { await resume(listing) }
                 }
                 Spacer(minLength: 0)
             }
@@ -114,6 +122,39 @@ struct MyListingsSection: View {
             \(listing.priceShards == 0 ? "무료" : "\(listing.priceShards) 조각"), \
             다운로드 \(listing.downloadCount), 좋아요 \(listing.likeCount)
             """
+        )
+    }
+
+    /// 상품 미리보기. 카드와 같은 테두리 · 같은 비율이다 — 새 디자인을 만들지 않는다.
+    private func preview(_ listing: MarketplaceOwnedListing) -> some View {
+        let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
+        return ZStack {
+            shape.fill(PaperTheme.subtleSurface)
+            if let data = store.myPreviews[listing.id], let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipShape(shape)
+            } else if store.myPreviewFailures.contains(listing.id) {
+                // 실패는 실패라고 둔다 — 가짜 그림을 만들지 않는다.
+                Label("미리보기를 불러오지 못했어요", systemImage: "photo")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(PaperTheme.separator)
+            }
+        }
+        .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
+        .frame(maxHeight: 220)
+        .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
+        .accessibilityLabel(
+            store.myPreviews[listing.id] != nil
+                ? "\(listing.title) 미리보기"
+                : (store.myPreviewFailures.contains(listing.id)
+                    ? "미리보기를 불러오지 못했어요" : "미리보기를 불러오는 중")
         )
     }
 
@@ -138,6 +179,31 @@ struct MyListingsSection: View {
             return
         }
         notice = "상점에서 내렸어요. 이미 산 사람은 계속 받을 수 있어요."
+    }
+
+    /// 등록 미완료 상품을 **이어서** 올린다.
+    ///
+    /// 이 draft는 이미 불변 snapshot을 가리킨다. 그 snapshot을 그대로 올리는 것이고
+    /// **지금 기기의 콘텐츠를 새로 담지 않는다** — 실패 이후 사용자가 거울을 고쳤어도
+    /// 올라가는 것은 그때 올린 내용이다. 그것을 조용히 바꿔치기하지 않는다.
+    private func resume(_ listing: MarketplaceOwnedListing) async {
+        switch await store.resumePublish(
+            listingID: listing.id, session: session, wallet: wallet
+        ) {
+        case .published(let result):
+            notice = result.feeCharged
+                ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."
+                : "추가 등록비 없이 등록을 마쳤어요."
+            await wallet?.refresh(session: session)
+        case .alreadyPublished:
+            notice = "이미 상점에 올라가 있어요."
+        case .missing:
+            notice = "상품을 찾지 못했어요. 목록을 새로 받아 주세요."
+        case .needsSignIn:
+            notice = "로그인이 필요해요."
+        case .failed(let failure):
+            notice = failure.message
+        }
     }
 
     /// 다시 올린다. **추가 등록비는 서버가 판단한다.**

@@ -256,6 +256,48 @@ content 순서:
 
 `ggumirrorTests`의 `StoreScrollHierarchyTests`가 위 계층을 고정한다.
 
+### 등록 복구 · 판매자 미리보기 (B-7H hotfix)
+
+**판매자 카드에 실제 미리보기가 보인다.** 제목과 숫자만 있으면 어느 상품인지
+알 수 없었다. `draft` · `unlisted`도 보여야 하므로 **판매자 전용 endpoint**
+(`GET /users/me/marketplace/listings/{id}/preview`)를 쓴다 — 공개 미리보기는
+여전히 `published`만이고 그 정책은 그대로다. 두 캐시를 섞지 않는다(권한이 다르다).
+
+**등록 실패가 중복 상품을 만들지 않는다.** production에서 실제로 일어난 일:
+snapshot·listing은 만들어졌고 publish만 404였는데, 앱이 listing id를 들고 있지
+않아서 재시도 때 snapshot과 listing을 **또** 만들었다. 같은 콘텐츠가 두 건,
+GCS object는 두 배가 됐다.
+
+그래서 순서를 고정했다:
+
+```
+1. snapshot 생성 성공
+2. listing 생성 성공
+3. listing id 지역 저장 성공      ← 여기까지 되어야
+4. publish 요청                   ← 보낸다
+```
+
+3이 실패하면 publish를 보내지 않는다 — 보내고 응답을 잃으면 그 listing을 영원히
+못 찾는다. 재시도는 **서버 상태를 authority로** 판단한다:
+
+| 서버 상태 | 하는 일 |
+|---|---|
+| `draft` | 그 listing의 publish만 다시 보낸다 |
+| `unlisted` | 같은 endpoint(다시 올리기). 추가 등록비 없음 |
+| `published` | 아무 요청도 보내지 않는다 |
+| 없음 | 지역 기억이 낡았다. 호출부가 새 등록을 시작할 수 있다 |
+
+**새 snapshot·새 listing을 만들지 않는다.** 제목으로 맞추지 않는다(같은 제목이
+여러 개일 수 있다). 등록비 판단은 서버가 `publishFeePaid`로 한다.
+
+복구는 이미 불변 snapshot을 가리키는 draft를 **그대로** 올린다 — 실패 이후
+사용자가 거울을 고쳤어도 올라가는 것은 그때 올린 내용이다. 조용히 바꿔치기하지
+않는다. 지금 콘텐츠로 새 버전을 올리는 것은 별개 문제로 남겼다.
+
+문구도 바꿨다: `draft` → **"등록 미완료"**(옛 "등록 준비"는 실패로 남은 것에도
+붙어서 사용자가 자기가 안 올린 줄 알았다), `unlisted` → **"판매 중지"**.
+server status/schema는 그대로다.
+
 ### 내 상점 상품 — 서버가 authority다 (B-7G.1)
 
 `GET /users/me/marketplace/listings`가 `draft` · `published` · `unlisted`를 전부 준다.

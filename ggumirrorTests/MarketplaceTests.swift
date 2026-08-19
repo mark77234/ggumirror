@@ -109,6 +109,13 @@ private final class FakeMarketplaceBackend: MarketplaceBackend, @unchecked Senda
         return []
     }
     var myListingsResult: [MarketplaceOwnedListing] = []
+    var myPreviewResult = Data()
+    func myListingPreview(listingID: String, accessToken: String) async throws -> Data {
+        calls.append("myListingPreview(\(listingID))")
+        sawToken = !accessToken.isEmpty
+        try check()
+        return myPreviewResult
+    }
     func myListings(accessToken: String) async throws -> [MarketplaceOwnedListing] {
         calls.append("myListings")
         sawToken = !accessToken.isEmpty
@@ -1027,8 +1034,10 @@ struct MyListingsDTOTests {
     @Test("상태 이름이 한국어로 나온다")
     func statusLabels() {
         #expect(owned(id: "a", status: "published").statusLabel == "공개 중")
-        #expect(owned(id: "a", status: "unlisted").statusLabel == "내림")
-        #expect(owned(id: "a", status: "draft").statusLabel == "등록 준비")
+        #expect(owned(id: "a", status: "unlisted").statusLabel == "판매 중지")
+        // B-7H hotfix — "등록 준비"는 등록 도중 실패해 남은 draft에도 붙어서
+        // 사용자가 자기가 안 올린 줄 알았다. 두 경우 모두 맞는 문구로 바꿨다.
+        #expect(owned(id: "a", status: "draft").statusLabel == "등록 미완료")
     }
 }
 
@@ -1579,6 +1588,396 @@ struct StoreScrollHierarchyTests {
         // 새 디자인 시스템을 들이지 않았다.
         for banned in [".background(Color.", "LinearGradient", "Material.", ".ultraThinMaterial"] {
             #expect(!code.contains(banned), "새 디자인 요소가 들어왔다: \(banned)")
+        }
+    }
+}
+
+
+// MARK: - 등록 복구 (B-7H hotfix)
+//
+// production에서 실제로 일어난 것: snapshot과 listing은 만들어졌고 publish만 404였다.
+// 앱이 listing id를 들고 있지 않아서 다시 시도할 때 snapshot과 listing을 **또** 만들었고
+// 같은 콘텐츠가 두 건, GCS object는 두 배가 됐다. 실패가 반복되면 계속 쌓인다.
+//
+// 여기서 보는 것: 재시도가 **publish만** 보내는가.
+
+@MainActor
+@Suite("등록 복구")
+struct PublishRecoveryTests {
+
+    private func store(_ backend: FakeMarketplaceBackend) -> MarketplaceStore {
+        MarketplaceStore(backend: backend)
+    }
+
+    private var package: SnapshotPackage {
+        SnapshotPackage(
+            manifest: Data("{}".utf8), preview: Data([0x89]), assets: [:], contentType: "mirror"
+        )
+    }
+
+    private func publishResult(
+        fee: Bool, balance: Int = 90, status: String = "published"
+    ) -> MarketplacePublishResult {
+        MarketplacePublishResult(
+            published: true, feeCharged: fee, feeShards: 10, balance: balance,
+            listing: owned(id: "listing-1", status: status)
+        )
+    }
+
+    // MARK: 정상
+
+    @Test("정상 등록은 snapshot → listing → publish 순서다")
+    func happyPath() async {
+        let backend = FakeMarketplaceBackend()
+        backend.publishResult = publishResult(fee: true)
+        let subject = store(backend)
+
+        let result = await subject.publish(
+            package: package, title: "t", description: "", priceShards: 1, session: session()
+        )
+
+        #expect(result?.feeCharged == true)
+        let order = backend.calls.filter { !$0.hasPrefix("myListings") }
+        #expect(order == ["createSnapshot(mirror)", "createDraft(1)", "publish(listing-1)"])
+    }
+
+    // MARK: publish 실패
+
+    @Test("publish가 실패해도 listing id는 저장된다")
+    func idIsPersistedBeforePublish() async {
+        let backend = FakeMarketplaceBackend()
+        // publishResult가 nil이면 fake가 cannotPublish를 던진다.
+        let subject = store(backend)
+        var persisted: String?
+        subject.onListingCreated = { persisted = $0; return true }
+
+        let result = await subject.publish(
+            package: package, title: "t", description: "", priceShards: 1, session: session()
+        )
+
+        #expect(result == nil)
+        // **가장 중요** — 실패했지만 id는 남았다.
+        #expect(persisted == "listing-1")
+    }
+
+    @Test("저장이 실패하면 publish를 보내지 않는다")
+    func noPublishWhenPersistenceFails() async {
+        let backend = FakeMarketplaceBackend()
+        backend.publishResult = publishResult(fee: true)
+        let subject = store(backend)
+        subject.onListingCreated = { _ in false }   // 저장 실패
+
+        let result = await subject.publish(
+            package: package, title: "t", description: "", priceShards: 1, session: session()
+        )
+
+        #expect(result == nil)
+        // 못 찾는 listing을 만들지 않는다 — publish를 아예 보내지 않았다.
+        #expect(!backend.calls.contains { $0.hasPrefix("publish(") })
+    }
+
+    @Test("publish 실패 후에도 판매자 목록을 새로 받는다")
+    func failureStillRefreshesMyListings() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", status: "draft", publishedAt: nil)]
+        let subject = store(backend)
+
+        _ = await subject.publish(
+            package: package, title: "t", description: "", priceShards: 1, session: session()
+        )
+
+        // 서버에 남은 draft가 "등록 미완료"로 보여야 이어서 올릴 수 있다.
+        #expect(backend.calls.contains("myListings"))
+        #expect(subject.myListing(id: "listing-1")?.isDraft == true)
+    }
+
+    // MARK: 재시도
+
+    @Test("draft 재시도는 publish만 보낸다 — snapshot도 listing도 새로 만들지 않는다")
+    func draftRetryPublishesOnly() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", status: "draft", publishedAt: nil)]
+        backend.publishResult = publishResult(fee: true)
+        let subject = store(backend)
+
+        let outcome = await subject.resumePublish(listingID: "listing-1", session: session())
+
+        guard case .published(let result) = outcome else {
+            #expect(Bool(false), "published가 아니다: \(outcome)")
+            return
+        }
+        #expect(result.feeCharged == true)
+        // **핵심** — 새로 만든 것이 없다.
+        #expect(!backend.calls.contains("createSnapshot(mirror)"))
+        #expect(!backend.calls.contains { $0.hasPrefix("createDraft") })
+        #expect(backend.calls.filter { $0 == "publish(listing-1)" }.count == 1)
+    }
+
+    @Test("이미 published면 아무 요청도 더 보내지 않는다")
+    func publishedRetryIsANoOp() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", status: "published")]
+        let subject = store(backend)
+
+        let outcome = await subject.resumePublish(listingID: "listing-1", session: session())
+
+        guard case .alreadyPublished = outcome else {
+            #expect(Bool(false), "alreadyPublished가 아니다: \(outcome)")
+            return
+        }
+        #expect(!backend.calls.contains { $0.hasPrefix("publish(") })
+        #expect(!backend.calls.contains("createSnapshot(mirror)"))
+        #expect(!backend.calls.contains { $0.hasPrefix("createDraft") })
+    }
+
+    @Test("unlisted 재시도는 다시 올리기이고 추가 등록비가 없다")
+    func unlistedRetryRepublishes() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", status: "unlisted")]
+        backend.publishResult = publishResult(fee: false)
+        let subject = store(backend)
+
+        let outcome = await subject.resumePublish(listingID: "listing-1", session: session())
+
+        guard case .published(let result) = outcome else {
+            #expect(Bool(false), "published가 아니다: \(outcome)")
+            return
+        }
+        // 서버가 추가 등록비 없음을 알려 준다.
+        #expect(result.feeCharged == false)
+        #expect(!backend.calls.contains("createSnapshot(mirror)"))
+        #expect(!backend.calls.contains { $0.hasPrefix("createDraft") })
+    }
+
+    @Test("서버에 없는 id는 낡은 기억으로 다룬다")
+    func staleCacheIsReported() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = []
+        let subject = store(backend)
+
+        let outcome = await subject.resumePublish(listingID: "gone", session: session())
+
+        guard case .missing = outcome else {
+            #expect(Bool(false), "missing이 아니다: \(outcome)")
+            return
+        }
+        // 없다고 해서 몰래 새로 만들지 않는다 — 호출부가 결정한다.
+        #expect(!backend.calls.contains("createSnapshot(mirror)"))
+    }
+
+    @Test("로그인하지 않으면 서버를 부르지 않는다")
+    func resumeNeedsSignIn() async {
+        let backend = FakeMarketplaceBackend()
+        let subject = store(backend)
+
+        let outcome = await subject.resumePublish(listingID: "listing-1", session: nil)
+
+        guard case .needsSignIn = outcome else {
+            #expect(Bool(false), "needsSignIn이 아니다: \(outcome)")
+            return
+        }
+        #expect(backend.calls.isEmpty)
+    }
+
+    @Test("제목이 같은 두 listing을 제목으로 맞추지 않는다")
+    func neverMatchesByTitle() async {
+        let backend = FakeMarketplaceBackend()
+        // production 그대로 — 같은 제목의 draft와 published가 함께 있다.
+        backend.myListingsResult = [
+            MarketplaceOwnedListing(
+                id: "old-draft", contentType: "mirror", title: "테스트", description: "",
+                priceShards: 1, status: "draft", downloadCount: 0, likeCount: 0, publishedAt: nil
+            ),
+            MarketplaceOwnedListing(
+                id: "new-live", contentType: "mirror", title: "테스트", description: "",
+                priceShards: 1, status: "published", downloadCount: 0, likeCount: 0,
+                publishedAt: Date(timeIntervalSince1970: 1_000)
+            ),
+        ]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        // id로만 찾는다. 제목이 같아도 서로 섞이지 않는다.
+        #expect(subject.myListing(id: "old-draft")?.isDraft == true)
+        #expect(subject.myListing(id: "new-live")?.isPublished == true)
+    }
+
+    @Test("복구가 조각을 직접 건드리지 않는다")
+    func recoveryNeverTouchesShardsDirectly() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", status: "draft", publishedAt: nil)]
+        backend.publishResult = publishResult(fee: true, balance: 132)
+        let subject = store(backend)
+        let wallet = ShardWallet(backend: FakeShardBackendForMarketplace())
+        wallet.apply(balance: 142)
+
+        _ = await subject.resumePublish(listingID: "listing-1", session: session(), wallet: wallet)
+
+        // 서버가 말해 준 값 그대로다. 142 - 10을 앱이 계산한 것이 아니다.
+        #expect(wallet.balance == 132)
+    }
+}
+
+// MARK: - 판매자 미리보기 (B-7H hotfix)
+
+@MainActor
+@Suite("판매자 미리보기")
+struct SellerPreviewTests {
+
+    private func store(_ backend: FakeMarketplaceBackend) -> MarketplaceStore {
+        MarketplaceStore(backend: backend)
+    }
+
+    @Test("draft · published · unlisted 모두 미리보기를 받는다")
+    func loadsEveryState() async {
+        for state in ["draft", "published", "unlisted"] {
+            let backend = FakeMarketplaceBackend()
+            backend.myPreviewResult = Data([0x89, 0x50, 0x4E, 0x47])
+            backend.myListingsResult = [
+                owned(id: "a", status: state, publishedAt: state == "draft" ? nil : Date())
+            ]
+            let subject = store(backend)
+
+            await subject.loadMyPreview("a", session: session())
+
+            #expect(subject.myPreviews["a"] == Data([0x89, 0x50, 0x4E, 0x47]), "\(state) 상태에서 미리보기가 없다")
+            #expect(backend.calls.contains("myListingPreview(a)"), "\(state) 상태에서 요청이 없다")
+        }
+    }
+
+    @Test("판매자 전용 endpoint를 쓴다 — 공개 미리보기가 아니다")
+    func usesTheSellerEndpoint() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myPreviewResult = Data([0x89])
+        let subject = store(backend)
+
+        await subject.loadMyPreview("a", session: session())
+
+        #expect(backend.calls.contains("myListingPreview(a)"))
+        // 공개 미리보기를 부르지 않는다(그건 published만 준다).
+        #expect(!backend.calls.contains("preview(a)"))
+    }
+
+    @Test("같은 상품에 요청을 겹치지 않는다")
+    func loadsOnce() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myPreviewResult = Data([0x89])
+        let subject = store(backend)
+
+        await subject.loadMyPreview("a", session: session())
+        await subject.loadMyPreview("a", session: session())
+
+        #expect(backend.calls.filter { $0 == "myListingPreview(a)" }.count == 1)
+    }
+
+    @Test("로그인하지 않으면 부르지 않는다")
+    func needsSignIn() async {
+        let backend = FakeMarketplaceBackend()
+        let subject = store(backend)
+
+        await subject.loadMyPreview("a", session: nil)
+
+        #expect(backend.calls.isEmpty)
+        #expect(subject.myPreviews.isEmpty)
+    }
+
+    @Test("실패는 실패로 남는다 — 가짜 그림을 만들지 않는다")
+    func failureIsRecorded() async {
+        let backend = FakeMarketplaceBackend()
+        backend.failure = .notFound
+        let subject = store(backend)
+
+        await subject.loadMyPreview("a", session: session())
+
+        #expect(subject.myPreviews["a"] == nil)
+        #expect(subject.myPreviewFailures.contains("a"))
+    }
+
+    @Test("공개 미리보기 캐시와 섞이지 않는다")
+    func separateFromPublicCache() async {
+        let backend = FakeMarketplaceBackend()
+        backend.previewResult = Data([0x01])
+        backend.myPreviewResult = Data([0x02])
+        let subject = store(backend)
+
+        await subject.loadPreview("a")
+        await subject.loadMyPreview("a", session: session())
+
+        #expect(subject.previews["a"] == Data([0x01]))
+        #expect(subject.myPreviews["a"] == Data([0x02]))
+    }
+}
+
+@Suite("판매자 미리보기 UI 규칙")
+struct SellerPreviewUITests {
+
+    private func source(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "ggumirror")
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    @Test("카드에 미리보기 renderer가 있다")
+    func cardRendersPreview() throws {
+        let code = try source("Store/MyListingsSection.swift")
+        #expect(code.contains("store.myPreviews[listing.id]"))
+        #expect(code.contains("Image(uiImage:"))
+        #expect(code.contains("loadMyPreview"))
+    }
+
+    @Test("받는 중 · 실패 자리표시자가 구분된다")
+    func placeholdersAreDistinct() throws {
+        let code = try source("Store/MyListingsSection.swift")
+        #expect(code.contains("myPreviewFailures"))
+        #expect(code.contains("미리보기를 불러오지 못했어요"))
+    }
+
+    @Test("draft 문구가 '등록 미완료'다")
+    func draftWording() throws {
+        #expect(owned(id: "a", status: "draft").statusLabel == "등록 미완료")
+        #expect(owned(id: "a", status: "published").statusLabel == "공개 중")
+        #expect(owned(id: "a", status: "unlisted").statusLabel == "판매 중지")
+        // 오해를 부르던 옛 문구가 남아 있지 않다.
+        #expect(owned(id: "a", status: "draft").statusLabel != "등록 준비")
+    }
+
+    @Test("draft CTA가 복구 경로를 쓴다")
+    func draftUsesResume() throws {
+        let code = try source("Store/MyListingsSection.swift")
+        #expect(code.contains("await resume(listing)"))
+        #expect(code.contains("store.resumePublish("))
+    }
+
+    @Test("등록 시트가 publish 전에 id를 저장한다")
+    func sheetsPersistBeforePublish() throws {
+        for path in ["Store/PublishMirrorView.swift", "Store/PublishStickerView.swift"] {
+            let code = try source(path)
+            let hook = try #require(code.range(of: "onListingCreated"), "저장 hook이 없다")
+            let publish = try #require(code.range(of: "await marketplace.publish("), "publish가 없다")
+            // hook 설정이 publish 호출보다 먼저 온다.
+            #expect(hook.lowerBound < publish.lowerBound, "\(path): 저장이 publish보다 뒤다")
+        }
+    }
+
+    @Test("client가 조각을 직접 계산하지 않는다")
+    func noClientSideShardMath() throws {
+        for path in ["Store/MyListingsSection.swift", "Store/MarketplaceStore.swift"] {
+            let code = try source(path)
+            for banned in ["balance -", "balance +", "feeInShards)"] {
+                #expect(!code.contains(banned), "\(path): \(banned)")
+            }
+        }
+    }
+
+    @Test("판매자 미리보기에 signed URL이 없다")
+    func noSignedURL() throws {
+        for path in ["Store/MyListingsSection.swift", "Backend/BackendClient+Marketplace.swift"] {
+            let code = try source(path)
+            for banned in ["signedURL", "X-Goog", "storage.googleapis.com", "gs://"] {
+                #expect(!code.contains(banned), "\(path): \(banned)")
+            }
         }
     }
 }

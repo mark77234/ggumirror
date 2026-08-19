@@ -263,6 +263,17 @@ struct PublishStickerView: View {
             return
         }
 
+        // **publish를 보내기 전에** listing id를 남길 준비를 한다.
+        // 저장이 실패하면 store가 publish를 보내지 않는다 — 못 찾는 listing을
+        // 만들지 않는 것이 실패보다 낫다.
+        marketplace.onListingCreated = { [self] listingID in
+            draft.listingID = listingID
+            library.saveDraft(draft)
+            // 저장 경로가 동기라 여기까지 오면 남았다.
+            return draft.listingID == listingID
+        }
+        defer { marketplace.onListingCreated = nil }
+
         let result = await marketplace.publish(
             package: package,
             title: StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name,
@@ -277,8 +288,7 @@ struct PublishStickerView: View {
             return
         }
         didPublish = true
-        draft.listingID = result.listing.id
-        library.saveDraft(draft)
+        assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")
         publishNotice = result.feeCharged
             ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."
             : "추가 등록비 없이 다시 올렸어요."
