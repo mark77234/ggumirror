@@ -111,24 +111,52 @@ struct MyMirrorsView: View {
         }
     }
 
+    /// 카드 아래에 **바로 보이는** 상점 등록 CTA.
+    ///
+    /// 예전에는 동작 목록을 열어야만 보였고, 그래서 아무도 찾지 못했다.
+    /// 등록은 **여기 한 곳**에서만 시작한다 — 같은 동작을 두 곳에 두지 않는다.
+    ///
+    /// 등록할 수 없는 거울이라도 **조용히 감추지 않는다.** 눌리면 이유를 알려준다.
+    private func publishButton(for mirror: MyMirror) -> some View {
+        let isEligible = MirrorPublishPolicy.isEligible(mirror)
+        return Button {
+            if isEligible {
+                publishTarget = mirror
+            } else {
+                notice = "직접 만든 거울만 상점에 등록할 수 있어요."
+            }
+        } label: {
+            Label("상점에 등록", systemImage: "tray.and.arrow.up")
+                .font(InkFont.caption.weight(.semibold))
+                .foregroundStyle(isEligible ? PaperTheme.ink : PaperTheme.secondaryInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 32)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(12, 10, 13, 11)
+                    shape.stroke(
+                        isEligible ? PaperTheme.ink : PaperTheme.separator,
+                        lineWidth: InkLine.regular
+                    )
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("\(mirror.name) 상점에 등록")
+    }
+
     /// 거울 하나에 대해 할 수 있는 것. **스티커와 같은 구성이다** — 하나만 다르면 헷갈린다.
     ///
     /// 복제와 공유하기는 뺐다. 사진에 저장은 남는다 —
     /// 공유를 없앤다고 앱 밖으로 꺼내는 길까지 막지 않는다.
+    /// 상점 등록은 카드 아래 CTA에 있다.
     private func actions(for mirror: MyMirror) -> [InkDialogAction] {
         var actions = [
             InkDialogAction("적용", role: .primary) { library.apply(mirror) },
             InkDialogAction("꾸미기") { onEditMirror(mirror) },
         ]
-        // 상점에서 받은 거울을 그대로 되파는 흐름은 만들지 않는다.
-        // 다만 **버튼을 조용히 감추지 않는다** — 왜 안 되는지 알려준다(스티커와 같은 방식).
-        if MirrorPublishPolicy.isEligible(mirror) {
-            actions.append(InkDialogAction("상점에 등록") { publishTarget = mirror })
-        } else {
-            actions.append(InkDialogAction("상점에 등록") {
-                notice = "직접 만든 거울만 상점에 등록할 수 있어요."
-            })
-        }
+        // 상점 등록은 **카드 아래 CTA 한 곳**에서만 한다 — 같은 동작을 두 곳에 두지 않는다.
         // 내가 만든 거울만 앱 밖으로 나간다 — 상점 artwork를 원본 파일로 꺼내가지 않는다.
         if OwnContentExportPolicy.canExport(mirror) {
             actions.append(InkDialogAction("사진에 저장") { save(mirror) })
@@ -201,12 +229,16 @@ struct MyMirrorsView: View {
             } else {
                 LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
                     ForEach(mirrors) { mirror in
-                        Button {
-                            actionTarget = mirror
-                        } label: {
-                            MyMirrorItem(mirror: mirror, isCurrent: mirror.id == library.currentID)
+                        VStack(spacing: 6) {
+                            Button {
+                                actionTarget = mirror
+                            } label: {
+                                MyMirrorItem(mirror: mirror, isCurrent: mirror.id == library.currentID)
+                            }
+                            .buttonStyle(InkPressStyle())
+
+                            publishButton(for: mirror)
                         }
-                        .buttonStyle(InkPressStyle())
                     }
                 }
                 .padding(.horizontal, 20)

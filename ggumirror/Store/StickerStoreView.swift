@@ -23,6 +23,8 @@ struct StickerStoreView: View {
     @State private var publishTarget: StickerProject?
     @State private var isChoosingStart = false
     @State private var notice: String?
+    /// 상점에 들어오면 언제나 최신 순이다. 거울 상점과 같은 규칙·같은 enum이다.
+    @State private var sort: StoreSort = .default
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -41,6 +43,10 @@ struct StickerStoreView: View {
 
                 sectionTitle("스티커 상점", count: nil)
                     .padding(.top, 26)
+                // **상품이 0개여도 정렬 UI를 보여준다** — 거울 상점과 같은 세 가지다.
+                // 실제 listing이 들어오면 같은 `StoreSort`가 그대로 목록에 걸린다.
+                InkFilterBar(items: StoreSort.allCases, selection: $sort) { $0.label }
+                    .padding(.bottom, 12)
                 marketplace
             }
             .padding(.bottom, 12)
@@ -169,10 +175,14 @@ struct StickerStoreView: View {
     private var grid: some View {
         LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
             ForEach(library.projects.reversed()) { project in
-                Button { actionTarget = project } label: {
-                    StickerGalleryItem(project: project, library: library)
+                VStack(spacing: 6) {
+                    Button { actionTarget = project } label: {
+                        StickerGalleryItem(project: project, library: library)
+                    }
+                    .buttonStyle(InkPressStyle())
+
+                    publishButton(for: project)
                 }
-                .buttonStyle(InkPressStyle())
             }
         }
         .padding(.horizontal, 20)
@@ -221,6 +231,38 @@ struct StickerStoreView: View {
         }
     }
 
+    /// 카드 아래에 **바로 보이는** 상점 등록 CTA. 거울과 같은 모양·같은 규칙이다.
+    ///
+    /// 등록할 수 없는 스티커(AI 포함)라도 조용히 감추지 않고 이유를 알려준다.
+    private func publishButton(for project: StickerProject) -> some View {
+        let isEligible = project.canPublishToStore
+        return Button {
+            if isEligible {
+                publishTarget = project
+            } else {
+                notice = "AI로 만든 스티커는 아직 상점에 등록할 수 없어요. 사진에 저장은 할 수 있어요."
+            }
+        } label: {
+            Label("상점에 등록", systemImage: "tray.and.arrow.up")
+                .font(InkFont.caption.weight(.semibold))
+                .foregroundStyle(isEligible ? PaperTheme.ink : PaperTheme.secondaryInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 32)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(12, 10, 13, 11)
+                    shape.stroke(
+                        isEligible ? PaperTheme.ink : PaperTheme.separator,
+                        lineWidth: InkLine.regular
+                    )
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .accessibilityLabel("\(project.name) 상점에 등록")
+    }
+
     private func actions(for project: StickerProject) -> [InkDialogAction] {
         [
             InkDialogAction("사용하기", role: .primary) {
@@ -234,13 +276,7 @@ struct StickerStoreView: View {
                 )
             },
             InkDialogAction("사진에 저장") { saveSticker(project) },
-            // AI 스티커는 아직 팔 수 없다. 내보내기(사진 저장 · 공유)는 위에 그대로 있다 —
-            // 내가 쓰려고 만든 것과 남에게 파는 것은 다른 문제다.
-            project.canPublishToStore
-                ? InkDialogAction("상점에 등록") { publishTarget = project }
-                : InkDialogAction("상점에 등록") {
-                    notice = "AI로 만든 스티커는 아직 상점에 등록할 수 없어요. 사진에 저장은 할 수 있어요."
-                },
+            // 상점 등록은 **카드 아래 CTA 한 곳**에서만 한다 — 같은 동작을 두 곳에 두지 않는다.
             InkDialogAction("삭제", role: .destructive) { library.delete(project) },
             InkDialogAction("닫기"),
         ]

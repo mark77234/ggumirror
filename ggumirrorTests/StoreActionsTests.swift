@@ -102,12 +102,65 @@ struct StoreActionsTests {
         #expect(source.contains(sheet), "\(file): 기존 등록 화면을 열지 않는다 — 새 flow를 만들었나")
     }
 
-    /// 등록할 수 없는 거울이라도 **버튼을 조용히 감추지 않는다** — 이유를 알려준다.
-    @Test("등록 불가 거울은 이유를 알려준다")
-    func ineligibleMirrorsExplainWhy() throws {
-        let source = try Self.source("MyMirrors/MyMirrorsView.swift")
-        #expect(source.contains("MirrorPublishPolicy.isEligible"), "eligibility 정책을 무시했다")
-        #expect(source.contains("직접 만든 거울만"), "왜 안 되는지 알려주지 않는다")
+    /// 회귀: 등록이 **동작 목록 안에만** 있어 아무도 찾지 못했다.
+    /// 이제 카드 아래에 바로 보이는 버튼이 authority다.
+    @Test("등록 CTA가 목록 화면에 바로 보인다", arguments: [
+        "MyMirrors/MyMirrorsView.swift",
+        "Store/StickerStoreView.swift",
+    ])
+    func publishCTAIsVisibleWithoutOpeningTheDialog(file: String) throws {
+        let source = try Self.source(file)
+        #expect(source.contains("func publishButton(for"), "\(file): 보이는 CTA가 없다")
+        #expect(source.contains("publishButton(for:"), "\(file): CTA가 격자에 붙어 있지 않다")
+    }
+
+    /// 같은 동작을 두 곳에 두지 않는다 — 어느 쪽이 진짜인지 알 수 없어진다.
+    @Test("등록은 한 곳에서만 시작한다", arguments: [
+        "MyMirrors/MyMirrorsView.swift",
+        "Store/StickerStoreView.swift",
+    ])
+    func publishHasExactlyOneEntryPoint(file: String) throws {
+        let code = Self.codeOnly(try Self.source(file))
+        #expect(
+            !code.contains("InkDialogAction(\"상점에 등록\")"),
+            "\(file): 동작 목록에도 등록이 남아 있다"
+        )
+    }
+
+    /// 등록할 수 없어도 **버튼을 조용히 감추지 않는다** — 이유를 알려준다.
+    @Test("등록 불가 항목은 이유를 알려준다")
+    func ineligibleItemsExplainWhy() throws {
+        let mirrors = try Self.source("MyMirrors/MyMirrorsView.swift")
+        #expect(mirrors.contains("MirrorPublishPolicy.isEligible"), "eligibility 정책을 무시했다")
+        #expect(mirrors.contains("직접 만든 거울만"), "왜 안 되는지 알려주지 않는다")
+
+        let stickers = try Self.source("Store/StickerStoreView.swift")
+        #expect(stickers.contains("canPublishToStore"), "스티커 eligibility를 무시했다")
+        #expect(stickers.contains("AI로 만든 스티커는"), "왜 안 되는지 알려주지 않는다")
+    }
+
+    /// 사용자 요구: 두 상점 모두 세 가지 정렬을 바꿀 수 있어야 한다.
+    /// **상품이 0개여도 정렬 UI는 보인다** — 거울 상점과 UI가 갈라지지 않는다.
+    @Test("스티커 상점도 정렬 UI를 갖는다")
+    func stickerStoreHasTheSameSortUI() throws {
+        let source = try Self.source("Store/StickerStoreView.swift")
+        #expect(source.contains("InkFilterBar(items: StoreSort.allCases"), "정렬 UI가 없다")
+        #expect(source.contains("StoreSort = .default"), "기본값이 최신 순이 아니다")
+    }
+
+    /// 빈 상태는 정렬 UI **아래**에 온다 — 상품이 생겨도 구조가 바뀌지 않는다.
+    @Test("빈 스티커 상점도 정렬 UI가 먼저 나온다")
+    func emptyStickerStoreStillShowsSortFirst() throws {
+        let source = try Self.source("Store/StickerStoreView.swift")
+        guard let sortUI = source.range(of: "InkFilterBar(items: StoreSort.allCases"),
+              let empty = source.range(of: "marketplace\n")
+        else {
+            Issue.record("정렬 UI 또는 빈 상태를 찾지 못했다")
+            return
+        }
+        #expect(sortUI.lowerBound < empty.lowerBound, "빈 상태가 정렬 UI보다 먼저 나온다")
+        // 가짜 상품을 만들지 않았다.
+        #expect(source.contains("아직 등록된 스티커가 없어요"))
     }
 
     // MARK: - 정렬
