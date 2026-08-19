@@ -263,12 +263,17 @@ struct UIPolishTests {
     @Test("높이가 변하는 시트는 스크롤 + 고정 CTA 구조다", arguments: [
         "MyMirrors/ExternalArtworkView.swift",
         "AI/AIStickerPromptSheet.swift",
+        "IAP/ShardStoreSheet.swift",
+        // UI-P2 회귀: 등록 시트 둘은 CTA가 **스크롤 안**에 있어 끝까지 내려야 닿았고,
+        // 아래 여백도 공유 상수가 아닌 임의의 20이었다.
+        "Store/PublishMirrorView.swift",
+        "Store/PublishStickerView.swift",
     ])
     func overflowingSheetsPinTheirActions(file: String) throws {
         let source = try sheetSource(file)
         #expect(source.contains("ScrollView"), "\(file): 넘치는 내용을 흘릴 스크롤이 없다")
         #expect(
-            source.contains("safeAreaInset(edge: .bottom"),
+            source.contains("inkSheetActions"),
             "\(file): CTA가 스크롤 안에 있으면 내용이 길어질 때 밀려 나간다"
         )
     }
@@ -283,13 +288,67 @@ struct UIPolishTests {
         #expect(!source.contains("UIScreen.main"), "화면 크기를 직접 재지 않는다")
     }
 
-    /// 시트 액션의 아래 여백은 값 하나를 공유한다 — 화면마다 다른 숫자를 쓰지 않는다.
-    @Test("고정 CTA 여백은 공유 상수를 쓴다", arguments: [
-        "MyMirrors/ExternalArtworkView.swift",
+    /// 시트 액션의 아래 여백은 **한 곳에서만** 정해진다.
+    ///
+    /// 화면마다 숫자를 적으면 같은 앱으로 보이지 않고, 하나를 빠뜨리면 CTA가 바닥에 붙는다.
+    /// 그래서 `inkSheetActions`가 여백을 들고 있고 화면은 그것만 부른다.
+    @Test("고정 CTA 여백은 한 곳에서만 정해진다")
+    func pinnedActionsShareOneClearance() throws {
+        let modal = try sheetSource("Shared/InkModal.swift")
+        #expect(modal.contains("func inkSheetActions"))
+        #expect(modal.contains("InkSheetMetrics.actionClearance"))
+
+        for file in [
+            "MyMirrors/ExternalArtworkView.swift",
+            "AI/AIStickerPromptSheet.swift",
+            "IAP/ShardStoreSheet.swift",
+            "Store/PublishMirrorView.swift",
+            "Store/PublishStickerView.swift",
+        ] {
+            let source = try sheetSource(file)
+            #expect(
+                !source.contains("InkSheetMetrics.actionClearance"),
+                "\(file): 여백을 손으로 적었다 — modifier가 이미 붙인다(두 번 적용된다)"
+            )
+        }
+    }
+
+    // MARK: - 모달 위에 무엇도 없다 (UI-P2)
+
+    /// 회귀: 거울/스티커 등록 시트가 `InkTabBar`에 아래쪽 108pt를 가려졌다.
+    ///
+    /// 시트는 `.overlay`라 **자기 subtree 안에서만** 위다. 탭바는 조상 ZStack의
+    /// 뒤 형제라 항상 그 위에 그려졌다 — 홈에서 연 조각 상점만 멀쩡했던 이유다
+    /// (그건 ZStack 자체에 붙어 있었다).
+    @Test("모달이 뜨면 탭바가 비켜선다")
+    func tabBarStepsAsideForModals() throws {
+        let modal = try sheetSource("Shared/InkModal.swift")
+        // 시트와 다이얼로그 **둘 다** 알린다.
+        #expect(modal.components(separatedBy: "preference(key: InkModalPresentedKey.self").count - 1 == 2)
+        #expect(modal.contains("func inkHiddenWhileModalPresented"))
+
+        let home = try sheetSource("Home/HomeView.swift")
+        #expect(
+            home.contains("InkTabBar(selection: $tab)\n                .inkHiddenWhileModalPresented()"),
+            "탭바가 모달을 덮는다"
+        )
+    }
+
+    /// 가려짐을 개별 화면의 여백으로 숨기지 않는다 — 그러면 화면마다 숫자가 흩어진다.
+    @Test("시트가 탭바 높이를 손으로 피하지 않는다", arguments: [
+        "Store/PublishMirrorView.swift",
+        "Store/PublishStickerView.swift",
+        "IAP/ShardStoreSheet.swift",
         "AI/AIStickerPromptSheet.swift",
+        "MyMirrors/ExternalArtworkView.swift",
     ])
-    func pinnedActionsShareOneClearance(file: String) throws {
-        #expect(try sheetSource(file).contains("InkSheetMetrics.actionClearance"))
+    func sheetsNeverDodgeTheTabBarByHand(file: String) throws {
+        let source = try sheetSource(file)
+        #expect(!source.contains("InkTabBar.reservedHeight"), "\(file): 탭바 높이를 시트가 안다")
+        // 홈 인디케이터 높이를 추측한 값도 금지다.
+        for guessed in ["padding(.bottom, 34", "padding(.bottom, 83", "padding(.bottom, 108"] {
+            #expect(!source.contains(guessed), "\(file): 기기 값을 추측했다 (\(guessed))")
+        }
     }
 
     /// 시트 높이를 화면 크기로 직접 계산하지 않는다 — safe area가 반영되지 않는다.

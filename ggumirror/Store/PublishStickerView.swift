@@ -42,12 +42,21 @@ struct PublishStickerView: View {
                 if hasPhoto { photoNotice }
                 rightsNotice
                 feeNotice
-                saveButton
+                if let first = issues.first {
+                    Text(first.message)
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(20)
-            .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        // 등록 버튼은 **스크롤 밖에 고정**한다 — 내용이 길어도 손이 닿아야 한다.
+        .inkSheetActions {
+            saveButton.padding(.horizontal, 20).padding(.top, 12)
+        }
         .inkDialog(
             "등록 준비를 저장했어요",
             message: "실제 상점 등록은 준비 중이에요. 지금은 조각이 차감되지 않고, 아직 아무도 이 스티커를 볼 수 없어요.",
@@ -192,13 +201,8 @@ struct PublishStickerView: View {
     }
 
     private var saveButton: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let first = issues.first {
-                Text(first.message)
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-            }
-
+        // 안내 문구는 스크롤 안에 남는다 — 고정 줄은 버튼 하나만 담는다.
+        Group {
             Button {
                 library.saveDraft(draft)
                 savedNotice = true

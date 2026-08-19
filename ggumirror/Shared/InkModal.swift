@@ -83,6 +83,59 @@ enum InkSheetMetrics {
     static let actionClearance: CGFloat = 20
 }
 
+/// **모달이 떠 있다**는 사실을 조상에게 알린다.
+///
+/// `inkBottomSheet` / `inkDialog`는 `.overlay`로 그려지므로 **자기 subtree 안에서만** 위다.
+/// `InkTabBar`처럼 조상 ZStack의 **뒤 형제**로 있는 것은 시트보다 위에 그려진다 —
+/// 실제로 거울/스티커 등록 시트 아래쪽 108pt가 탭바에 가려졌다.
+///
+/// environment는 아래로만 흐르므로 반대 방향인 preference를 쓴다. 이걸 읽는 쪽
+/// (`HomeView`)이 탭바를 감추면, **어느 깊이에서 시트를 띄우든** 같은 문제가 재발하지 않는다.
+struct InkModalPresentedKey: PreferenceKey {
+    static let defaultValue = false
+    /// 하나라도 떠 있으면 true. 형제 시트가 여럿이어도 안전하다.
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+extension View {
+    /// 이 subtree에 모달이 떠 있으면 아래 내용을 감춘다. `InkTabBar`가 유일한 사용자다.
+    func inkHiddenWhileModalPresented() -> some View {
+        modifier(InkHideWhileModal())
+    }
+
+    /// 시트의 **주 동작 줄을 스크롤 밖에 고정**하고 아래 여백을 붙인다.
+    ///
+    /// 시트 5곳이 같은 두 줄(`safeAreaInset` + `actionClearance`)을 손으로 적고 있었고,
+    /// 등록 시트 둘은 그걸 빠뜨려 CTA가 스크롤 끝에 붙어 버렸다.
+    /// 하나로 묶어 두면 **새 시트를 만들 때 여백을 기억할 필요가 없다.**
+    ///
+    /// 액션이 스크롤 안에 있으면 내용이 길 때 화면 밖으로 밀려난다 —
+    /// 등록/구매처럼 반드시 닿아야 하는 버튼은 밖에 고정한다.
+    func inkSheetActions<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            actions()
+                .padding(.bottom, InkSheetMetrics.actionClearance)
+                // 스크롤 내용이 뒤로 비쳐 지나가지 않게 종이를 깐다.
+                .background(PaperTheme.paper)
+        }
+    }
+}
+
+private struct InkHideWhileModal: ViewModifier {
+    @State private var isModalPresented = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isModalPresented ? 0 : 1)
+            // 보이지 않는 동안 탭이 눌리면 안 된다.
+            .allowsHitTesting(!isModalPresented)
+            .animation(InkMotion.modal, value: isModalPresented)
+            .onPreferenceChange(InkModalPresentedKey.self) { isModalPresented = $0 }
+    }
+}
+
 // MARK: - 공용 표면
 
 /// 모달을 덮는 dim. 회색이 아니라 잉크가 옅게 번진 느낌이다.
@@ -170,6 +223,8 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
             }
             .animation(InkMotion.modal, value: isPresented)
             .onChange(of: isPresented) { _, _ in drag = 0 }
+            // 조상(`InkTabBar`)이 비켜설 수 있게 알린다. 시트는 자기 subtree 안에서만 위다.
+            .preference(key: InkModalPresentedKey.self, value: isPresented)
     }
 
     private func close() {
@@ -279,6 +334,8 @@ private struct InkDialogModifier<DialogContent: View>: ViewModifier {
                 }
             }
             .animation(InkMotion.modal, value: isPresented)
+            // 시트와 같은 규칙 — dialog도 탭바에 가려지면 안 된다.
+            .preference(key: InkModalPresentedKey.self, value: isPresented)
     }
 
     private func close() {

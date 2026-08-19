@@ -43,12 +43,21 @@ struct PublishMirrorView: View {
                 if manifest.needsPhotoPrivacyNotice { photoPrivacy }
                 if manifest.needsArtworkRightsNotice { artworkRights }
                 feeNotice
-                saveButton
+                if let issue = issues.first {
+                    Text(issue.message)
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(20)
-            .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        // 등록 버튼은 **스크롤 밖에 고정**한다 — 내용이 길어도 손이 닿아야 한다.
+        .inkSheetActions {
+            saveButton.padding(.horizontal, 20).padding(.top, 12)
+        }
         .inkDialog(
             "등록 준비를 저장했어요",
             message: "실제 상점 등록은 로그인과 함께 다음 업데이트에서 열려요. 지금은 조각이 차감되지 않아요.",
@@ -159,14 +168,8 @@ struct PublishMirrorView: View {
         .accessibilityLabel("상점 공개 등록 비용 \(MirrorPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
     }
 
-    @ViewBuilder
     private var saveButton: some View {
-        if let issue = issues.first {
-            Text(issue.message)
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.secondaryInk)
-        }
-
+        // 안내 문구는 스크롤 안에 남는다 — 고정 줄은 버튼 하나만 담는다.
         Button("등록 준비 저장") {
             library.savePublishDraft(draft)
             savedNotice = true

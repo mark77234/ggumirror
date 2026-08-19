@@ -223,7 +223,7 @@ struct ExternalArtworkView: View {
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
-        .safeAreaInset(edge: .bottom, spacing: 0) { previewActions(artwork) }
+        .inkSheetActions { previewActions(artwork) }
     }
 
     /// 항상 눌릴 수 있어야 하는 결정 버튼. 스크롤 밖에 둔다.
@@ -255,9 +255,6 @@ struct ExternalArtworkView: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
-        .padding(.bottom, InkSheetMetrics.actionClearance)
-        // 스크롤 내용이 버튼 뒤로 비쳐 지나가지 않게 종이를 깐다.
-        .background(PaperTheme.paper)
     }
 
     private func previewDesign(_ artwork: ImportedArtworkObject) -> MirrorDesign {

@@ -40,7 +40,10 @@ struct HomeView: View {
                 )
             }
 
+            // 탭 안 어느 깊이에서 시트/다이얼로그가 떠도 탭바가 그 위를 덮지 않는다.
+            // 시트는 `.overlay`라 자기 subtree 안에서만 위이고, 탭바는 여기 **뒤 형제**다.
             InkTabBar(selection: $tab)
+                .inkHiddenWhileModalPresented()
         }
         .paperBackground()
         // 조각 충전. 홈 잔액과 AI 부족 안내가 **같은 화면**을 연다 — 상점 UI를 두 번 만들지 않는다.

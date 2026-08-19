@@ -34,7 +34,7 @@ struct ShardStoreSheet: View {
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .inkSheetActions { footer }
         // **상품 조회는 상점을 열 때 시작한다** — 앱 시작에 묶지 않는다.
         .task { await controller.loadProductsIfNeeded(reason: "store_open") }
     }
@@ -195,9 +195,6 @@ struct ShardStoreSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
-        .padding(.bottom, InkSheetMetrics.actionClearance)
-        // 스크롤 내용이 뒤로 비쳐 지나가지 않게 종이를 깐다.
-        .background(PaperTheme.paper)
     }
 
     // MARK: - 동작

@@ -48,7 +48,7 @@ struct AIStickerPromptSheet: View {
         .scrollBounceBehavior(.basedOnSize)
         // 키보드는 아래로 쓸어 내려 닫는다. 닫기 버튼을 따로 만들지 않는다.
         .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .bottom, spacing: 0) { actions }
+        .inkSheetActions { actions }
         .onAppear { isFocused = true }
     }
 
@@ -141,8 +141,5 @@ struct AIStickerPromptSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
-        .padding(.bottom, InkSheetMetrics.actionClearance)
-        // 스크롤 내용이 버튼 뒤로 비쳐 지나가지 않게 종이를 깐다.
-        .background(PaperTheme.paper)
     }
 }

@@ -483,8 +483,8 @@ struct ShardPurchaseTests {
     func storeSheetFollowsLayoutRules() throws {
         let source = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
         #expect(source.contains("ScrollView"), "넘치는 내용을 흘릴 스크롤이 없다")
-        #expect(source.contains("safeAreaInset(edge: .bottom"), "CTA가 스크롤 안에 있다")
-        #expect(source.contains("InkSheetMetrics.actionClearance"))
+        // UI-P2에서 두 줄을 `inkSheetActions` 하나로 묶었다 — 여백은 그 안에 있다.
+        #expect(source.contains("inkSheetActions"), "CTA가 스크롤 안에 있다")
     }
 
     @Test("상점은 ShardIcon을 재사용한다")
