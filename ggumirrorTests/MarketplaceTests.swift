@@ -1436,3 +1436,149 @@ struct MarketplaceURLTests {
         """
     }
 }
+
+
+// MARK: - 상점 scroll 계층 (B-7H UI hotfix)
+//
+// 상단 제어부(제목 · 잔액 · 거울/스티커 · 갈래 · 꼬리표 · 정렬)가 고정돼 있어서
+// 실제 상품이 보이는 세로 공간이 너무 좁았다. 전부 상품과 같은 scroll content로
+// 옮겼고, 여기서 그 계층을 고정한다.
+//
+// **디자인은 바꾸지 않았다** — scroll 구조만 옮겼다.
+
+@Suite("상점 scroll 계층")
+struct StoreScrollHierarchyTests {
+
+    private func source(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "ggumirror")
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    /// 주석을 걷어낸 코드. 설명에 적은 단어를 잡지 않는다.
+    private func codeOnly(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard let comment = line.range(of: "//") else { return String(line) }
+                return String(line[..<comment.lowerBound])
+            }
+            .joined(separator: "\n")
+    }
+
+    @Test("상점 화면의 세로 scroll은 하나뿐이다")
+    func exactlyOneScrollView() throws {
+        let store = codeOnly(try source("Store/StoreView.swift"))
+        #expect(store.components(separatedBy: "ScrollView {").count - 1 == 1)
+
+        // 안쪽 화면이 또 감싸면 중첩되고 상단이 따라 올라가지 않는다.
+        let sticker = codeOnly(try source("Store/StickerStoreView.swift"))
+        #expect(!sticker.contains("ScrollView {"), "스티커 상점이 자기 scroll을 갖는다")
+    }
+
+    @Test("상단 제어부가 scroll content 안에 있다")
+    func controlsScrollWithContent() throws {
+        let code = codeOnly(try source("Store/StoreView.swift"))
+        let body = try #require(code.range(of: "var body: some View {"))
+        let scroll = try #require(code.range(of: "ScrollView {"))
+        // scroll이 body 안에서 시작한다.
+        #expect(scroll.lowerBound > body.lowerBound)
+
+        // header · sectionSwitch · filters가 scroll보다 뒤에 온다(= 안에 있다).
+        for element in ["header", "sectionSwitch", "filters"] {
+            let use = try #require(
+                code.range(of: element, range: scroll.upperBound..<code.endIndex),
+                "\(element)가 scroll 안에 없다"
+            )
+            #expect(use.lowerBound > scroll.lowerBound)
+        }
+    }
+
+    @Test("상품 부분은 자기 scroll을 갖지 않는다")
+    func productContentHasNoOwnScroll() throws {
+        let code = codeOnly(try source("Store/StoreView.swift"))
+        let start = try #require(code.range(of: "private var mirrorContent: some View {"))
+        let body = String(code[start.upperBound...].prefix(1200))
+        #expect(!body.contains("ScrollView"), "상품 부분이 또 감싼다")
+    }
+
+    @Test("UI-P2의 tab bar 여백이 유지된다")
+    func tabBarClearanceSurvives() throws {
+        let code = try source("Store/StoreView.swift")
+        #expect(code.contains("InkTabBar.reservedHeight"))
+        #expect(code.contains("contentMargins(.bottom"))
+        #expect(code.contains("for: .scrollContent"))
+        // scroll이 하나이므로 여백도 한 곳에서만 준다.
+        #expect(code.components(separatedBy: "contentMargins(.bottom").count - 1 == 1)
+    }
+
+    @Test("내 상점 상품이 일반 상품보다 먼저 온다")
+    func myListingsComeFirst() throws {
+        let code = codeOnly(try source("Store/StoreView.swift"))
+        let start = try #require(code.range(of: "private var mirrorContent: some View {"))
+        let body = String(code[start.upperBound...])
+
+        let mine = try #require(body.range(of: "MyListingsSection"))
+        let others = try #require(body.range(of: "MarketplaceSection"))
+        let builtIn = try #require(body.range(of: "LazyVGrid"))
+
+        #expect(mine.lowerBound < others.lowerBound, "내 상품이 사용자 상품보다 뒤에 있다")
+        #expect(others.lowerBound < builtIn.lowerBound, "사용자 상품이 내장 목록보다 뒤에 있다")
+    }
+
+    @Test("제어부 순서가 요구대로다")
+    func controlOrder() throws {
+        let code = codeOnly(try source("Store/StoreView.swift"))
+        let body = try #require(code.range(of: "var body: some View {"))
+        let region = String(code[body.upperBound...].prefix(1600))
+
+        let order = ["header", "sectionSwitch", "filters", "mirrorContent"]
+        var previous = region.startIndex
+        for element in order {
+            let found = try #require(
+                region.range(of: element, range: previous..<region.endIndex),
+                "\(element)가 순서에 없다"
+            )
+            previous = found.upperBound
+        }
+    }
+
+    @Test("갈래 · 꼬리표 · 정렬이 한 묶음으로 함께 스크롤된다")
+    func filtersAreOneGroup() throws {
+        let code = codeOnly(try source("Store/StoreView.swift"))
+        let start = try #require(code.range(of: "private var filters: some View {"))
+        let body = String(code[start.upperBound...].prefix(600))
+        #expect(body.contains("StoreCategory.allCases"))
+        #expect(body.contains("TagFilter.allCases"))
+        #expect(body.contains("StoreSort.allCases"))
+    }
+
+    @Test("판매자 목록 authority는 계속 서버다")
+    func serverStaysTheAuthority() throws {
+        let section = try source("Store/MyListingsSection.swift")
+        #expect(section.contains("store.myListings"))
+        // 로컬 draft로 되돌아가지 않았다.
+        for banned in ["draft.listingID", "PublishDraft", "savePublishDraft"] {
+            #expect(!section.contains(banned), "로컬 draft에 의존한다")
+        }
+        // 세 상태 전부 여기서 다룬다.
+        for state in ["isPublished", "isUnlisted", "isDraft"] {
+            #expect(section.contains(state), "\(state)를 다루지 않는다")
+        }
+    }
+
+    @Test("디자인 토큰을 바꾸지 않았다")
+    func designUnchanged() throws {
+        let code = try source("Store/StoreView.swift")
+        // 기존 Clean Pen Sketch 요소가 그대로다.
+        for token in ["InkFont.pageTitle", "PaperTheme.ink", "UnevenRoundedRectangle.ink",
+                      "InkPressStyle()", "InkFilterBar"] {
+            #expect(code.contains(token), "\(token)이 사라졌다")
+        }
+        // 새 디자인 시스템을 들이지 않았다.
+        for banned in [".background(Color.", "LinearGradient", "Material.", ".ultraThinMaterial"] {
+            #expect(!code.contains(banned), "새 디자인 요소가 들어왔다: \(banned)")
+        }
+    }
+}

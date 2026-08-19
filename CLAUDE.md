@@ -228,6 +228,34 @@ Store browse 자체는 로그인 없이 가능.
 
 현재 유료 CTA는 실제 server purchase가 아니다.
 
+### 상점 scroll 계층 (B-7H UI hotfix)
+
+**상단 제어부를 고정하지 않는다.** 제목 · 조각 잔액 · 거울/스티커 · 갈래 · 꼬리표 ·
+정렬이 전부 상품과 **같은 scroll content** 안에 있어서, 아래로 내리면 함께 위로 사라진다.
+고정해 두면 실제 상품이 보이는 세로 공간이 너무 좁았다.
+
+**세로 scroll은 `StoreView`에 하나뿐이다.** `StickerStoreView`는 자기 ScrollView를
+갖지 않는다 — 중첩되면 상단 제어부가 따라 올라가지 않는다.
+`scrollIndicators` · `contentMargins(.bottom, InkTabBar.reservedHeight + 24)`도
+그 한 곳에서만 준다(UI-P2 그대로).
+
+content 순서:
+
+```
+상점 제목 + 조각 잔액
+거울 / 스티커
+갈래(category)
+꼬리표(tag)
+정렬(최신 / 인기 / 좋아요)
+내 상점 상품          ← 판매자가 자기 것을 먼저 찾는다
+사용자 상품
+내장 템플릿 24종
+```
+
+하단 앱 tab bar만 고정이다. **디자인은 바꾸지 않았다** — layout/scroll 구조만 옮겼다.
+
+`ggumirrorTests`의 `StoreScrollHierarchyTests`가 위 계층을 고정한다.
+
 ### 내 상점 상품 — 서버가 authority다 (B-7G.1)
 
 `GET /users/me/marketplace/listings`가 `draft` · `published` · `unlisted`를 전부 준다.

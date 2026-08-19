@@ -50,19 +50,30 @@ struct StoreView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                header
-                sectionSwitch
+            // **상단 제어부를 고정하지 않는다.** 제목 · 잔액 · 거울/스티커 · 갈래 · 꼬리표 ·
+            // 정렬이 모두 상품과 같은 scroll content 안에 있어서, 아래로 내리면 함께
+            // 위로 사라진다. 고정해 두면 실제 상품이 보이는 세로 공간이 너무 좁았다.
+            //
+            // scroll은 **여기 하나뿐**이다. 안쪽(거울 grid · 스티커 화면)에 또 만들면
+            // 세로 scroll이 중첩되고 상단이 따라 올라가지 않는다.
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    sectionSwitch
 
-                switch section {
-                case .mirror:
-                    // 거울 상점은 그대로다 — 템플릿 24개 · 갈래 · 가격 · 무료 수령 전부 유지.
-                    filters
-                    gallery
-                case .sticker:
-                    StickerStoreView(library: stickers, mirrors: library)
+                    switch section {
+                    case .mirror:
+                        // 거울 상점은 그대로다 — 템플릿 24개 · 갈래 · 가격 · 무료 수령 전부 유지.
+                        filters
+                        mirrorContent
+                    case .sticker:
+                        StickerStoreView(library: stickers, mirrors: library)
+                    }
                 }
             }
+            .scrollIndicators(.hidden)
+            // UI-P2 그대로 — tab bar가 마지막 상품을 덮지 않게 한다.
+            .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
             .animation(InkMotion.modal, value: section)
             .navigationDestination(for: MirrorTemplate.self) { template in
                 TemplateDetailView(template: template, library: library)
@@ -174,8 +185,13 @@ struct StoreView: View {
         .padding(.bottom, 14)
     }
 
-    private var gallery: some View {
-        ScrollView {
+    /// 거울 상점의 상품 부분. **자기 ScrollView를 갖지 않는다** —
+    /// 상단 제어부와 같은 scroll 안에 있어야 함께 밀려 올라간다.
+    ///
+    /// 순서: 내 상점 상품 → 사용자 상품 → 내장 템플릿.
+    /// 판매자가 자기 것을 먼저 찾을 수 있어야 한다.
+    private var mirrorContent: some View {
+        VStack(spacing: 0) {
             // 내가 올린 상품 관리가 먼저다 — **서버 목록이 authority다.**
             MyListingsSection(
                 contentType: "mirror",
@@ -211,8 +227,6 @@ struct StoreView: View {
                 .padding(.horizontal, 20)
             }
         }
-        .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
     }
 }
 

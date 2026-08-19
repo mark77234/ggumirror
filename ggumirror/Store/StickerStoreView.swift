@@ -33,9 +33,11 @@ struct StickerStoreView: View {
     @State private var selected: MarketplaceListing?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// **자기 ScrollView를 갖지 않는다.** 상점 탭의 단일 scroll 안에 들어가므로
+    /// 여기서 또 감싸면 세로 scroll이 중첩되고, 상단 제어부가 함께 밀려 올라가지 않는다.
+    /// scroll · scrollIndicators · contentMargins는 `StoreView`가 한 곳에서 소유한다.
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
                 createButton
                     .padding(.horizontal, 20)
                     .padding(.bottom, 22)
@@ -64,9 +66,6 @@ struct StickerStoreView: View {
                 marketplace
             }
             .padding(.bottom, 12)
-        }
-        .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
         .navigationDestination(item: $selected) { listing in
             MarketplaceListingDetailView(
                 listing: listing,
