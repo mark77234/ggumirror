@@ -47,6 +47,14 @@ struct StickerStoreView: View {
                     grid
                 }
 
+                MyListingsSection(
+                    contentType: "sticker",
+                    store: store,
+                    session: session.server,
+                    wallet: wallet
+                )
+                .padding(.top, 22)
+
                 sectionTitle("스티커 상점", count: nil)
                     .padding(.top, 26)
                 // **상품이 0개여도 정렬 UI를 보여준다** — 거울 상점과 같은 세 가지다.

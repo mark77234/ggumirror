@@ -176,7 +176,15 @@ struct StoreView: View {
 
     private var gallery: some View {
         ScrollView {
-            // 사용자가 올린 상품이 먼저다. 없으면 아무것도 그리지 않는다.
+            // 내가 올린 상품 관리가 먼저다 — **서버 목록이 authority다.**
+            MyListingsSection(
+                contentType: "mirror",
+                store: marketplace,
+                session: session.server,
+                wallet: shards
+            )
+
+            // 사용자가 올린 상품. 없으면 아무것도 그리지 않는다.
             MarketplaceSection(
                 contentType: "mirror",
                 store: marketplace,

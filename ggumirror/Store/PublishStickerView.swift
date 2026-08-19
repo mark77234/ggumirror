@@ -285,14 +285,31 @@ struct PublishStickerView: View {
         await wallet.refresh(session: session.server)
     }
 
-    /// 이미 올린 상품이면 내리기 / 다시 올리기.
+    /// 관리 대상 listing. **서버 목록이 authority다.**
+    ///
+    /// `draft.listingID`는 힌트(cache)일 뿐이다 — 앱을 지웠거나 기기를 바꾸면 없다.
+    /// 그래서 그 id로 서버 목록을 조회해 실제 상태를 확인하고, id가 없으면
+    /// 서버 목록에서 **같은 콘텐츠 종류의 내 상품**을 보여 줄 수 없으므로
+    /// (listing에 local content id가 없다) 관리 UI를 내지 않는다.
+    /// 전체 관리는 상점의 "내 상점 상품" 구획에서 한다.
+    private var managed: MarketplaceOwnedListing? {
+        guard let hint = draft.listingID else { return nil }
+        return marketplace.myListing(id: hint)
+    }
+
+    /// 이미 올린 상품이면 내리기 / 다시 올리기를 보여 준다.
     @ViewBuilder
     private var listingControls: some View {
-        if let listingID = draft.listingID {
+        if let listing = managed {
+            let listingID = listing.id
             let isBusy = marketplace.isBusy(.unpublish(listingID))
                 || marketplace.isBusy(.publish(listingID))
             HStack(spacing: 8) {
-                Button("상점에서 내리기") {
+                Text(listing.statusLabel)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                // **서버 상태로** 무엇을 보여 줄지 정한다. 앱이 추측하지 않는다.
+                if listing.isPublished {
+                    Button("상점에서 내리기") {
                     Task {
                         guard await marketplace.unpublish(
                             listingID: listingID, session: session.server
@@ -304,8 +321,10 @@ struct PublishStickerView: View {
                         didPublish = false
                         publishNotice = "상점에서 내렸어요. 이미 산 사람은 계속 받을 수 있어요."
                     }
+                    }
                 }
-                Button("다시 올리기") {
+                if listing.isUnlisted || listing.isDraft {
+                    Button(listing.isDraft ? "상점에 올리기" : "다시 올리기") {
                     Task {
                         guard let result = await marketplace.republish(
                             listingID: listingID, session: session.server, wallet: wallet
@@ -319,6 +338,7 @@ struct PublishStickerView: View {
                             ? "등록비 \(result.feeShards) 조각이 차감됐어요."
                             : "추가 등록비 없이 다시 올렸어요."
                         await wallet.refresh(session: session.server)
+                    }
                     }
                 }
             }

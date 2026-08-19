@@ -141,6 +141,18 @@ extension BackendClient: MarketplaceBackend {
         )
     }
 
+    /// 내가 올린 것 전부. **서버가 판매자를 session으로 판단한다** —
+    /// userId를 보내는 자리가 없다.
+    func myListings(accessToken: String) async throws -> [MarketplaceOwnedListing] {
+        let data = try await marketplaceRequest(
+            "users/me/marketplace/listings", method: "GET", accessToken: accessToken
+        )
+        return try decodeMarketplace(
+            [MarketplaceOwnedListing].self, from: data,
+            path: "GET /users/me/marketplace/listings"
+        )
+    }
+
     // MARK: 좋아요
 
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult {

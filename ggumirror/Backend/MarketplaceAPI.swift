@@ -47,6 +47,25 @@ nonisolated struct MarketplaceOwnedListing: Decodable, Hashable, Identifiable, S
     let publishedAt: Date?
 }
 
+nonisolated extension MarketplaceOwnedListing {
+    /// 서버 `status` 문자열을 한 곳에서만 해석한다.
+    ///
+    /// 열거형으로 decode하지 않는 이유: 모르는 값이 오면 목록이 통째로 비는 것보다
+    /// 그 상품만 "알 수 없음"으로 남는 편이 낫다.
+    var isPublished: Bool { status == "published" }
+    var isUnlisted: Bool { status == "unlisted" }
+    var isDraft: Bool { status == "draft" }
+
+    var statusLabel: String {
+        switch status {
+        case "published": "공개 중"
+        case "unlisted": "내림"
+        case "draft": "등록 준비"
+        default: "알 수 없음"
+        }
+    }
+}
+
 // MARK: - 등록
 
 /// `POST /marketplace/snapshots` 응답. `snapshotId` · checksum은 **서버가 만든다.**
@@ -227,6 +246,11 @@ nonisolated protocol MarketplaceBackend: Sendable {
     func unpublish(listingID: String, accessToken: String) async throws -> MarketplaceOwnedListing
     func purchase(listingID: String, accessToken: String) async throws -> MarketplacePurchaseResult
     func purchases(accessToken: String) async throws -> [MarketplacePurchase]
+    /// **내가 올린 것 전부** — `draft` · `published` · `unlisted`.
+    ///
+    /// 공개 목록과 다른 것이다. 판매자가 자기 상품을 다시 찾는 **authority**다 —
+    /// 앱이 기억해 둔 id에 의존하면 앱을 지웠거나 기기를 바꾼 뒤 관리가 끊긴다.
+    func myListings(accessToken: String) async throws -> [MarketplaceOwnedListing]
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func unlike(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func likedListingIDs(accessToken: String) async throws -> [String]

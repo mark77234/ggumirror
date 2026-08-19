@@ -108,6 +108,13 @@ private final class FakeMarketplaceBackend: MarketplaceBackend, @unchecked Senda
         try check()
         return []
     }
+    var myListingsResult: [MarketplaceOwnedListing] = []
+    func myListings(accessToken: String) async throws -> [MarketplaceOwnedListing] {
+        calls.append("myListings")
+        sawToken = !accessToken.isEmpty
+        try check()
+        return myListingsResult
+    }
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult {
         calls.append("like(\(listingID))")
         try check()
@@ -942,5 +949,326 @@ private struct FakeShardBackendForMarketplace: ShardBackend {
     }
     func rewardedAdContext(accessToken: String) async throws -> String {
         throw BackendError.unavailable
+    }
+}
+
+
+// MARK: - 판매자 자기 목록 (B-7G.1)
+//
+// 서버가 authority다. 앱이 기억해 둔 listing id는 힌트일 뿐이라 앱을 지웠거나
+// 기기를 바꾸면 사라진다 — 그때도 자기 상품을 내릴 수 있어야 한다.
+
+private func owned(
+    id: String,
+    contentType: String = "mirror",
+    status: String,
+    price: Int = 10,
+    downloads: Int = 0,
+    likes: Int = 0,
+    publishedAt: Date? = Date(timeIntervalSince1970: 1_000)
+) -> MarketplaceOwnedListing {
+    MarketplaceOwnedListing(
+        id: id, contentType: contentType, title: "내 상품 \(id)", description: "설명",
+        priceShards: price, status: status,
+        downloadCount: downloads, likeCount: likes, publishedAt: publishedAt
+    )
+}
+
+@Suite("판매자 목록 DTO")
+struct MyListingsDTOTests {
+
+    @Test("서버 wire format 그대로 읽는다")
+    func decodesMyListings() throws {
+        let json = """
+        [{"id":"a","contentType":"mirror","title":"내 거울","description":"",
+          "priceShards":30,"status":"draft","downloadCount":0,"likeCount":0,
+          "publishedAt":null},
+         {"id":"b","contentType":"sticker","title":"내 스티커","description":"",
+          "priceShards":0,"status":"unlisted","downloadCount":3,"likeCount":1,
+          "publishedAt":"2026-08-19T10:00:12Z"}]
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder.backend.decode([MarketplaceOwnedListing].self, from: json)
+
+        #expect(decoded.count == 2)
+        #expect(decoded[0].status == "draft")
+        #expect(decoded[0].publishedAt == nil)
+        #expect(decoded[1].status == "unlisted")
+        #expect(decoded[1].publishedAt != nil)
+    }
+
+    @Test("세 상태를 구분한다")
+    func mapsThreeStates() {
+        #expect(owned(id: "a", status: "draft").isDraft)
+        #expect(owned(id: "a", status: "published").isPublished)
+        #expect(owned(id: "a", status: "unlisted").isUnlisted)
+        // 서로 배타적이다.
+        #expect(!owned(id: "a", status: "draft").isPublished)
+        #expect(!owned(id: "a", status: "unlisted").isPublished)
+    }
+
+    @Test("모르는 상태에서도 목록이 깨지지 않는다")
+    func unknownStatusIsTolerated() throws {
+        let json = """
+        [{"id":"a","contentType":"mirror","title":"t","description":"","priceShards":0,
+          "status":"archived","downloadCount":0,"likeCount":0,"publishedAt":null}]
+        """.data(using: .utf8)!
+
+        // 열거형으로 decode하면 여기서 던져 목록이 통째로 빈다.
+        let decoded = try JSONDecoder.backend.decode([MarketplaceOwnedListing].self, from: json)
+
+        #expect(decoded.count == 1)
+        #expect(decoded[0].statusLabel == "알 수 없음")
+        #expect(!decoded[0].isPublished)
+        #expect(!decoded[0].isDraft)
+        #expect(!decoded[0].isUnlisted)
+    }
+
+    @Test("상태 이름이 한국어로 나온다")
+    func statusLabels() {
+        #expect(owned(id: "a", status: "published").statusLabel == "공개 중")
+        #expect(owned(id: "a", status: "unlisted").statusLabel == "내림")
+        #expect(owned(id: "a", status: "draft").statusLabel == "등록 준비")
+    }
+}
+
+@MainActor
+@Suite("판매자 목록 authority")
+struct MyListingsStoreTests {
+
+    private func store(_ backend: FakeMarketplaceBackend) -> MarketplaceStore {
+        MarketplaceStore(backend: backend)
+    }
+
+    @Test("로그인했으면 서버에서 받아온다")
+    func fetchesWhenSignedIn() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [
+            owned(id: "a", status: "draft", publishedAt: nil),
+            owned(id: "b", status: "published"),
+            owned(id: "c", status: "unlisted"),
+        ]
+        let subject = store(backend)
+
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.myListings.map(\.id) == ["a", "b", "c"])
+        #expect(backend.sawToken)
+    }
+
+    @Test("로그인하지 않았으면 비운다 — 이전 사용자 목록이 남지 않는다")
+    func clearsWhenSignedOut() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+        #expect(!subject.myListings.isEmpty)
+
+        await subject.refreshMyListings(session: nil)
+
+        #expect(subject.myListings.isEmpty)
+        // 서버를 부르지도 않는다.
+        #expect(backend.calls.filter { $0 == "myListings" }.count == 1)
+    }
+
+    @Test("올린 것이 없으면 빈 목록이다")
+    func emptyStaysEmpty() async {
+        let backend = FakeMarketplaceBackend()
+        let subject = store(backend)
+
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.myListings.isEmpty)
+    }
+
+    @Test("id로 서버 상태를 찾는다")
+    func findsByID() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "a", status: "unlisted")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.myListing(id: "a")?.isUnlisted == true)
+    }
+
+    @Test("서버에 없는 id를 '있다'고 하지 않는다")
+    func missingIDIsNil() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        // 앱이 기억해 둔 id가 다른 계정 것이거나 서버에서 사라졌을 수 있다.
+        #expect(subject.myListing(id: "stale") == nil)
+    }
+
+    @Test("다른 판매자 상품은 내 목록에 들어오지 않는다")
+    func onlyServerResultBecomesMine() async {
+        let backend = FakeMarketplaceBackend()
+        // 서버가 준 것만 들어온다. 공개 목록에 남의 상품이 있어도 섞이지 않는다.
+        backend.listingsResult = [listing(id: "theirs")]
+        backend.myListingsResult = [owned(id: "mine", status: "published")]
+        let subject = store(backend)
+
+        await subject.refresh(contentType: "mirror", sort: .latest, session: session())
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.myListings.map(\.id) == ["mine"])
+        #expect(!subject.myListings.contains { $0.id == "theirs" })
+    }
+
+    @Test("등록 성공 후 판매자 목록을 다시 받는다")
+    func publishRefreshesMyListings() async {
+        let backend = FakeMarketplaceBackend()
+        backend.publishResult = MarketplacePublishResult(
+            published: true, feeCharged: true, feeShards: 10, balance: 90,
+            listing: owned(id: "listing-1", status: "published")
+        )
+        backend.myListingsResult = [owned(id: "listing-1", status: "published")]
+        let subject = store(backend)
+        let package = SnapshotPackage(
+            manifest: Data("{}".utf8), preview: Data([0x89]), assets: [:], contentType: "mirror"
+        )
+
+        _ = await subject.publish(
+            package: package, title: "t", description: "", priceShards: 0, session: session()
+        )
+
+        #expect(backend.calls.contains("myListings"))
+        #expect(subject.myListings.map(\.id) == ["listing-1"])
+    }
+
+    @Test("내린 뒤 판매자 목록과 공개 목록을 모두 갱신한다")
+    func unpublishRefreshesBoth() async {
+        let backend = FakeMarketplaceBackend()
+        backend.listingsResult = [listing(id: "a")]
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+        await subject.refresh(contentType: "mirror", sort: .latest, session: session())
+
+        // 내리면 서버는 unlisted를 준다.
+        backend.myListingsResult = [owned(id: "a", status: "unlisted")]
+        _ = await subject.unpublish(listingID: "a", session: session())
+
+        // 공개 목록에서 사라진다.
+        #expect(subject.listings.isEmpty)
+        // 판매자 목록에는 남고 상태가 바뀐다.
+        #expect(subject.myListing(id: "a")?.isUnlisted == true)
+    }
+
+    @Test("다시 올린 뒤에도 판매자 목록을 갱신한다")
+    func republishRefreshesMyListings() async {
+        let backend = FakeMarketplaceBackend()
+        backend.publishResult = MarketplacePublishResult(
+            published: true, feeCharged: false, feeShards: 10, balance: 90,
+            listing: owned(id: "a", status: "published")
+        )
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+
+        let result = await subject.republish(listingID: "a", session: session())
+
+        // 추가 등록비 없음 — 서버가 알려 준다.
+        #expect(result?.feeCharged == false)
+        #expect(backend.calls.contains("myListings"))
+        #expect(subject.myListing(id: "a")?.isPublished == true)
+    }
+
+    @Test("local id가 없어도 서버 목록으로 관리할 수 있다")
+    func managementWorksWithoutLocalID() async {
+        let backend = FakeMarketplaceBackend()
+        // 앱은 이 상품의 id를 기억하고 있지 않다(앱 재설치 · 기기 변경).
+        backend.myListingsResult = [
+            owned(id: "forgotten", status: "published"),
+            owned(id: "forgotten-2", status: "unlisted"),
+        ]
+        let subject = store(backend)
+
+        await subject.refreshMyListings(session: session())
+
+        // 서버 목록만으로 내릴/올릴 대상을 전부 찾을 수 있다.
+        #expect(subject.myListings.count == 2)
+        #expect(subject.myListings.filter(\.isPublished).map(\.id) == ["forgotten"])
+        #expect(subject.myListings.filter(\.isUnlisted).map(\.id) == ["forgotten-2"])
+    }
+
+    @Test("판매자 목록 조회는 조각을 움직이지 않는다")
+    func fetchDoesNotTouchShards() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+        let wallet = ShardWallet(backend: FakeShardBackendForMarketplace())
+        wallet.apply(balance: 100)
+
+        await subject.refreshMyListings(session: session())
+
+        #expect(wallet.balance == 100)
+    }
+
+    @Test("실패를 성공처럼 삼키지 않는다")
+    func surfacesFailure() async {
+        let backend = FakeMarketplaceBackend()
+        backend.failure = .notSignedIn
+        let subject = store(backend)
+
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.failure == .notSignedIn)
+    }
+}
+
+@Suite("판매자 목록 규칙")
+struct MyListingsRuleTests {
+
+    private func source(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "ggumirror")
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    @Test("userId를 요청에 싣지 않는다 — 서버가 session으로 판단한다")
+    func neverSendsUserID() throws {
+        let code = try source("Backend/BackendClient+Marketplace.swift")
+        let body = code[code.range(of: "func myListings")!.lowerBound...]
+        let method = String(body.prefix(400))
+        assert(method.contains("users/me/marketplace/listings"))
+        #expect(!method.contains("userID"))
+        #expect(!method.contains("userId"))
+        #expect(!method.contains("sellerUserId"))
+    }
+
+    @Test("관리 기능이 local listingID에만 의존하지 않는다")
+    func managementDoesNotDependOnLocalIDOnly() throws {
+        // 관리 구획은 서버 목록만 읽는다 — **로컬 draft를 아예 모른다.**
+        //
+        // `listingID:`는 `store.unpublish(listingID:)`의 인자 이름이라 나온다.
+        // 그건 의존이 아니므로 **읽는 자리**만 본다.
+        let section = try source("Store/MyListingsSection.swift")
+        #expect(section.contains("store.myListings"))
+        for banned in ["draft.listingID", "PublishDraft", "publishDraft", "savePublishDraft"] {
+            #expect(!section.contains(banned), "로컬 draft에 의존한다")
+        }
+    }
+
+    @Test("등록 시트도 서버 상태를 확인한 뒤에만 관리 UI를 낸다")
+    func publishSheetsResolveThroughTheServer() throws {
+        for path in ["Store/PublishMirrorView.swift", "Store/PublishStickerView.swift"] {
+            let code = try source(path)
+            // 힌트 id를 서버 목록으로 조회한다.
+            #expect(code.contains("marketplace.myListing(id:"), "서버 조회가 없다")
+            // 서버 상태로 버튼을 정한다.
+            #expect(code.contains("listing.isPublished"), "서버 상태를 안 본다")
+            #expect(code.contains("listing.isUnlisted"), "서버 상태를 안 본다")
+        }
+    }
+
+    @Test("판매자 목록 파일에도 token 노출이 없다")
+    func noTokenExposure() throws {
+        let section = try source("Store/MyListingsSection.swift")
+        for banned in ["accessToken", "UIPasteboard", "UserDefaults", "#if DEBUG", "print("] {
+            #expect(!section.contains(banned), "\(banned)가 있다")
+        }
     }
 }

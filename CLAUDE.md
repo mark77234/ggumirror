@@ -228,6 +228,33 @@ Store browse 자체는 로그인 없이 가능.
 
 현재 유료 CTA는 실제 server purchase가 아니다.
 
+### 내 상점 상품 — 서버가 authority다 (B-7G.1)
+
+`GET /users/me/marketplace/listings`가 `draft` · `published` · `unlisted`를 전부 준다.
+**이것이 자기 상품 관리의 authority다.**
+
+`MirrorPublishDraft.listingID` · `StickerPublishDraft.listingID`는 **힌트(cache)**로
+낮췄다(제거하지 않았다 — 기존 저장 파일을 깨지 않는다). 다음은 로컬 id에 의존하지 않는다:
+
+- 내 등록 상품 찾기
+- 내리기 · 다시 올리기
+- `published` / `unlisted` 상태 판단
+
+앱을 지웠거나 기기를 바꾸면 로컬 id가 없다 — 그때도 관리가 되어야 한다.
+그래서 `MyListingsSection`은 서버 목록만 읽고 로컬 draft를 아예 모른다.
+등록 시트의 관리 버튼은 편의이고, 힌트 id를 **서버 목록으로 조회한 뒤에만** 나온다.
+
+성공 후 갱신: publish → 내 목록 / unpublish · republish → 내 목록 + 공개 목록.
+
+**상태 문자열을 열거형으로 decode하지 않는다.** 모르는 값이 오면 목록이 통째로
+비는 것보다 그 상품만 "알 수 없음"으로 남는 편이 낫다.
+
+**서버 listing에는 local content id가 없다.** `Listing` · `Snapshot` ·
+`ListingResponse` 어디에도 `MyMirror.id` / `StickerProject.id`가 없어서, "이 거울이
+이미 등록돼 있다"를 로컬 화면에서 서버 authority로 판단할 수는 없다. 제목 문자열로
+맞추는 것은 하지 않는다 — 같은 제목이 여러 개일 수 있다. 관리는 "내 상점 상품"
+구획에서 완결되므로 이번 phase에 식별자를 새로 만들지 않았다.
+
 ## Publish
 
 Publish Draft는 local preparation이다.

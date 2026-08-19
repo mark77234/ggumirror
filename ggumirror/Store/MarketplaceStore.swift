@@ -31,6 +31,11 @@ final class MarketplaceStore {
     private(set) var likedListingIDs: Set<String> = []
     /// 내가 산 상품.
     private(set) var purchasedListingIDs: Set<String> = []
+    /// **내가 올린 상품 전부** — `draft` · `published` · `unlisted`.
+    ///
+    /// 자기 상품 관리의 **authority**다. 앱이 기억해 둔 listing id는 편의(cache)일
+    /// 뿐이고, 앱을 지웠거나 기기를 바꾸면 사라진다 — 그때도 관리가 되어야 한다.
+    private(set) var myListings: [MarketplaceOwnedListing] = []
 
     private(set) var isLoading = false
     /// 마지막 실패. 화면이 그대로 보여 준다. **HTTP 오류를 성공처럼 삼키지 않는다.**
@@ -99,6 +104,32 @@ final class MarketplaceStore {
         }
     }
 
+    /// **내가 올린 상품을 서버에서 다시 받는다.** 자기 상품 관리의 authority다.
+    ///
+    /// 로그인하지 않았으면 비운다 — 이전 사용자의 목록이 남으면 안 된다.
+    func refreshMyListings(session: ServerSession?) async {
+        guard let token = session?.accessToken else {
+            myListings = []
+            return
+        }
+        do {
+            myListings = try await backend.myListings(accessToken: token)
+            failure = nil
+        } catch let error as MarketplaceFailure {
+            failure = error
+        } catch {
+            failure = .network
+        }
+    }
+
+    /// 이 listing이 지금 어떤 상태인지. **서버 목록에서만** 답한다.
+    ///
+    /// 없으면 `nil`이다 — 앱이 기억해 둔 id가 서버에 없을 수도 있다(다른 계정으로
+    /// 로그인했거나, 서버에서 사라진 경우). 그때 "있다"고 하지 않는다.
+    func myListing(id: String) -> MarketplaceOwnedListing? {
+        myListings.first { $0.id == id }
+    }
+
     /// 카드 대표 이미지를 한 번만 받아온다. 같은 상품에 요청을 겹치지 않는다.
     func loadPreview(_ listingID: String) async {
         guard previews[listingID] == nil, !previewTasks.contains(listingID) else { return }
@@ -157,6 +188,8 @@ final class MarketplaceStore {
             // **서버가 말해 준 잔액만** 넣는다. 앱이 10을 빼지 않는다.
             wallet?.apply(balance: result.balance)
             failure = nil
+            // 방금 올린 것이 판매자 목록에 보여야 한다. 서버가 authority다.
+            await refreshMyListings(session: session)
             return result
         } catch let error as MarketplaceFailure {
             failure = error
@@ -183,6 +216,8 @@ final class MarketplaceStore {
             // 공개 목록에서 사라진다.
             listings.removeAll { $0.id == listingID }
             failure = nil
+            // 상태가 `unlisted`로 바뀐 것을 서버에서 다시 받는다 — 앱이 추측하지 않는다.
+            await refreshMyListings(session: session)
             return listing
         } catch let error as MarketplaceFailure {
             failure = error
@@ -210,6 +245,7 @@ final class MarketplaceStore {
             let result = try await backend.publish(listingID: listingID, accessToken: token)
             wallet?.apply(balance: result.balance)
             failure = nil
+            await refreshMyListings(session: session)
             return result
         } catch let error as MarketplaceFailure {
             failure = error
