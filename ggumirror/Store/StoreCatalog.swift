@@ -171,8 +171,12 @@ enum StoreSort: String, CaseIterable, Identifiable {
     ///
     /// tie-breaker는 **결정적**이다. 값이 같을 때 순서가 실행마다 흔들리면
     /// 목록이 이유 없이 재배열돼 보인다.
-    func sorted(_ templates: [MirrorTemplate]) -> [MirrorTemplate] {
-        templates.sorted { lhs, rhs in
+    func sorted(_ templates: [MirrorTemplate]) -> [MirrorTemplate] { ordered(templates) }
+
+    /// 내장 목록과 **서버 상품**이 같은 규칙으로 정렬된다(`StoreSortable`).
+    /// 두 목록이 다른 순서를 내면 사용자는 목록이 흔들리는 것으로 본다.
+    func ordered<T: StoreSortable>(_ items: [T]) -> [T] {
+        items.sorted { lhs, rhs in
             switch self {
             case .latest:
                 // uploadedAt DESC, 같으면 id로 안정화
@@ -200,7 +204,7 @@ enum StoreSort: String, CaseIterable, Identifiable {
                 }
             }
             // 마지막 열쇠는 언제나 id다 — 값이 모두 같아도 순서가 흔들리지 않는다.
-            return lhs.id < rhs.id
+            return lhs.sortIdentity < rhs.sortIdentity
         }
     }
 }

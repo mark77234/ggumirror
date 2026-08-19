@@ -17,6 +17,11 @@ struct PublishStickerView: View {
     @State private var draft: StickerPublishDraft
     @State private var savedNotice = false
     @Environment(\.inkModalDismiss) private var dismiss
+    @Environment(AuthSession.self) private var session
+    @Environment(ShardWallet.self) private var wallet
+    @Environment(MarketplaceStore.self) private var marketplace
+    @State private var publishNotice: String?
+    @State private var didPublish = false
 
     init(project: StickerProject, library: StickerLibrary) {
         self.project = project
@@ -55,7 +60,23 @@ struct PublishStickerView: View {
         .scrollBounceBehavior(.basedOnSize)
         // 등록 버튼은 **스크롤 밖에 고정**한다 — 내용이 길어도 손이 닿아야 한다.
         .inkSheetActions {
-            saveButton.padding(.horizontal, 20).padding(.top, 12)
+            VStack(spacing: 8) {
+                listingControls
+                publishButton
+                saveButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+        }
+        .inkDialog(
+            didPublish ? "상점에 올렸어요" : "올리지 못했어요",
+            message: publishNotice,
+            isPresented: Binding(
+                get: { publishNotice != nil },
+                set: { if !$0 { publishNotice = nil } }
+            )
+        ) {
+            [InkDialogAction("확인", role: .primary) { if didPublish { dismiss() } }]
         }
         .inkDialog(
             "등록 준비를 저장했어요",
@@ -202,6 +223,111 @@ struct PublishStickerView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("상점 공개 등록 비용 \(StickerPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
+    }
+
+    /// 실제 등록. 등록비는 **서버가** 차감한다.
+    private var publishButton: some View {
+        let isBusy = marketplace.isBusy(.snapshot)
+        return Button(isBusy ? "올리는 중…" : "상점에 올리기 (\(StickerPublishPolicy.feeInShards) 조각)") {
+            Task { await publish() }
+        }
+        .font(InkFont.body.weight(.semibold))
+        .foregroundStyle(PaperTheme.subtleSurface)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 50)
+        .background {
+            UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                .fill(issues.isEmpty && !isBusy ? PaperTheme.ink : PaperTheme.disabled)
+        }
+        .buttonStyle(InkPressStyle())
+        .disabled(!issues.isEmpty || isBusy)
+    }
+
+    private func publish() async {
+        guard session.server != nil else {
+            _ = session.requireSignIn(for: .shardTransaction)
+            return
+        }
+        let package: SnapshotPackage
+        do {
+            package = try SnapshotPackager.package(
+                project, stickerStore: library.assetStore
+            )
+        } catch let failure as SnapshotPackagingFailure {
+            didPublish = false
+            publishNotice = failure.message
+            return
+        } catch {
+            didPublish = false
+            publishNotice = "상점에 올릴 준비를 마치지 못했어요."
+            return
+        }
+
+        let result = await marketplace.publish(
+            package: package,
+            title: StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name,
+            description: StickerPublishPolicy.normalizedDescription(draft.description),
+            priceShards: draft.priceInShards,
+            session: session.server,
+            wallet: wallet
+        )
+        guard let result else {
+            didPublish = false
+            publishNotice = marketplace.failure?.message
+            return
+        }
+        didPublish = true
+        draft.listingID = result.listing.id
+        library.saveDraft(draft)
+        publishNotice = result.feeCharged
+            ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."
+            : "추가 등록비 없이 다시 올렸어요."
+        await wallet.refresh(session: session.server)
+    }
+
+    /// 이미 올린 상품이면 내리기 / 다시 올리기.
+    @ViewBuilder
+    private var listingControls: some View {
+        if let listingID = draft.listingID {
+            let isBusy = marketplace.isBusy(.unpublish(listingID))
+                || marketplace.isBusy(.publish(listingID))
+            HStack(spacing: 8) {
+                Button("상점에서 내리기") {
+                    Task {
+                        guard await marketplace.unpublish(
+                            listingID: listingID, session: session.server
+                        ) != nil else {
+                            didPublish = false
+                            publishNotice = marketplace.failure?.message
+                            return
+                        }
+                        didPublish = false
+                        publishNotice = "상점에서 내렸어요. 이미 산 사람은 계속 받을 수 있어요."
+                    }
+                }
+                Button("다시 올리기") {
+                    Task {
+                        guard let result = await marketplace.republish(
+                            listingID: listingID, session: session.server, wallet: wallet
+                        ) else {
+                            didPublish = false
+                            publishNotice = marketplace.failure?.message
+                            return
+                        }
+                        didPublish = false
+                        publishNotice = result.feeCharged
+                            ? "등록비 \(result.feeShards) 조각이 차감됐어요."
+                            : "추가 등록비 없이 다시 올렸어요."
+                        await wallet.refresh(session: session.server)
+                    }
+                }
+            }
+            .font(InkFont.caption)
+            .foregroundStyle(PaperTheme.ink)
+            .buttonStyle(InkPressStyle())
+            .frame(minHeight: 44)
+            .disabled(isBusy)
+        }
     }
 
     private var saveButton: some View {

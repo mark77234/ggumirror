@@ -161,6 +161,11 @@ final class MirrorLibrary {
 
     /// 디스크 저장소. nil이면 메모리에만 산다(미리보기 / 단위 테스트).
     private let store: MirrorStore?
+
+    /// 이 library가 쓰는 파일 저장소. **상점에서 받은 이미지를 내려놓을 때만** 쓴다
+    /// (`MarketplaceImporter`). 거울 목록 자체는 언제나 library를 통해 바꾼다 —
+    /// 이 창구로 `save(_ library:)`를 직접 부르지 않는다.
+    var assetStore: MirrorStore? { store }
     private let assets: PhotoStickerAssetStore
     private let artworks: ImportedArtworkAssetStore
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
@@ -387,6 +392,19 @@ final class MirrorLibrary {
         )
         // 이제 거울이 참조하므로 그림을 파일로 내려둔다. 앱을 껐다 켜도 남는다.
         for artwork in artworks { self.artworks.persistToDisk(artwork.assetID) }
+        mirrors.append(mirror)
+        persist()
+        return mirror
+    }
+
+    /// 상점에서 산 거울을 목록에 담는다.
+    ///
+    /// `acquire`는 **내장 템플릿**용이라 번들 그림을 찾는다. 이쪽은 서버에서 받아
+    /// 이미 파일로 내려놓은 거울이라 그 단계가 없다 — 목록에 넣고 저장만 한다.
+    /// 같은 id가 이미 있으면 **덮어쓰지 않는다.**
+    @discardableResult
+    func adopt(_ mirror: MyMirror) -> MyMirror {
+        if let existing = mirrors.first(where: { $0.id == mirror.id }) { return existing }
         mirrors.append(mirror)
         persist()
         return mirror

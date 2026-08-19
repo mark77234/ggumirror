@@ -21,6 +21,8 @@ struct StoreView: View {
     // 조각 상점은 **RootView가 소유한 하나**를 그대로 쓴다 — 새 controller를 만들지 않는다.
     @Environment(ShardPurchaseController.self) private var shardStore
     @Environment(AuthSession.self) private var session
+    // 상점 서버 상태는 RootView가 소유한 하나를 쓴다.
+    @Environment(MarketplaceStore.self) private var marketplace
     var library: MirrorLibrary?
     /// 내가 만든 스티커. 저장하면 이 화면이 바로 갱신된다(@Observable).
     var stickers: StickerLibrary = .live
@@ -32,6 +34,9 @@ struct StoreView: View {
     @State private var tag: TagFilter = .all
     /// 상점에 들어오면 언제나 최신 순이다. 선택은 저장하지 않는다.
     @State private var sort: StoreSort = .default
+    /// 사용자 상품 카드는 `NavigationLink(value:)`가 아니라 Button이라(카드 안에서
+    /// preview를 받아오기 때문에) 경로를 직접 밀어 넣는다.
+    @State private var path = NavigationPath()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var templates: [MirrorTemplate] {
@@ -44,7 +49,7 @@ struct StoreView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 header
                 sectionSwitch
@@ -61,6 +66,19 @@ struct StoreView: View {
             .animation(InkMotion.modal, value: section)
             .navigationDestination(for: MirrorTemplate.self) { template in
                 TemplateDetailView(template: template, library: library)
+            }
+            .navigationDestination(for: MarketplaceListing.self) { listing in
+                MarketplaceListingDetailView(
+                    listing: listing,
+                    store: marketplace,
+                    session: session.server,
+                    wallet: shards,
+                    library: library,
+                    stickers: stickers,
+                    mirrorStore: library?.assetStore,
+                    stickerStore: stickers.assetStore,
+                    onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+                )
             }
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -158,6 +176,15 @@ struct StoreView: View {
 
     private var gallery: some View {
         ScrollView {
+            // 사용자가 올린 상품이 먼저다. 없으면 아무것도 그리지 않는다.
+            MarketplaceSection(
+                contentType: "mirror",
+                store: marketplace,
+                sort: sort,
+                session: session.server,
+                onSelect: { path.append($0) }
+            )
+
             if templates.isEmpty {
                 Text("이 조건에 맞는 거울이 아직 없어요.")
                     .font(InkFont.secondary)

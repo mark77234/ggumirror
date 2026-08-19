@@ -29,6 +29,9 @@ struct RootView: View {
     @State private var aiStickers = AIStickerService.live
     /// 조각 충전. StoreKit 거래 수신은 앱 수명 동안 하나만 돈다.
     @State private var shardStore = ShardPurchaseController.live
+    /// 상점 서버 상태. **하나만 둔다** — 화면마다 목록을 따로 받아오면
+    /// 같은 상품의 좋아요 수가 화면마다 달라 보인다.
+    @State private var marketplace = MarketplaceStore.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -52,6 +55,7 @@ struct RootView: View {
             .environment(adsConsent)
             .environment(aiStickers)
             .environment(shardStore)
+            .environment(marketplace)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in

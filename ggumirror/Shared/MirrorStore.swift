@@ -202,7 +202,11 @@ final class MirrorStore: Sendable {
     }
 
     /// 투명도를 유지해야 하므로 항상 PNG다. JPEG는 쓰지 않는다.
-    func encodePNG(_ image: CGImage) -> Data? {
+    func encodePNG(_ image: CGImage) -> Data? { Self.encodePNG(image) }
+
+    /// 저장소 없이도 같은 규칙으로 굽는다. instance 상태를 쓰지 않으므로
+    /// **encoder를 하나 더 만들지 않고** 이것을 공유한다.
+    static func encodePNG(_ image: CGImage) -> Data? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.png.identifier as CFString, 1, nil

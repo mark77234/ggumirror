@@ -48,6 +48,15 @@ struct StickerPublishDraft: Identifiable, Hashable, Codable {
     /// 사용할 권리가 있는 콘텐츠만 올린다는 안내를 확인했는지.
     var didAcknowledgeRights = false
     var updatedAt = Date()
+    /// 상점에 올린 뒤 서버가 준 listing id.
+    ///
+    /// **왜 여기 두는가**: backend에 "내 listing 목록"을 주는 endpoint가 없다
+    /// (공개 browse는 `published`만 보여 주고, `unlisted`/`draft`는 어디에도 안 나온다).
+    /// 그래서 앱이 자기 상품을 다시 찾으려면 id를 기억해야 한다 — 안 그러면
+    /// 앱을 껐다 켠 뒤 자기 상품을 내릴 수 없다.
+    ///
+    /// optional이라 예전에 저장된 draft도 그대로 읽힌다.
+    var listingID: String?
 }
 
 // MARK: - 검사

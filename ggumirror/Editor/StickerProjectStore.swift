@@ -204,6 +204,10 @@ final class StickerLibrary {
     private(set) var projects: [StickerProject] = []
 
     private let store: StickerProjectStore?
+
+    /// 이 library가 쓰는 파일 저장소. **상점에서 받은 완성 PNG를 내려놓을 때만** 쓴다
+    /// (`MarketplaceImporter`). 목록 자체는 언제나 library를 통해 바꾼다.
+    var assetStore: StickerProjectStore? { store }
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
     private let isReadOnly: Bool
 
@@ -290,6 +294,21 @@ final class StickerLibrary {
 
         persist()
         return projects.first { $0.id == project.id }
+    }
+
+    /// 상점에서 산 스티커를 목록에 담는다.
+    ///
+    /// `save`는 design에서 완성 PNG를 **다시 굽는다.** 이쪽은 판매자가 만든 PNG를
+    /// 이미 파일로 받아 두었으므로 다시 굽지 않는다 — 그러면 산 사람이 받는 그림이
+    /// 판매자가 올린 것과 달라진다.
+    /// 같은 id가 이미 있으면 덮어쓰지 않는다.
+    @discardableResult
+    func adopt(_ project: StickerProject) -> StickerProject? {
+        guard !isReadOnly else { return nil }
+        if let existing = projects.first(where: { $0.id == project.id }) { return existing }
+        projects.append(project)
+        persist()
+        return project
     }
 
     /// 복제. **새 id · 새 완성 PNG**를 만든다. 원본은 그대로 둔다.

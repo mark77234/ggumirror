@@ -334,6 +334,8 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
         _ path: String,
         method: String,
         body: Data? = nil,
+        /// 본문 형식. 기본은 JSON이고, 상점 snapshot 업로드만 multipart를 쓴다.
+        contentType: String = "application/json",
         accessToken: String? = nil,
         /// 2xx가 아닌 응답을 **본문까지 보고** 해석해야 하는 경로가 쓴다.
         /// 주지 않으면 기존과 똑같이 status만으로 판단한다.
@@ -348,7 +350,7 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
         request.timeoutInterval = timeout
         if let body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
         if let accessToken {
             // 이 header는 어디에도 기록하지 않는다.
@@ -382,6 +384,32 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
         case 500..<600: throw BackendError.unavailable
         default: throw BackendError.unexpected(status: http.statusCode)
         }
+    }
+}
+
+nonisolated extension BackendClient {
+    /// 상점 확장(`BackendClient+Marketplace`)이 같은 transport를 쓰기 위한 창구.
+    ///
+    /// **`send`를 그대로 재사용한다** — Bearer 주입 · timeout · 로깅 규칙이 한 곳에만
+    /// 있어야 화면마다 header를 조립하는 일이 생기지 않는다.
+    func request(
+        _ path: String,
+        method: String,
+        body: Data? = nil,
+        contentType: String = "application/json",
+        accessToken: String? = nil,
+        interpretFailure: ((Int, Data) -> Error)? = nil,
+        timeout: TimeInterval = 15
+    ) async throws -> Data {
+        try await send(
+            path,
+            method: method,
+            body: body,
+            contentType: contentType,
+            accessToken: accessToken,
+            interpretFailure: interpretFailure,
+            timeout: timeout
+        )
     }
 }
 

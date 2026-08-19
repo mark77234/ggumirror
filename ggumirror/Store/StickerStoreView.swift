@@ -25,6 +25,12 @@ struct StickerStoreView: View {
     @State private var notice: String?
     /// 상점에 들어오면 언제나 최신 순이다. 거울 상점과 같은 규칙·같은 enum이다.
     @State private var sort: StoreSort = .default
+    @Environment(MarketplaceStore.self) private var store
+    @Environment(AuthSession.self) private var session
+    @Environment(ShardWallet.self) private var wallet
+    /// 고른 사용자 상품. 상세는 sheet로 띄운다 — 스티커 상점은 상점 탭 안쪽
+    /// 화면이라 자기 NavigationStack이 없다.
+    @State private var selected: MarketplaceListing?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -53,6 +59,19 @@ struct StickerStoreView: View {
         }
         .scrollIndicators(.hidden)
         .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+        .navigationDestination(item: $selected) { listing in
+            MarketplaceListingDetailView(
+                listing: listing,
+                store: store,
+                session: session.server,
+                wallet: wallet,
+                library: mirrors,
+                stickers: library,
+                mirrorStore: mirrors?.assetStore,
+                stickerStore: library.assetStore,
+                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+            )
+        }
         // 만들기 시작 방식. 커스텀 다이얼로그를 쓴다.
         .inkDialog(
             "스티커 만들기",
@@ -188,25 +207,41 @@ struct StickerStoreView: View {
         .padding(.horizontal, 20)
     }
 
-    /// 서버가 없다. **정직하게 비어 있다고 말한다** — 가짜 목록을 만들지 않는다.
+    /// 실제 서버 목록. 상품이 없으면 **비어 있다고 말한다** — 가짜 목록을 만들지 않는다.
     private var marketplace: some View {
-        VStack(spacing: 8) {
-            Text("아직 등록된 스티커가 없어요")
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-            Text("다른 사람이 만든 스티커를 사고파는 기능은 준비 중이에요")
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.secondaryInk)
-                .multilineTextAlignment(.center)
+        Group {
+            if store.listings.contains(where: { $0.contentType == "sticker" }) {
+                MarketplaceSection(
+                    contentType: "sticker",
+                    store: store,
+                    sort: sort,
+                    session: session.server,
+                    onSelect: { selected = $0 }
+                )
+            } else {
+                VStack(spacing: 8) {
+                    Text("아직 등록된 스티커가 없어요")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                    Text("누군가 스티커를 올리면 여기에 보여요")
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 26)
+                .padding(.horizontal, 20)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
+                    shape.stroke(PaperTheme.separator, style: StrokeStyle(lineWidth: 1.4, dash: [6, 5]))
+                }
+                .padding(.horizontal, 20)
+                // 비어 있어도 서버에 한 번은 물어본다.
+                .task(id: sort.rawValue) {
+                    await store.refresh(contentType: "sticker", sort: sort, session: session.server)
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .padding(.horizontal, 20)
-        .background {
-            let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
-            shape.stroke(PaperTheme.separator, style: StrokeStyle(lineWidth: 1.4, dash: [6, 5]))
-        }
-        .padding(.horizontal, 20)
     }
 
     // MARK: - 동작

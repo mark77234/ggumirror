@@ -4,8 +4,12 @@
 //
 //  상점에 올리기 전 판매 정보를 채우는 한 화면.
 //
-//  여기서 끝나는 것은 **등록 준비**다. 실제 등록 / 조각 차감 / 상점 노출은 하지 않는다.
-//  로그인과 서버가 없는 상태에서 "등록됐어요"라고 말하지 않는다.
+//  두 가지를 할 수 있다:
+//    - **등록 준비 저장** — 로그인 없이 지금도 된다(Core Product Policy)
+//    - **상점에 올리기** — 로그인이 필요하고 서버가 등록비를 차감한다
+//
+//  등록비는 **서버가 정하고 서버가 뺀다.** 앱은 안내만 하고, 성공 응답에 담긴
+//  잔액을 지갑에 넣는다. "두 번째니까 무료"를 앱이 계산하지 않는다.
 //
 
 import SwiftUI
@@ -15,8 +19,14 @@ struct PublishMirrorView: View {
     var library: MirrorLibrary
 
     @Environment(\.inkModalDismiss) private var dismiss
+    @Environment(AuthSession.self) private var session
+    @Environment(ShardWallet.self) private var wallet
+    @Environment(MarketplaceStore.self) private var marketplace
     @State private var draft: MirrorPublishDraft
     @State private var savedNotice = false
+    /// 등록 결과 안내. 성공/실패 모두 여기로 온다.
+    @State private var publishNotice: String?
+    @State private var didPublish = false
 
     init(mirror: MyMirror, library: MirrorLibrary) {
         self.mirror = mirror
@@ -56,14 +66,30 @@ struct PublishMirrorView: View {
         .scrollBounceBehavior(.basedOnSize)
         // 등록 버튼은 **스크롤 밖에 고정**한다 — 내용이 길어도 손이 닿아야 한다.
         .inkSheetActions {
-            saveButton.padding(.horizontal, 20).padding(.top, 12)
+            VStack(spacing: 8) {
+                listingControls
+                publishButton
+                saveButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
         }
         .inkDialog(
             "등록 준비를 저장했어요",
-            message: "실제 상점 등록은 로그인과 함께 다음 업데이트에서 열려요. 지금은 조각이 차감되지 않아요.",
+            message: "아직 상점에 올라가지 않았어요. 조각도 차감되지 않았어요.",
             isPresented: $savedNotice
         ) {
             [InkDialogAction("확인", role: .primary) { dismiss() }]
+        }
+        .inkDialog(
+            didPublish ? "상점에 올렸어요" : "올리지 못했어요",
+            message: publishNotice,
+            isPresented: Binding(
+                get: { publishNotice != nil },
+                set: { if !$0 { publishNotice = nil } }
+            )
+        ) {
+            [InkDialogAction("확인", role: .primary) { if didPublish { dismiss() } }]
         }
     }
 
@@ -168,9 +194,122 @@ struct PublishMirrorView: View {
         .accessibilityLabel("상점 공개 등록 비용 \(MirrorPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
     }
 
+    /// 실제 등록. 꾸러미를 만들어 올리고 게시까지 한 번에 한다.
+    ///
+    /// **연타를 막는다** — 등록비가 두 번 빠지면 사용자가 조각을 잃는다.
+    private var publishButton: some View {
+        let isBusy = marketplace.isBusy(.snapshot)
+        return Button(isBusy ? "올리는 중…" : "상점에 올리기 (\(MirrorPublishPolicy.feeInShards) 조각)") {
+            Task { await publish() }
+        }
+        .font(InkFont.body.weight(.semibold))
+        .foregroundStyle(PaperTheme.subtleSurface)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 50)
+        .background {
+            UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                .fill(issues.isEmpty && !isBusy ? PaperTheme.ink : PaperTheme.disabled)
+        }
+        .buttonStyle(InkPressStyle())
+        .disabled(!issues.isEmpty || isBusy)
+    }
+
+    /// 꾸러미를 만들고 서버에 올린다.
+    ///
+    /// 이미지가 하나라도 없으면 **보내기 전에** 멈춘다 — 반쪽 꾸러미를 서버에
+    /// 올리면 산 사람 기기에서 그림이 비어 보인다.
+    private func publish() async {
+        guard session.server != nil else {
+            _ = session.requireSignIn(for: .shardTransaction)
+            return
+        }
+        let package: SnapshotPackage
+        do {
+            package = try SnapshotPackager.package(mirror, store: library.assetStore)
+        } catch let failure as SnapshotPackagingFailure {
+            didPublish = false
+            publishNotice = failure.message
+            return
+        } catch {
+            didPublish = false
+            publishNotice = "상점에 올릴 준비를 마치지 못했어요."
+            return
+        }
+
+        let result = await marketplace.publish(
+            package: package,
+            title: MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name,
+            description: MirrorPublishPolicy.normalizedDescription(draft.description),
+            priceShards: draft.priceInShards,
+            session: session.server,
+            wallet: wallet
+        )
+        guard let result else {
+            didPublish = false
+            publishNotice = marketplace.failure?.message
+            return
+        }
+        didPublish = true
+        // listing id를 남긴다 — 앱을 껐다 켠 뒤에도 자기 상품을 내릴 수 있어야 한다.
+        draft.listingID = result.listing.id
+        library.savePublishDraft(draft)
+        // **서버가 말해 준 값을 그대로 옮긴다.** 앱이 10을 빼지 않는다.
+        publishNotice = result.feeCharged
+            ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."
+            : "추가 등록비 없이 다시 올렸어요."
+        await wallet.refresh(session: session.server)
+    }
+
+    /// 이미 올린 상품이면 내리기 / 다시 올리기를 보여 준다.
+    ///
+    /// 다시 올릴 때 **추가 등록비가 없다** — 서버가 `feeCharged=false`로 알려 준다.
+    @ViewBuilder
+    private var listingControls: some View {
+        if let listingID = draft.listingID {
+            let isBusy = marketplace.isBusy(.unpublish(listingID))
+                || marketplace.isBusy(.publish(listingID))
+            HStack(spacing: 8) {
+                Button("상점에서 내리기") {
+                    Task {
+                        guard await marketplace.unpublish(
+                            listingID: listingID, session: session.server
+                        ) != nil else {
+                            didPublish = false
+                            publishNotice = marketplace.failure?.message
+                            return
+                        }
+                        didPublish = false
+                        publishNotice = "상점에서 내렸어요. 이미 산 사람은 계속 받을 수 있어요."
+                    }
+                }
+                Button("다시 올리기") {
+                    Task {
+                        guard let result = await marketplace.republish(
+                            listingID: listingID, session: session.server, wallet: wallet
+                        ) else {
+                            didPublish = false
+                            publishNotice = marketplace.failure?.message
+                            return
+                        }
+                        didPublish = false
+                        publishNotice = result.feeCharged
+                            ? "등록비 \(result.feeShards) 조각이 차감됐어요."
+                            : "추가 등록비 없이 다시 올렸어요."
+                        await wallet.refresh(session: session.server)
+                    }
+                }
+            }
+            .font(InkFont.caption)
+            .foregroundStyle(PaperTheme.ink)
+            .buttonStyle(InkPressStyle())
+            .frame(minHeight: 44)
+            .disabled(isBusy)
+        }
+    }
+
     private var saveButton: some View {
         // 안내 문구는 스크롤 안에 남는다 — 고정 줄은 버튼 하나만 담는다.
-        Button("등록 준비 저장") {
+        Button("등록 준비만 저장") {
             library.savePublishDraft(draft)
             savedNotice = true
         }
