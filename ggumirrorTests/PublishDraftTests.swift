@@ -347,7 +347,7 @@ struct PublishDraftTests {
             let library = library(store)
             library.save(MirrorDesign(mirror: made()), name: "나의 거울", context: .createNew)
 
-            #expect(MirrorPublishPolicy.feeInShards == 20)
+            #expect(MirrorPublishPolicy.feeInShards == 10)
 
             var draft = valid(library.mirrors[0])
             draft.mirrorID = library.mirrors[0].id

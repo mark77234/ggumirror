@@ -203,6 +203,7 @@ struct StickerStoreView: View {
 
     // MARK: - 내보내기
 
+
     /// 투명 PNG 그대로 사진 앱에 저장한다. JPEG로 바꾸면 투명 영역이 사라진다.
     private func saveSticker(_ project: StickerProject) {
         Task {
@@ -220,18 +221,6 @@ struct StickerStoreView: View {
         }
     }
 
-    private func shareSticker(_ project: StickerProject) {
-        do {
-            let file = try ExportedFile.png(try OwnContentExport.stickerPNG(project), name: project.name)
-            if let failure = ShareSheet.present(file, onFinish: { file.cleanUp() }) {
-                notice = failure.message
-            }
-        } catch {
-            notice = (error as? OwnContentExportFailure)?.message
-                ?? OwnContentExportFailure.sharePreparationFailed.message
-        }
-    }
-
     private func actions(for project: StickerProject) -> [InkDialogAction] {
         [
             InkDialogAction("사용하기", role: .primary) {
@@ -244,15 +233,13 @@ struct StickerStoreView: View {
                     context: .editExisting(project.id)
                 )
             },
-            InkDialogAction("복제") { library.duplicate(project) },
             InkDialogAction("사진에 저장") { saveSticker(project) },
-            InkDialogAction("공유하기") { shareSticker(project) },
             // AI 스티커는 아직 팔 수 없다. 내보내기(사진 저장 · 공유)는 위에 그대로 있다 —
             // 내가 쓰려고 만든 것과 남에게 파는 것은 다른 문제다.
             project.canPublishToStore
-                ? InkDialogAction("상점에 올리기") { publishTarget = project }
-                : InkDialogAction("상점에 올리기") {
-                    notice = "AI로 만든 스티커는 아직 상점에 올릴 수 없어요. 사진 저장과 공유는 할 수 있어요."
+                ? InkDialogAction("상점에 등록") { publishTarget = project }
+                : InkDialogAction("상점에 등록") {
+                    notice = "AI로 만든 스티커는 아직 상점에 등록할 수 없어요. 사진에 저장은 할 수 있어요."
                 },
             InkDialogAction("삭제", role: .destructive) { library.delete(project) },
             InkDialogAction("닫기"),

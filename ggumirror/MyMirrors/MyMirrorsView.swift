@@ -58,7 +58,6 @@ struct MyMirrorsView: View {
 
             gallery
         }
-        // 거울 하나를 골랐을 때의 동작 목록. `꾸미기`는 이 거울을 고치고, `복제`만 새 거울을 만든다.
         .inkDialog(isPresented: Binding(
             get: { actionTarget != nil },
             set: { if !$0 { actionTarget = nil } }
@@ -112,21 +111,27 @@ struct MyMirrorsView: View {
         }
     }
 
-    /// 거울 하나에 대해 할 수 있는 것. `꾸미기`는 수정, `복제`만 새 거울을 만든다.
+    /// 거울 하나에 대해 할 수 있는 것. **스티커와 같은 구성이다** — 하나만 다르면 헷갈린다.
+    ///
+    /// 복제와 공유하기는 뺐다. 사진에 저장은 남는다 —
+    /// 공유를 없앤다고 앱 밖으로 꺼내는 길까지 막지 않는다.
     private func actions(for mirror: MyMirror) -> [InkDialogAction] {
         var actions = [
             InkDialogAction("적용", role: .primary) { library.apply(mirror) },
             InkDialogAction("꾸미기") { onEditMirror(mirror) },
-            InkDialogAction("복제") { library.duplicate(mirror) },
         ]
         // 상점에서 받은 거울을 그대로 되파는 흐름은 만들지 않는다.
+        // 다만 **버튼을 조용히 감추지 않는다** — 왜 안 되는지 알려준다(스티커와 같은 방식).
         if MirrorPublishPolicy.isEligible(mirror) {
-            actions.append(InkDialogAction("상점에 올리기") { publishTarget = mirror })
+            actions.append(InkDialogAction("상점에 등록") { publishTarget = mirror })
+        } else {
+            actions.append(InkDialogAction("상점에 등록") {
+                notice = "직접 만든 거울만 상점에 등록할 수 있어요."
+            })
         }
         // 내가 만든 거울만 앱 밖으로 나간다 — 상점 artwork를 원본 파일로 꺼내가지 않는다.
         if OwnContentExportPolicy.canExport(mirror) {
             actions.append(InkDialogAction("사진에 저장") { save(mirror) })
-            actions.append(InkDialogAction("공유하기") { share(mirror) })
         }
         if mirror.origin != .basic {
             actions.append(InkDialogAction("삭제", role: .destructive) { library.delete(mirror) })
@@ -154,18 +159,6 @@ struct MyMirrorsView: View {
         }
     }
 
-    /// 임시 파일 하나를 만들어 기본 공유 시트에 넘긴다. 끝나면 지운다.
-    private func share(_ mirror: MyMirror) {
-        do {
-            let file = try ExportedFile.png(try OwnContentExport.mirrorPNG(mirror), name: mirror.name)
-            if let failure = ShareSheet.present(file, onFinish: { file.cleanUp() }) {
-                notice = failure.message
-            }
-        } catch {
-            notice = (error as? OwnContentExportFailure)?.message
-                ?? OwnContentExportFailure.sharePreparationFailed.message
-        }
-    }
 
     /// 거울이 있든 없든 항상 여기서 새 거울을 시작할 수 있다.
     private var createButton: some View {

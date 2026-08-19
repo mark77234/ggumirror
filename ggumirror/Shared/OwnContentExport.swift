@@ -200,40 +200,5 @@ final class ExportedFile {
     }
 }
 
-// MARK: - 공유 시트
-
-/// iOS 기본 공유 시트. 우리가 UI를 만들지 않는다.
-@MainActor
-enum ShareSheet {
-    /// 공유가 끝나면(취소 포함) `onFinish`가 불린다 — 임시 파일을 지우는 자리다.
-    static func present(_ file: ExportedFile, onFinish: @escaping () -> Void) -> OwnContentExportFailure? {
-        guard let presenter = topViewController() else {
-            onFinish()
-            return .sharePreparationFailed
-        }
-
-        let controller = UIActivityViewController(activityItems: [file.url], applicationActivities: nil)
-        controller.completionWithItemsHandler = { _, _, _, _ in onFinish() }
-        // iPad에서는 anchor가 없으면 크래시한다.
-        if let popover = controller.popoverPresentationController {
-            popover.sourceView = presenter.view
-            popover.sourceRect = CGRect(
-                x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0
-            )
-            popover.permittedArrowDirections = []
-        }
-        presenter.present(controller, animated: true)
-        return nil
-    }
-
-    private static func topViewController() -> UIViewController? {
-        let scene = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-        var controller = scene?.windows.first(where: \.isKeyWindow)?.rootViewController
-        while let presented = controller?.presentedViewController {
-            controller = presented
-        }
-        return controller
-    }
-}
+// 공유 시트는 UI-P3에서 제거했다 — 거울/스티커 공유하기 action이 사라져 부를 곳이 없다.
+// `ExportedFile`은 남긴다: 이전 빌드가 남긴 임시 파일을 `cleanUpLeftovers()`가 치운다.

@@ -114,6 +114,20 @@ struct MirrorTemplate: Identifiable, Hashable {
     /// 손그림 PNG 템플릿이면 여기 들어온다. 단색 기본 템플릿은 nil.
     var artwork: StoreArtworkResource?
 
+    /// 받아 간 횟수. **서버가 세는 값이고 앱이 올리지 않는다.**
+    ///
+    /// 의미는 "최초 소유권 획득 성공"이다 — 유료는 결제+소유권 생성, 무료는 소유권 생성.
+    /// 재다운로드 · 중복 구매 · 판매자 본인 사용 · 미리보기는 **오르지 않는다**.
+    /// 아직 서버가 없으므로 내장 목록은 전부 0이다. 숫자를 지어내지 않는다.
+    var downloadCount: Int = 0
+    /// 좋아요 수. 마찬가지로 서버 값이고, 지금은 0이다.
+    var likeCount: Int = 0
+    /// **상점에 처음 올라온 날.** 마지막 수정일이 아니다(서버의 `publishedAt`과 같은 뜻).
+    ///
+    /// 내장 목록은 상점에 업로드된 적이 없으므로 `nil`이다 —
+    /// `Date.now`를 채워 넣으면 거짓말이 된다.
+    var uploadedAt: Date?
+
     /// 조각 가격. 갈래 하나로 정해진다 — 값이 코드 여기저기 흩어지지 않는다.
     var price: Int { category.temporaryPrice }
 
@@ -126,6 +140,83 @@ struct MirrorTemplate: Identifiable, Hashable {
         case .all: true
         default: category == filter || highlights.contains(filter)
         }
+    }
+}
+
+// MARK: - 정렬
+
+/// 상점 정렬. **거울 상점과 스티커 상점이 같은 규칙을 쓴다.**
+enum StoreSort: String, CaseIterable, Identifiable {
+    case latest
+    case popular
+    case likes
+
+    var id: String { rawValue }
+
+    /// 상점에 처음 들어왔을 때의 값.
+    static let `default` = StoreSort.latest
+
+    var label: String {
+        switch self {
+        case .latest: "최신 순"
+        case .popular: "인기 순"
+        case .likes: "좋아요 순"
+        }
+    }
+
+    /// **"인기"의 authority는 다운로드 수 하나다.**
+    ///
+    /// 좋아요와 다운로드를 섞은 가중 점수를 만들지 않는다 — 이름만 "인기 순"이고
+    /// 실제 기준은 `downloadCount`다. 섞으면 왜 이 순서인지 아무도 설명할 수 없다.
+    ///
+    /// tie-breaker는 **결정적**이다. 값이 같을 때 순서가 실행마다 흔들리면
+    /// 목록이 이유 없이 재배열돼 보인다.
+    func sorted(_ templates: [MirrorTemplate]) -> [MirrorTemplate] {
+        templates.sorted { lhs, rhs in
+            switch self {
+            case .latest:
+                // uploadedAt DESC, 같으면 id로 안정화
+                if lhs.uploadedAtKey != rhs.uploadedAtKey {
+                    return lhs.uploadedAtKey > rhs.uploadedAtKey
+                }
+            case .popular:
+                // downloadCount DESC → uploadedAt DESC → id
+                if lhs.downloadCount != rhs.downloadCount {
+                    return lhs.downloadCount > rhs.downloadCount
+                }
+                if lhs.uploadedAtKey != rhs.uploadedAtKey {
+                    return lhs.uploadedAtKey > rhs.uploadedAtKey
+                }
+            case .likes:
+                // likeCount DESC → downloadCount DESC → uploadedAt DESC → id
+                if lhs.likeCount != rhs.likeCount {
+                    return lhs.likeCount > rhs.likeCount
+                }
+                if lhs.downloadCount != rhs.downloadCount {
+                    return lhs.downloadCount > rhs.downloadCount
+                }
+                if lhs.uploadedAtKey != rhs.uploadedAtKey {
+                    return lhs.uploadedAtKey > rhs.uploadedAtKey
+                }
+            }
+            // 마지막 열쇠는 언제나 id다 — 값이 모두 같아도 순서가 흔들리지 않는다.
+            return lhs.id < rhs.id
+        }
+    }
+}
+
+extension MirrorTemplate {
+    /// 정렬에 쓰는 업로드 시각. **올라온 적 없는 내장 목록은 가장 뒤로 간다.**
+    /// `Date.distantPast`는 저장하지 않고 비교할 때만 쓴다 — 문서에 거짓 날짜를 넣지 않는다.
+    var uploadedAtKey: Date { uploadedAt ?? .distantPast }
+}
+
+extension MirrorTemplate {
+    /// 카드/상세가 함께 쓰는 표시 문자열. **0도 감추지 않는다** —
+    /// 감추면 상품마다 metadata 폭이 달라져 목록이 들쭉날쭉해진다.
+    var uploadedAtLabel: String {
+        guard let uploadedAt else { return "—" }
+        return uploadedAt.formatted(.dateTime.year().month().day())
     }
 }
 

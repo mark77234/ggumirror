@@ -163,6 +163,63 @@ Mirror Decoration Text는 별도 multi-font library를 사용한다.
 
 ## Store
 
+### 등록 비용 · 정렬 · metadata (UI-P3)
+
+상점 등록 비용은 **정책 상수 하나**에서만 나온다 — 화면·검증·안내가 전부 그 값을 읽는다.
+
+| | 상수 | 값 |
+|---|---|---|
+| 거울 | `MirrorPublishPolicy.feeInShards` | **10 조각** |
+| 스티커 | `StickerPublishPolicy.feeInShards` | **5 조각** |
+
+과거 20조각 정책은 제거했다. B-7 backend도 이 값을 최종 정책으로 쓴다 —
+`mirror_publish_fee = 10` · `sticker_publish_fee = 5`.
+
+**정렬은 `StoreSort` 하나를 거울/스티커 상점이 공유한다.** 기본값은 최신 순이고
+선택은 저장하지 않는다(로컬 목록 정렬이라 네트워크를 다시 부르지 않는다).
+
+| UI | authority | tie-breaker |
+|---|---|---|
+| 최신 순 | `uploadedAt` DESC | id |
+| **인기 순** | **`downloadCount` DESC** | uploadedAt → id |
+| 좋아요 순 | `likeCount` DESC | downloadCount → uploadedAt → id |
+
+**"인기"는 다운로드 수 하나다.** 좋아요를 섞은 가중 점수를 만들지 않는다 —
+섞으면 왜 이 순서인지 아무도 설명할 수 없다. 이름만 "인기 순"이다.
+
+`downloadCount`의 의미는 **"최초 소유권 획득 성공"**이다:
+
+| | |
+|---|---|
+| 유료 구매 + ownership 생성 성공 | +1 |
+| 무료 ownership 생성 성공 | +1 |
+| 같은 사용자의 재다운로드 · 중복 구매 · retry | **+0** |
+| 판매자 본인 사용 | **+0** |
+| 미리보기 | **+0** |
+
+**count는 서버가 센다.** 앱이 올리지 않고, 랜덤/실행마다 증가/클릭 증가를 만들지 않는다.
+서버가 없는 지금 내장 목록은 전부 `0`이고 `uploadedAt`은 `nil`이다 —
+`Date.now`를 채우면 거짓말이 된다. 표시는 `—`이고 정렬에서는 맨 뒤로 간다.
+
+좋아요도 같다 — 실제 multi-user like backend가 없으므로 **표시와 정렬 계약까지만** 있다.
+
+### 사용자 action (UI-P3)
+
+거울과 스티커의 action 구성은 **같다**. 다른 것은 등록 비용뿐이다.
+
+    상점에 등록 · 사진에 저장 · (거울: 적용/꾸미기, 스티커: 사용하기/꾸미기) · 삭제
+
+**복제와 공유하기는 없다.** 사진에 저장은 남는다 — 공유를 없앤다고 앱 밖으로 꺼내는
+길까지 막지 않는다. `UIActivityViewController`를 띄우는 코드가 앱에 없다.
+
+Editor 캔버스의 오브젝트 복제(스티커/텍스트 하나를 캔버스에서 복제)는 **다른 기능이라 남는다.**
+`MirrorLibrary.duplicate` · `StickerProjectStore.duplicate`도 남는다 —
+`.duplicate` 저장 context와 asset 공유 테스트가 쓰는 내부 helper다.
+
+등록할 수 없는 거울이라도 **버튼을 조용히 감추지 않는다** — 왜 안 되는지 알려준다.
+
+`ggumirrorTests/StoreActionsTests.swift`가 위 전부를 고정한다.
+
 production Store artwork는 실제 hand-drawn PNG 24개.
 
 placeholder Store content를 다시 추가하지 않는다.

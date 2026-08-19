@@ -19,11 +19,10 @@ enum StickerPublishPolicy {
     /// 판매자가 정하는 가격. 0(무료)도 허용한다.
     static let priceRange = 0...999
 
-    /// 스티커 등록 비용은 **아직 정하지 않았다.**
+    /// 상점 등록 비용. 거울(10)보다 싸다 — 스티커는 더 작은 콘텐츠다.
     ///
-    /// 거울의 20 조각을 그대로 가져오지 않는다 — 스티커는 거울보다 작은 콘텐츠라
-    /// 같은 값일 이유가 없다. 확정되지 않은 비용을 화면에 숫자로 보여주지 않는다.
-    static let feeInShards: Int? = nil
+    /// 거울과 마찬가지로 **화면·검증·안내가 전부 이 값 하나에서 나온다.**
+    static let feeInShards = 5
 
     static func normalizedTitle(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -522,9 +522,9 @@ struct StickerStoreTests {
             stickers.saveDraft(draft)
             store.flush()
 
-            // 등록 비용은 아직 정하지 않았다 — 거울의 20 조각을 가져오지 않는다.
-            #expect(StickerPublishPolicy.feeInShards == nil)
-            #expect(MirrorPublishPolicy.feeInShards == 20)
+            // UI-P3에서 확정됐다 — 스티커 5, 거울 10.
+            #expect(StickerPublishPolicy.feeInShards == 5)
+            #expect(MirrorPublishPolicy.feeInShards == 10)
             // 상점에는 여전히 아무 listing도 없다.
             #expect(stickers.projects.count == 1)
             #expect(stickers.drafts.count == 1)

@@ -183,7 +183,9 @@ struct OwnContentExportTests {
         let view = codeOnly(try repoFile("ggumirror/MyMirrors/MyMirrorsView.swift"))
         #expect(view.contains("OwnContentExportPolicy.canExport(mirror)"))
         #expect(view.contains("사진에 저장"))
-        #expect(view.contains("공유하기"))
+        // 공유하기는 UI-P3에서 없앴다. **사진 저장은 그대로 정책 뒤에 있다** —
+        // 공유를 지우면서 내보내기 경로까지 같이 사라지지 않았는지가 이 test의 요점이다.
+        #expect(!view.contains("공유하기"))
     }
 
     @Test("내보내기 정책은 판매 정책과 별개다")

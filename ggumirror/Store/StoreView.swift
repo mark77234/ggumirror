@@ -30,12 +30,17 @@ struct StoreView: View {
     @State private var isShowingShardStore = false
     @State private var category: StoreCategory = .all
     @State private var tag: TagFilter = .all
+    /// 상점에 들어오면 언제나 최신 순이다. 선택은 저장하지 않는다.
+    @State private var sort: StoreSort = .default
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var templates: [MirrorTemplate] {
-        StoreCatalog.samples.filter { template in
-            template.matches(category) && (tag.tag.map(template.tags.contains) ?? true)
-        }
+        // 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
+        sort.sorted(
+            StoreCatalog.samples.filter { template in
+                template.matches(category) && (tag.tag.map(template.tags.contains) ?? true)
+            }
+        )
     }
 
     var body: some View {
@@ -145,6 +150,8 @@ struct StoreView: View {
         VStack(spacing: 8) {
             InkFilterBar(items: StoreCategory.allCases, selection: $category) { $0.rawValue }
             InkFilterBar(items: TagFilter.allCases, selection: $tag) { $0.label }
+            // 정렬도 같은 칩 줄을 쓴다 — 세 가지가 한눈에 보이고 새 UI 언어를 만들지 않는다.
+            InkFilterBar(items: StoreSort.allCases, selection: $sort) { $0.label }
         }
         .padding(.bottom, 14)
     }
@@ -197,11 +204,35 @@ private struct StoreGalleryItem: View {
                 Spacer(minLength: 4)
                 ShardAmount(amount: template.price)
             }
+
+            metadata
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(template.name), \(template.creator), \(template.price == 0 ? "무료" : "\(template.price) 조각")"
+            """
+            \(template.name), \(template.creator), \
+            \(template.price == 0 ? "무료" : "\(template.price) 조각"), \
+            다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \
+            \(template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드")
+            """
         )
+    }
+
+    /// 한 줄짜리 작은 metadata. 아이콘 + 숫자만 — 카드를 어지럽히지 않는다.
+    private var metadata: some View {
+        HStack(spacing: 8) {
+            Label("\(template.downloadCount)", systemImage: "arrow.down")
+            Label("\(template.likeCount)", systemImage: "heart")
+            Spacer(minLength: 2)
+            Text(template.uploadedAtLabel)
+        }
+        .font(InkFont.caption)
+        .foregroundStyle(PaperTheme.secondaryInk)
+        .labelStyle(.titleAndIcon)
+        .imageScale(.small)
+        .lineLimit(1)
+        // 작은 화면에서 줄이 깨지기보다 줄어들게 한다.
+        .minimumScaleFactor(0.8)
     }
 }
 

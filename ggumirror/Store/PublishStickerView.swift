@@ -5,7 +5,7 @@
 //  스티커 **등록 준비**. 실제 등록도, 조각 차감도, 상점 노출도 없다.
 //  "등록됐다" / "판매 중"처럼 보이는 문구를 쓰지 않는다 — 서버가 없기 때문이다.
 //
-//  등록 비용은 아직 정하지 않았다. 거울의 20 조각을 그대로 가져오지 않는다.
+//  등록 비용은 5 조각이다(거울 10보다 싸다). 값은 StickerPublishPolicy 하나에서만 온다.
 //
 
 import SwiftUI
@@ -192,12 +192,16 @@ struct PublishStickerView: View {
         .buttonStyle(InkPressStyle())
     }
 
-    /// 등록 비용은 **아직 정하지 않았다.** 숫자를 지어내지 않는다.
+    /// 거울과 **같은 모양**이다. 값만 정책 상수에서 다르게 온다.
     private var feeNotice: some View {
-        Text("등록 비용은 아직 정해지지 않았어요. 지금은 조각이 차감되지 않아요.")
-            .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.secondaryInk)
-            .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 8) {
+            ShardAmount(amount: StickerPublishPolicy.feeInShards, font: InkFont.caption, iconSize: 16)
+            Text("상점 공개 등록 비용이에요. 지금은 차감되지 않아요.")
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("상점 공개 등록 비용 \(StickerPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
     }
 
     private var saveButton: some View {

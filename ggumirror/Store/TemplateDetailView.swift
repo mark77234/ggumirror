@@ -41,6 +41,8 @@ struct TemplateDetailView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(template.price == 0 ? "무료" : "\(template.price) 조각")
 
+                metadata
+
                 actions
             }
             .padding(.horizontal, 20)
@@ -57,6 +59,28 @@ struct TemplateDetailView: View {
         ) {
             [InkDialogAction("확인", role: .primary)]
         }
+    }
+
+    /// 카드보다 조금 더 또렷하게. 값의 출처는 카드와 **같은 model field**다.
+    private var metadata: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 14) {
+                Label("다운로드 \(template.downloadCount)", systemImage: "arrow.down")
+                Label("좋아요 \(template.likeCount)", systemImage: "heart")
+            }
+            Text(uploadedLine)
+        }
+        .font(InkFont.caption)
+        .foregroundStyle(PaperTheme.secondaryInk)
+        .imageScale(.small)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \(uploadedLine)"
+        )
+    }
+
+    private var uploadedLine: String {
+        template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드"
     }
 
     private var tags: some View {

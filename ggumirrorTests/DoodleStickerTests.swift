@@ -395,7 +395,7 @@ struct DoodleStickerTests {
     @Test("조각 정책은 바뀌지 않았다")
     func shardPolicyUnchanged() {
         // 잔액은 이제 서버가 정한다(하드코딩 32는 사라졌다). 등록 비용 정책은 그대로다.
-        #expect(MirrorPublishPolicy.feeInShards == 20)
+        #expect(MirrorPublishPolicy.feeInShards == 10)
     }
 }
 
