@@ -61,9 +61,12 @@ struct PublishMirrorView: View {
                 }
             }
             .padding(20)
+            .inkDismissesKeyboardOnTap()
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
+        // 키보드가 등록 버튼을 덮은 채 남지 않게 한다 — 스크롤로도, 빈 곳 탭으로도 닫힌다.
+        .scrollDismissesKeyboard(.interactively)
         // 등록 버튼은 **스크롤 밖에 고정**한다 — 내용이 길어도 손이 닿아야 한다.
         .inkSheetActions {
             VStack(spacing: 8) {

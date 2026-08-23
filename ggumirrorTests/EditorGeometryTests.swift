@@ -1017,7 +1017,7 @@ struct EditorGeometryTests {
         // 받은 기본 / 구매 거울은 슬롯을 쓰지 않는다.
         #expect(library.createdCount == 1)
         #expect(library.createdCount == library.mirrors.count { $0.origin == .made })
-        #expect(library.createdCapacity == MirrorStoragePolicy.freeCreatedSlots)
+        #expect(library.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots)
     }
 
     @Test("무료 슬롯이 가득 차면 새 거울 저장이 막힌다")
@@ -1025,11 +1025,12 @@ struct EditorGeometryTests {
         let library = seededLibrary()
         let basic = library.mirrors.first { $0.origin == .basic }!
 
-        while library.hasFreeCreatedSlot {
+        while library.hasFreeMirrorSlot {
             let outcome = library.save(MirrorDesign(mirror: basic), name: "거울", context: .duplicate)
             #expect(outcome != .needsMoreSlots)
         }
-        #expect(library.createdCount == library.createdCapacity)
+        // 한도는 **보관 중인 전부**로 본다 — seed에 이미 받은 거울이 들어 있다.
+        #expect(library.storedCount == library.mirrorCapacity)
         let blocked = library.save(MirrorDesign(mirror: basic), name: "하나 더", context: .duplicate)
         #expect(blocked == .needsMoreSlots)
     }
@@ -1038,7 +1039,7 @@ struct EditorGeometryTests {
     func fullSlotsStillAllowUpdates() {
         let library = seededLibrary()
         let basic = library.mirrors.first { $0.origin == .basic }!
-        while library.hasFreeCreatedSlot {
+        while library.hasFreeMirrorSlot {
             _ = library.save(MirrorDesign(mirror: basic), name: "거울", context: .duplicate)
         }
         let existing = library.mirrors.last { $0.origin == .made }!
@@ -1051,20 +1052,20 @@ struct EditorGeometryTests {
     @Test("슬롯 팩은 보관 공간을 늘린다")
     func slotPackExpandsCapacity() {
         let library = MirrorLibrary()
-        let before = library.createdCapacity
+        let before = library.mirrorCapacity
         library.grantSlotPack()
-        #expect(library.createdCapacity == before + MirrorStoragePolicy.slotPackSize)
+        #expect(library.mirrorCapacity == before + MirrorStoragePolicy.slotPackSize)
     }
 
     @Test("보관 슬롯 확장은 조각을 건드리지 않는다")
     func slotsAreNotShards() {
         let library = MirrorLibrary()
-        let capacityBefore = library.createdCapacity
+        let capacityBefore = library.mirrorCapacity
         library.grantSlotPack()
 
         // 슬롯만 늘어난다. 조각은 client가 만질 수 없고 서버 원장에만 있다
         // (ShardWalletTests가 client에 mutation 통로가 없음을 고정한다).
-        #expect(library.createdCapacity == capacityBefore + MirrorStoragePolicy.slotPackSize)
+        #expect(library.mirrorCapacity == capacityBefore + MirrorStoragePolicy.slotPackSize)
     }
 
     // MARK: - 지우개
@@ -1283,7 +1284,7 @@ struct EditorGeometryTests {
         let library = MirrorLibrary()
         #expect(library.mirrors.isEmpty)
         #expect(library.createdCount == 0)
-        #expect(library.createdCapacity == MirrorStoragePolicy.freeCreatedSlots)
+        #expect(library.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots)
     }
 
     @Test("내 거울이 비어 있어도 기본 거울이 그대로 그려진다")
@@ -1301,7 +1302,7 @@ struct EditorGeometryTests {
     func defaultMirrorConsumesNoSlot() {
         let library = MirrorLibrary()
         #expect(library.createdCount == 0)
-        #expect(library.hasFreeCreatedSlot)
+        #expect(library.hasFreeMirrorSlot)
         // 목록에도 들어가지 않는다.
         #expect(!library.mirrors.contains { $0.id == MirrorLibrary.defaultMirror.id })
     }
@@ -1335,13 +1336,36 @@ struct EditorGeometryTests {
         #expect(library.mirrors.count == 1)
     }
 
-    @Test("받은 기본 템플릿은 제작 슬롯을 소비하지 않는다")
-    func acquiredBasicConsumesNoCreatedSlot() {
+    @Test("받은 기본 템플릿도 보관 자리를 쓰지만 제작 수로는 세지 않는다")
+    func acquiredBasicConsumesStorageButNotCreatedCount() {
         let library = MirrorLibrary()
-        for template in StoreCatalog.basics { library.acquire(template) }
-        #expect(library.mirrors.count == 8)
+        let acquired = StoreCatalog.basics.compactMap { library.acquire($0) }
+
+        // 보관 한도는 origin을 가리지 않는다 — 무료 기본 8종을 다 받을 수는 없다.
+        #expect(acquired.count == MirrorStoragePolicy.freeMirrorSlots)
+        #expect(library.storedCount == MirrorStoragePolicy.freeMirrorSlots)
+        #expect(!library.hasFreeMirrorSlot)
+        // "내가 만든 것"은 여전히 0이다.
         #expect(library.createdCount == 0)
-        #expect(library.hasFreeCreatedSlot)
+        // **자리가 없다고 지우지 않는다.** 받은 것은 그대로 남는다.
+        #expect(library.mirrors.allSatisfy { $0.origin == .basic })
+    }
+
+    @Test("한도를 넘긴 사용자의 거울을 지우지 않는다")
+    func existingMirrorsOverCapacityAreKept() {
+        let library = MirrorLibrary()
+        while library.hasFreeMirrorSlot {
+            _ = library.save(.blank, name: "거울", context: .createNew)
+        }
+        let kept = library.storedCount
+        // 예전 정책에서 더 만들어 둔 사용자를 흉내 낸다.
+        library.grantSlotPack()
+        _ = library.save(.blank, name: "예전에 만든 것", context: .createNew)
+        let overCapacity = library.storedCount
+        #expect(overCapacity > kept)
+
+        // 한도가 다시 줄어도(= 구매분이 없어져도) 목록은 그대로다.
+        #expect(library.mirrors.count == overCapacity)
     }
 
     // MARK: - 중앙 Mirror Area 안쪽 모서리
@@ -2021,11 +2045,11 @@ struct EditorGeometryTests {
     @Test("슬롯이 가득 차면 새로 만들기와 복제는 막히고 현재 거울 편집은 된다")
     func fullSlotsBlockCreateAndDuplicateOnly() {
         let library = MirrorLibrary()
-        while library.hasFreeCreatedSlot {
+        while library.hasFreeMirrorSlot {
             _ = library.save(.blank, name: "거울", context: .createNew)
         }
-        #expect(library.createdCount == MirrorStoragePolicy.freeCreatedSlots)
-        #expect(!library.hasFreeCreatedSlot)
+        #expect(library.createdCount == MirrorStoragePolicy.freeMirrorSlots)
+        #expect(!library.hasFreeMirrorSlot)
 
         #expect(library.save(.blank, name: "하나 더", context: .createNew) == .needsMoreSlots)
 
@@ -2036,7 +2060,7 @@ struct EditorGeometryTests {
         var design = MirrorDesign(mirror: existing)
         design.backgroundColor = BasicMirror.gray.style.frame
         #expect(library.save(design, name: "", context: .editCurrent) == .updated(id: existing.id, name: existing.name))
-        #expect(library.mirrors.count == MirrorStoragePolicy.freeCreatedSlots)
+        #expect(library.mirrors.count == MirrorStoragePolicy.freeMirrorSlots)
     }
 
     // MARK: - Free Canvas

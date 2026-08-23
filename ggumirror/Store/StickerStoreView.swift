@@ -20,6 +20,8 @@ struct StickerStoreView: View {
 
     @State private var actionTarget: StickerProject?
     @State private var creatorRequest: StickerCreatorRequest?
+    /// 다이얼로그가 닫히면 Creator를 연다. 둘을 같은 순간에 갈아 끼우지 않는다.
+    @State private var pendingCreatorRequest: StickerCreatorRequest?
     @State private var publishTarget: StickerProject?
     @State private var isChoosingStart = false
     @State private var notice: String?
@@ -77,14 +79,19 @@ struct StickerStoreView: View {
         .inkDialog(
             "스티커 만들기",
             message: "빈 캔버스에서 그리거나, 사진에서 배경을 지워 시작할 수 있어요.",
-            isPresented: $isChoosingStart
+            isPresented: $isChoosingStart,
+            // 다이얼로그가 **완전히 닫힌 뒤** Creator를 연다.
+            onDismiss: {
+                creatorRequest = pendingCreatorRequest
+                pendingCreatorRequest = nil
+            }
         ) {
             [
                 InkDialogAction("빈 캔버스에서 만들기", role: .primary) {
-                    creatorRequest = StickerCreatorRequest(startsWithPhoto: false)
+                    pendingCreatorRequest = StickerCreatorRequest(startsWithPhoto: false)
                 },
                 InkDialogAction("사진으로 시작하기") {
-                    creatorRequest = StickerCreatorRequest(startsWithPhoto: true)
+                    pendingCreatorRequest = StickerCreatorRequest(startsWithPhoto: true)
                 },
                 InkDialogAction("취소"),
             ]

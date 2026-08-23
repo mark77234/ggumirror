@@ -57,6 +57,8 @@ struct StickerCreatorView: View {
     @State private var isPromptingAI = false
     /// 조각 충전. AI 부족 안내에서 연다 — 홈과 **같은 화면**이다.
     @State private var isShowingShardStore = false
+    /// AI 시트가 닫히면 조각 상점을 연다. 두 시트를 같은 순간에 갈아 끼우지 않는다.
+    @State private var wantsShardStore = false
     @State private var aiPrompt = ""
     @State private var aiTask: Task<Void, Never>?
     @State private var isGeneratingAI = false
@@ -160,7 +162,16 @@ struct StickerCreatorView: View {
         .inkBottomSheet(isPresented: $isEditingDrawSettings, size: .fraction(0.66)) {
             DrawSettingsSheet(brush: $brush, width: $brushWidth, color: $brushColor)
         }
-        .inkBottomSheet(isPresented: $isPromptingAI, size: .fraction(0.52)) {
+        .inkBottomSheet(
+            isPresented: $isPromptingAI,
+            size: .fraction(0.52),
+            onDismiss: {
+                if wantsShardStore {
+                    wantsShardStore = false
+                    isShowingShardStore = true
+                }
+            }
+        ) {
             AIStickerPromptSheet(
                 prompt: $aiPrompt,
                 price: ai.config.price,
@@ -168,10 +179,10 @@ struct StickerCreatorView: View {
                 isGenerating: isGeneratingAI,
                 onGenerate: { generateAILayer() },
                 // 같은 조각 상점을 연다 — 상점 UI를 두 번 만들지 않는다.
-                // 시트를 겹쳐 띄우지 않고 AI 시트를 닫은 뒤 연다.
+                // 시트를 겹쳐 띄우지 않고 AI 시트가 **완전히 닫힌 뒤** 연다.
                 onBuyShards: {
+                    wantsShardStore = true
                     isPromptingAI = false
-                    isShowingShardStore = true
                 }
             )
         }

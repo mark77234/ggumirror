@@ -29,6 +29,9 @@ nonisolated enum MarketplaceImportFailure: Error, Equatable {
     case assetDownloadFailed(UUID)
     /// 저장소가 붙지 않았다. 정상 앱에서는 일어나지 않는다.
     case noStorage
+    /// 내 거울 보관 공간이 가득 찼다. **서버 소유권은 그대로 남는다** —
+    /// 자리를 비우면 다시 받을 수 있다.
+    case mirrorStorageFull
     /// 서버가 거절했다.
     case remote(MarketplaceFailure)
 
@@ -37,6 +40,8 @@ nonisolated enum MarketplaceImportFailure: Error, Equatable {
         case .unreadableManifest: "받은 템플릿을 읽지 못했어요."
         case .assetDownloadFailed: "템플릿 이미지를 받지 못했어요."
         case .noStorage: "저장 공간을 준비하지 못했어요."
+        case .mirrorStorageFull:
+            "거울 보관 공간이 가득 찼어요. 자리를 비우면 다시 받을 수 있어요."
         case .remote(let failure): failure.message
         }
     }
@@ -73,6 +78,10 @@ final class MarketplaceImporter {
             throw MarketplaceImportFailure.remote(.notSignedIn)
         }
         guard let store else { throw MarketplaceImportFailure.noStorage }
+        // **받기 전에 막는다.** 다 내려받고 나서 담지 못하면 데이터만 버린다.
+        // 이미 가지고 있으면 자리를 새로 쓰지 않으므로 통과시킨다.
+        guard library.hasFreeMirrorSlot || library.mirrors.contains(where: { $0.id == listingID })
+        else { throw MarketplaceImportFailure.mirrorStorageFull }
 
         let manifest = try await download(listingID: listingID, accessToken: token)
         let decoded: MyMirror
@@ -106,8 +115,11 @@ final class MarketplaceImporter {
             texts: decoded.texts,
             importedArtworks: decoded.importedArtworks
         )
-        library.adopt(mirror)
-        return mirror
+        // 위에서 자리를 확인했지만 그 사이 다른 화면이 담았을 수 있다.
+        guard let stored = library.adopt(mirror) else {
+            throw MarketplaceImportFailure.mirrorStorageFull
+        }
+        return stored
     }
 
     /// 스티커 템플릿을 받아 내 스티커에 담는다.

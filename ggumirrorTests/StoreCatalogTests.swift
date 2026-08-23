@@ -339,14 +339,15 @@ struct StoreCatalogTests {
         try withStore { store in
             let library = library(store)
             let template = try template("art-pink-ribbon")
-            let mirror = library.acquire(template)
+            let mirror = try #require(library.acquire(template))
 
             #expect(library.mirrors.count == 1)
             #expect(mirror.id == template.id)
             #expect(mirror.importedArtworks.count == 1)
             #expect(mirror.importedArtworks[0].assetID == template.artwork?.assetID)
-            // 받은 거울은 사용자 제작 슬롯을 쓰지 않는다 — 기존 정책 그대로.
+            // 받은 거울은 "내가 만든 것"으로 세지 않는다. 보관 한도는 별개로 전부를 센다.
             #expect(library.createdCount == 0)
+            #expect(library.storedCount == 1)
             #expect(mirror.origin == .purchased)
         }
     }
@@ -410,12 +411,12 @@ struct StoreCatalogTests {
         try withStore { store in
             let library = library(store)
             let currentBefore = library.currentID
-            let capacityBefore = library.createdCapacity
+            let capacityBefore = library.mirrorCapacity
 
             library.acquire(try template("art-my-diary"))
 
             #expect(library.currentID == currentBefore)     // 받는다고 바로 적용되지 않는다
-            #expect(library.createdCapacity == capacityBefore)
+            #expect(library.mirrorCapacity == capacityBefore)
             #expect(library.createdCount == 0)
             #expect(library.needsName(for: .editCurrent) == false)
         }

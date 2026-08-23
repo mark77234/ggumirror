@@ -413,8 +413,8 @@ struct MirrorPersistenceTests {
 
             let reopened = relaunch(store)
             #expect(reopened.createdCount == 2)
-            #expect(reopened.createdCapacity == MirrorStoragePolicy.freeCreatedSlots + MirrorStoragePolicy.slotPackSize)
-            #expect(reopened.hasFreeCreatedSlot)
+            #expect(reopened.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots + MirrorStoragePolicy.slotPackSize)
+            #expect(reopened.hasFreeMirrorSlot)
         }
     }
 

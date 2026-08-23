@@ -76,7 +76,9 @@ struct StickerStoreTests {
 
     @Test("상점에 거울 / 스티커 두 칸이 있다")
     func storeHasTwoSections() {
-        #expect(StoreSection.allCases.map(\.rawValue) == ["거울", "스티커"])
+        // `내 판매`가 세 번째 갈래로 들어왔다(Marketplace UX hardening). 공개 상품과
+        // 판매자 관리를 섞지 않는다.
+        #expect(StoreSection.allCases.map(\.rawValue) == ["거울", "스티커", "내 판매"])
         // 새 Bottom Tab을 만들지 않았다.
         #expect(MainTab.allCases.count == 3)
         #expect(MainTab.allCases.map(\.title) == ["홈", "상점", "내 거울"])

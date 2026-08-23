@@ -20,6 +20,8 @@ struct MyMirrorsView: View {
     @State private var actionTarget: MyMirror?
     @State private var notice: String?
     @State private var showsSlotFull = false
+    /// 만들기 다이얼로그가 닫히면 가져오기 시트를 연다.
+    @State private var wantsArtworkImport = false
     @State private var isChoosingCreateStyle = false
     @State private var isImportingArtwork = false
     /// 상점 등록 준비 중인 거울. 실제 등록이 아니라 판매 정보 작성이다.
@@ -59,11 +61,15 @@ struct MyMirrorsView: View {
                 .padding(.bottom, 14)
 
             HStack(spacing: 12) {
-                Text("내가 만든 거울 \(library.createdCount) / \(library.createdCapacity)")
+                // **보관 중인 전부**를 센다. 만든 것만 세면 화면 숫자와 실제로 담을 수
+                // 있는 양이 달라서, 왜 더 못 담는지 설명할 수 없다.
+                Text("보관 중 \(library.storedCount) / \(library.mirrorCapacity)")
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.secondaryInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("내가 만든 거울 \(library.createdCount)개, 최대 \(library.createdCapacity)개")
+                    .accessibilityLabel(
+                        "거울 \(library.storedCount)개 보관 중, 최대 \(library.mirrorCapacity)개"
+                    )
 
                 createButton
             }
@@ -102,11 +108,18 @@ struct MyMirrorsView: View {
         .inkDialog(
             "새 거울 만들기",
             message: "빈 거울에서 시작하거나, 그림 앱에서 만든 디자인을 가져올 수 있어요.",
-            isPresented: $isChoosingCreateStyle
+            isPresented: $isChoosingCreateStyle,
+            // 다이얼로그가 **완전히 닫힌 뒤** 가져오기 시트를 연다.
+            onDismiss: {
+                if wantsArtworkImport {
+                    wantsArtworkImport = false
+                    isImportingArtwork = true
+                }
+            }
         ) {
             [
                 InkDialogAction("꾸미러에서 만들기", role: .primary) { onCreateMirror(.blank) },
-                InkDialogAction("외부에서 만들기") { isImportingArtwork = true },
+                InkDialogAction("외부에서 만들기") { wantsArtworkImport = true },
                 InkDialogAction("취소"),
             ]
         }
@@ -120,16 +133,7 @@ struct MyMirrorsView: View {
                 onCreateMirror(design)
             }
         }
-        .inkDialog(
-            "거울 보관 공간이 가득 찼어요",
-            message: "새 거울을 만들려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.",
-            isPresented: $showsSlotFull
-        ) {
-            [
-                InkDialogAction("취소"),
-                InkDialogAction("보관 공간 늘리기", role: .primary),
-            ]
-        }
+        .inkMirrorStorageFullDialog("만들려면", isPresented: $showsSlotFull)
     }
 
     /// 카드 아래에 **바로 보이는** 상점 등록 CTA.
@@ -230,7 +234,7 @@ struct MyMirrorsView: View {
 
     /// 보관 공간이 없으면 들어가기 전에 막는다 — 다 꾸미고 나서 저장이 실패하지 않게.
     private func createMirror() {
-        guard library.hasFreeCreatedSlot else {
+        guard library.hasFreeMirrorSlot else {
             showsSlotFull = true
             return
         }

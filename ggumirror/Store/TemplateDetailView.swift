@@ -12,6 +12,7 @@ struct TemplateDetailView: View {
     var library: MirrorLibrary?
 
     @State private var notice: String?
+    @State private var showsStorageFull = false
     @Environment(CatalogStats.self) private var catalogStats
     @Environment(AuthSession.self) private var session
 
@@ -61,6 +62,7 @@ struct TemplateDetailView: View {
         ) {
             [InkDialogAction("확인", role: .primary)]
         }
+        .inkMirrorStorageFullDialog("받으려면", isPresented: $showsStorageFull)
     }
 
     /// 카드보다 조금 더 또렷하게. 값의 출처는 카드와 **같은 model field**다.
@@ -124,12 +126,19 @@ struct TemplateDetailView: View {
             .buttonStyle(InkPressStyle())
 
             // 무료 템플릿은 지금 바로 받을 수 있다. 조각 결제는 아직 없다.
+            //
+            // **이미 있으면 누를 수 없다.** `acquire`는 같은 id를 두 번 넣지 않으므로
+            // 눌러도 아무 일이 없는데 "담았어요"라고 말해서, 사용자가 몇 개를 받았는지
+            // 알 수 없었다. 제목이 아니라 **id**로 판단한다 — 이름은 바뀔 수 있다.
             Button {
                 guard template.price == 0, let library else {
                     notice = "조각으로 받기는 다음 업데이트에서 열려요."
                     return
                 }
-                library.acquire(template)
+                guard library.acquire(template) != nil else {
+                    showsStorageFull = true
+                    return
+                }
                 notice = "\(template.name)을(를) 내 거울에 담았어요."
                 // **로컬 저장이 끝난 뒤에** 서버에 남긴다 — 저장이 실패했는데 수만
                 // 오르면 안 된다. 이 요청이 실패해도 로컬 획득을 되돌리지 않는다
@@ -138,21 +147,35 @@ struct TemplateDetailView: View {
                     await catalogStats.recordAcquisition(template.id, session: session.server)
                 }
             } label: {
-                Text(template.price == 0 ? "무료로 받기" : "조각으로 받기")
+                Text(acquireTitle)
                     .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
+                    .foregroundStyle(isOwned ? PaperTheme.secondaryInk : PaperTheme.ink)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .frame(minHeight: 44)
                     .background {
                         let shape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
-                        shape.stroke(PaperTheme.ink, lineWidth: 1.8)
+                        shape.stroke(
+                            isOwned ? PaperTheme.separator : PaperTheme.ink, lineWidth: 1.8
+                        )
                     }
                     .contentShape(.rect)
             }
             .buttonStyle(InkPressStyle())
+            .disabled(isOwned)
         }
         .padding(.top, 4)
+    }
+
+    /// 이 템플릿이 이미 내 거울에 있는가. `acquire`가 `MyMirror.id = template.id`로
+    /// 저장하므로 그대로 맞는다. **제목으로 찾지 않는다.**
+    private var isOwned: Bool {
+        library?.mirrors.contains { $0.id == template.id } ?? false
+    }
+
+    private var acquireTitle: String {
+        if isOwned { return "이미 내 거울에 있어요" }
+        return template.price == 0 ? "무료로 받기" : "조각으로 받기"
     }
 }
 

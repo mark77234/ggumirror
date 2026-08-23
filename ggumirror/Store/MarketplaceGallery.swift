@@ -87,17 +87,20 @@ struct MarketplaceGalleryItem: View {
     @ViewBuilder
     private var heart: some View {
         if let onToggleLike {
+            // 누른 상태가 **한눈에** 달라 보여야 한다. 속이 찬 하트와 빈 하트의 차이는
+            // 이 글자 크기에서 너무 미묘해서, 눌렀는지 아닌지 알 수 없었다.
+            // 눌리면 칩 전체가 뒤집힌다 — 기존 Ink 강조(먹지 + 종이 글자) 그대로다.
             let label = HStack(spacing: 4) {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
                 Text("\(listing.likeCount)")
             }
             .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.ink)
+            .foregroundStyle(isLiked ? PaperTheme.subtleSurface : PaperTheme.ink)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background {
                 let shape = UnevenRoundedRectangle.ink(12, 10, 13, 11)
-                shape.fill(PaperTheme.paper)
+                shape.fill(isLiked ? PaperTheme.ink : PaperTheme.paper)
                     .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.4))
             }
 

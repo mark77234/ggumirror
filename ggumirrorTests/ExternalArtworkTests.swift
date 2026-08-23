@@ -773,7 +773,7 @@ struct ExternalArtworkTests {
             #expect(restored.texts[0].style == .rounded)
             #expect(restored.texts[0].zIndex == 7)
             #expect(library.currentID == mirrorID)
-            #expect(library.createdCapacity == MirrorStoragePolicy.freeCreatedSlots + 5)
+            #expect(library.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots + 5)
             // 새 필드는 빈 배열로 들어온다.
             #expect(restored.importedArtworks.isEmpty)
 

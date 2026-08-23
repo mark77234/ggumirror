@@ -58,6 +58,10 @@ struct EditorView: View {
     /// 내가 만드는 스티커. 이번 Phase에서는 Creator로 들어가는 문만 있다.
     @State private var stickerLibrary = StickerLibrary.live
     @State private var isChoosingStickerStart = false
+    /// 스티커 고르기 시트가 닫히면 "스티커 만들기"를 연다.
+    @State private var wantsStickerStart = false
+    /// 다이얼로그가 닫히면 Creator를 연다. 둘을 같은 순간에 갈아 끼우지 않는다.
+    @State private var pendingCreatorRequest: StickerCreatorRequest?
     @State private var creatorRequest: StickerCreatorRequest?
     @Environment(\.dismiss) private var dismiss
 
@@ -81,16 +85,7 @@ struct EditorView: View {
                 onSave: { saveMirror() }
             )
         }
-        .inkDialog(
-            "거울 보관 공간이 가득 찼어요",
-            message: "새 거울을 저장하려면 보관 공간을 늘려주세요. 보관 공간 확장은 준비 중이에요.",
-            isPresented: $showsSlotFull
-        ) {
-            [
-                InkDialogAction("취소"),
-                InkDialogAction("보관 공간 늘리기", role: .primary),
-            ]
-        }
+        .inkMirrorStorageFullDialog("저장하려면", isPresented: $showsSlotFull)
         .inkBottomSheet(isPresented: $isChoosingStickerColor) {
             if let sticker = selectedSticker {
                 StickerColorSheet(
@@ -101,7 +96,16 @@ struct EditorView: View {
                 )
             }
         }
-        .inkBottomSheet(isPresented: $isPickingSticker, size: .fraction(0.62)) {
+        .inkBottomSheet(
+            isPresented: $isPickingSticker,
+            size: .fraction(0.62),
+            onDismiss: {
+                if wantsStickerStart {
+                    wantsStickerStart = false
+                    isChoosingStickerStart = true
+                }
+            }
+        ) {
             StickerPickerSheet(
                 onPick: { source in
                     addSticker(source)
@@ -112,8 +116,9 @@ struct EditorView: View {
                     makePhotoSticker(from: item)
                 },
                 onCreateSticker: {
+                    // 시트가 **완전히 닫힌 뒤** 다이얼로그를 연다.
+                    wantsStickerStart = true
                     isPickingSticker = false
-                    isChoosingStickerStart = true
                 },
                 stickers: stickerLibrary,
                 onPickUserSticker: { source in
@@ -184,14 +189,18 @@ struct EditorView: View {
         .inkDialog(
             "스티커 만들기",
             message: "빈 캔버스에서 그리거나, 사진에서 배경을 지워 시작할 수 있어요.",
-            isPresented: $isChoosingStickerStart
+            isPresented: $isChoosingStickerStart,
+            onDismiss: {
+                creatorRequest = pendingCreatorRequest
+                pendingCreatorRequest = nil
+            }
         ) {
             [
                 InkDialogAction("빈 캔버스에서 만들기", role: .primary) {
-                    creatorRequest = StickerCreatorRequest(startsWithPhoto: false)
+                    pendingCreatorRequest = StickerCreatorRequest(startsWithPhoto: false)
                 },
                 InkDialogAction("사진으로 시작하기") {
-                    creatorRequest = StickerCreatorRequest(startsWithPhoto: true)
+                    pendingCreatorRequest = StickerCreatorRequest(startsWithPhoto: true)
                 },
                 InkDialogAction("취소"),
             ]
@@ -424,7 +433,7 @@ struct EditorView: View {
             dismiss()
         case .needsMoreSlots:
             isNamingMirror = false
-            if !library.hasFreeCreatedSlot { showsSlotFull = true }
+            if !library.hasFreeMirrorSlot { showsSlotFull = true }
         }
     }
 

@@ -262,7 +262,9 @@ struct ShardWalletTests {
         // 기본값이 가격 규칙이므로 상점 호출부는 손대지 않았다.
         let components = codeOnly(try repoFile("ggumirror/Shared/InkComponents.swift"))
         #expect(components.contains("var treatsZeroAsFree = true"))
-        #expect(components.contains(#"Text(isFree ? "무료" : "\(amount)")"#))
+        // 단위를 붙일지는 호출부가 정한다. 무료 문구는 그대로다.
+        #expect(components.contains(#"Text(isFree ? "무료" : ("#))
+        #expect(components.contains(#"amount) 조각"#))
 
         let store = codeOnly(try repoFile("ggumirror/Store/StoreView.swift"))
         #expect(store.contains("ShardAmount(amount: template.price)"))

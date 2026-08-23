@@ -43,6 +43,7 @@ struct AIStickerPromptSheet: View {
     var body: some View {
         ScrollView {
             fields
+                .inkDismissesKeyboardOnTap()
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)

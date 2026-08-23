@@ -303,6 +303,48 @@ action은 **삭제뿐**이다 — "다시 판매"를 만들지 않는다. 사용
 있는 숨김이 아니라 끝내는 것이다. 기존 soft-delete endpoint를 그대로 쓴다.
 `deleted`는 어느 구획에도 보이지 않는다.
 
+### 모달은 화면 좌표에 뜬다 (UI Overlay Hardening)
+
+`inkBottomSheet` · `inkDialog`는 **`InkModalPresentation` 하나**를 지나 window에
+표현된다(`fullScreenCover` + `presentationBackground(.clear)`).
+
+예전에는 `.overlay`였다 — `.overlay`는 **붙은 view의 좌표계**에 그린다. 그래서
+`StoreView`의 ScrollView 안에서 띄운 삭제 확인이 화면이 아니라 **스크롤 내용** 기준으로
+자리를 잡아, 아래로 내린 상태에서는 화면 밖에 그려졌다. 등록 시트도 같은 이유로
+아래쪽이 탭바에 가려 `상점에 올리기`를 누를 수 없었다.
+
+- **화면마다 `.offset` · 여백 · GeometryReader 숫자로 고치지 않는다.** 자리 문제는
+  표현 경로 한 곳에서 끝낸다
+- 탭바를 감추던 우회(`InkModalPresentedKey` · `inkHiddenWhileModalPresented`)는
+  **사라졌다.** cover는 탭바보다 위이고 safe area를 스스로 안다
+- 카드 모양 · dim · 손잡이 · 높이 규칙(`SheetHeight`)은 **그대로**다. 새 UI framework를
+  만들지 않았다
+- 시트를 닫으면서 **같은 순간에** 다음 것을 열지 않는다. 닫히는 중에 띄우면 시스템이
+  두 번째 표현을 조용히 버려서, 버튼을 눌렀는데 아무 일도 안 일어난 것처럼 보인다.
+  `onDismiss:`에서 연다 (AI 시트 → 조각 상점 / 스티커 고르기 → 만들기 → Creator /
+  새 거울 → 가져오기)
+- **모달은 이제 `ImageRenderer`로 그려지지 않는다** — window 표현이라 view 계층에
+  들어오지 않는다. 픽셀로 확인하던 시트 검사는 자리·높이 **규칙 검사**로 바꿨다
+
+`ggumirrorTests/OverlayHardeningTests.swift`가 위를 고정한다.
+
+### 키보드는 두 가지로 닫는다
+
+스크롤은 native `.scrollDismissesKeyboard(.interactively)`, 빈 곳 탭은
+`inkDismissesKeyboardOnTap()`. 탭 층은 **내용 뒤**에 깔린다 — 앞에 겹치거나
+`simultaneousGesture`로 붙이면 입력 칸을 누르는 순간 방금 올라온 키보드를 도로 내린다.
+
+### 이미 받은 내장 템플릿
+
+`MyMirror.id == template.id`로 판단한다(`acquire`가 그렇게 저장한다).
+**제목으로 찾지 않는다.** 이미 있으면 CTA가 `이미 내 거울에 있어요`로 잠긴다 —
+`acquire`가 중복을 만들지 않으므로 눌러도 아무 일이 없는데 "담았어요"라고 말했다.
+
+### 좋아요는 눌린 상태가 뒤집힌다
+
+속이 찬 하트와 빈 하트의 차이는 caption 크기에서 너무 미묘했다. 눌리면 칩 전체가
+먹지 + 종이 글자로 뒤집힌다(기존 Ink 강조 그대로). 44pt tap target은 그대로다.
+
 ### 상점 scroll 계층 (B-7H UI hotfix)
 
 **상단 제어부를 고정하지 않는다.** 제목 · 조각 잔액 · 거울/스티커 · 갈래 · 꼬리표 ·
@@ -399,6 +441,30 @@ server status/schema는 그대로다.
 이미 등록돼 있다"를 로컬 화면에서 서버 authority로 판단할 수는 없다. 제목 문자열로
 맞추는 것은 하지 않는다 — 같은 제목이 여러 개일 수 있다. 관리는 "내 상점 상품"
 구획에서 완결되므로 이번 phase에 식별자를 새로 만들지 않았다.
+
+## 내 거울 보관 한도 (UI Overlay Hardening)
+
+무료 **5개**. **origin을 가리지 않는다** — 만든 것 · 내장 템플릿 · 상점에서 받은 것을
+전부 센다. 예전에는 `.made`만 세서 화면의 "3 / 3"이 실제 보관량과 달랐다.
+
+| | |
+|---|---|
+| 표시 | `보관 중 N / M` (`storedCount` / `mirrorCapacity`) |
+| 무료 기본 | `MirrorStoragePolicy.freeMirrorSlots = 5` → `baseMirrorCapacity` |
+| 늘린 자리 | `purchasedMirrorSlots` (저장 key는 `purchasedCreatedSlots` 그대로) |
+
+- **거울이 늘어나는 길 셋을 모두 막는다** — 만들기(`save`) · 내장 받기(`acquire`) ·
+  상점에서 받기(`adopt`). 한 곳만 막으면 나머지로 계속 늘어난다.
+  상점 가져오기는 **내려받기 전에** 막는다(다 받고 못 담으면 데이터만 버린다)
+- 이미 가진 것을 다시 받는 것은 자리를 새로 쓰지 않으므로 통과한다
+- **한도를 넘긴 사용자의 거울을 지우지 않는다.** 더 담기는 것만 막는다 —
+  예전 정책에서 더 만들어 둔 사용자가 실제로 있다
+- 안내는 `inkMirrorStorageFullDialog` **한 곳**이다. **가격을 적지 않는다** —
+  확장 가격이 없고, 임의 숫자로 조각을 차감하는 버튼을 만들지 않는다
+- **경제 거래와 섞지 않는다.** 보관 공간은 조각 원장이 아니라 이 기기의 저장 규칙이다.
+  서버가 authority가 되면 `baseMirrorCapacity` 한 줄만 서버 값으로 바꾼다
+- `createdCount`는 남아 있지만 뜻이 다르다 — 한도가 아니라
+  "이 동작이 새 거울을 만들었나"를 보는 값이다
 
 ## Publish
 

@@ -92,10 +92,15 @@ struct MyMirror: Identifiable, Hashable {
     var importedArtworks: [ImportedArtworkObject] = []
 }
 
-/// 사용자 제작 거울 보관 정책. 기본 제공 / 구매 거울은 슬롯을 쓰지 않는다.
-/// 추가 슬롯은 향후 조각으로 구매한다 — 실제 가격은 아직 정하지 않았다(TBD).
+/// 내 거울 보관 정책.
+///
+/// **origin을 가리지 않는다** — 내 거울에 보이는 전부를 센다. 예전에는 `.made`만 셌는데,
+/// 그러면 화면의 "3 / 3"이 실제 보관량과 달라서 왜 못 담는지 설명할 수 없었다.
+///
+/// 추가 슬롯은 향후 조각으로 늘린다. **가격은 아직 없다** — 임의 숫자를 적지 않는다.
 enum MirrorStoragePolicy {
-    static let freeCreatedSlots = 3
+    /// 무료로 주어지는 보관 수.
+    static let freeMirrorSlots = 5
     static let slotPackSize = 5
     /// 이름 입력 제한.
     static let maxNameLength = 24
@@ -292,14 +297,33 @@ final class MirrorLibrary {
         mirrors.first { $0.id == currentID } ?? Self.defaultMirror
     }
 
-    /// 사용자가 직접 만든 거울 수. 기본 제공 / 구매 / 판매 중은 세지 않는다.
+    /// 지금 보관 중인 거울 수. **origin을 가리지 않는다.** 보관 한도는 이 값으로 본다.
+    var storedCount: Int { mirrors.count }
+
+    /// 사용자가 직접 만든 거울 수. **한도 계산이 아니라** "이 동작이 새 거울을 만들었나"를
+    /// 보는 용도다 — 한도를 origin으로 나누던 시절의 뜻이 아니다.
     var createdCount: Int { mirrors.count { $0.origin == .made } }
 
-    /// 추가 슬롯 구매분. 아직 실제 결제는 없다.
+    /// 무료 기본 보관 수.
+    ///
+    /// 서버가 authority가 되면 **이 한 줄**만 서버 값으로 바꾼다. 조각 원장과 섞지 않는다 —
+    /// 보관 공간은 경제 거래가 아니라 이 기기의 저장 용량 규칙이다.
+    var baseMirrorCapacity: Int { MirrorStoragePolicy.freeMirrorSlots }
+
+    /// 조각으로 늘린 보관 수.
+    ///
+    /// 저장 파일의 key(`purchasedCreatedSlots`)는 **그대로 둔다** — 이름을 바꾸면
+    /// 이미 저장된 값을 못 읽는다. 밖으로는 지금 뜻에 맞는 이름으로 낸다.
+    var purchasedMirrorSlots: Int { purchasedCreatedSlots }
     private(set) var purchasedCreatedSlots = 0
 
-    var createdCapacity: Int { MirrorStoragePolicy.freeCreatedSlots + purchasedCreatedSlots }
-    var hasFreeCreatedSlot: Bool { createdCount < createdCapacity }
+    var mirrorCapacity: Int { baseMirrorCapacity + purchasedMirrorSlots }
+
+    /// 하나 더 담을 수 있는가.
+    ///
+    /// **이미 한도를 넘긴 사용자의 거울을 지우지 않는다** — 더 담기는 것만 막는다.
+    /// 예전 정책에서는 셋 이상 만들 수 있었으므로 실제로 넘긴 사용자가 있다.
+    var hasFreeMirrorSlot: Bool { storedCount < mirrorCapacity }
 
     /// 향후 조각 결제가 붙을 자리. 지금은 호출되지 않는다.
     func grantSlotPack() {
@@ -342,7 +366,7 @@ final class MirrorLibrary {
         } else {
             return .needsMoreSlots
         }
-        guard hasFreeCreatedSlot else { return .needsMoreSlots }
+        guard hasFreeMirrorSlot else { return .needsMoreSlots }
 
         let copy = MyMirror(
             id: "made-\(UUID().uuidString)",
@@ -375,11 +399,16 @@ final class MirrorLibrary {
     }
 
     /// 상점에서 템플릿을 받아 내 거울에 넣는다.
-    /// 받은 템플릿은 사용자 제작 슬롯을 쓰지 않는다 — origin이 .made가 아니기 때문이다.
+    ///
+    /// **보관 공간이 없으면 `nil`이다.** 받은 거울도 자리를 차지한다 —
+    /// 예전에는 `.made`만 셌기 때문에 화면의 남은 칸과 실제 보관량이 어긋났다.
+    /// 이미 가지고 있으면 자리를 새로 쓰지 않으므로 그대로 돌려준다.
+    ///
     /// 실제 조각 차감 / 서버 ledger는 향후 Store Phase.
     @discardableResult
-    func acquire(_ template: MirrorTemplate) -> MyMirror {
+    func acquire(_ template: MirrorTemplate) -> MyMirror? {
         if let existing = mirrors.first(where: { $0.id == template.id }) { return existing }
+        guard hasFreeMirrorSlot else { return nil }
         // 손그림 템플릿은 PNG 한 장이 거울의 얼굴이다. 사용자가 가져온 외부 디자인과 같은 형식이라
         // 저장 / 렌더 / 미리보기가 그대로 따라온다.
         let artworks = StoreArtworkLibrary.artworks(for: template)
@@ -401,10 +430,12 @@ final class MirrorLibrary {
     ///
     /// `acquire`는 **내장 템플릿**용이라 번들 그림을 찾는다. 이쪽은 서버에서 받아
     /// 이미 파일로 내려놓은 거울이라 그 단계가 없다 — 목록에 넣고 저장만 한다.
-    /// 같은 id가 이미 있으면 **덮어쓰지 않는다.**
+    /// 같은 id가 이미 있으면 **덮어쓰지 않는다.** 보관 공간이 없으면 `nil`이다 —
+    /// 서버 소유권은 그대로 남으므로 자리를 비우고 다시 받을 수 있다.
     @discardableResult
-    func adopt(_ mirror: MyMirror) -> MyMirror {
+    func adopt(_ mirror: MyMirror) -> MyMirror? {
         if let existing = mirrors.first(where: { $0.id == mirror.id }) { return existing }
+        guard hasFreeMirrorSlot else { return nil }
         mirrors.append(mirror)
         persist()
         return mirror
@@ -416,7 +447,7 @@ final class MirrorLibrary {
     }
 
     func duplicate(_ mirror: MyMirror) {
-        guard hasFreeCreatedSlot, let index = mirrors.firstIndex(of: mirror) else { return }
+        guard hasFreeMirrorSlot, let index = mirrors.firstIndex(of: mirror) else { return }
         var copy = mirror
         copy = MyMirror(
             id: "\(mirror.id)-copy-\(mirrors.count)",

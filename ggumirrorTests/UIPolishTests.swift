@@ -189,59 +189,30 @@ struct UIPolishTests {
         #expect(!InkSheetSize.fraction(0.6).fitsContent)
     }
 
-    @Test("시트를 띄우면 내용이 화면에 나타나고, 닫으면 사라진다")
-    func bottomSheetPresentationState() throws {
-        struct Host: View {
-            let presented: Bool
-            var body: some View {
-                Color.clear.inkBottomSheet(isPresented: .constant(presented)) {
-                    Text("그리기 설정")
-                        .font(InkFont.cardTitle)
-                        .padding(20)
-                }
-            }
-        }
-        let size = CGSize(width: 320, height: 500)
-        let open = try #require(render(Host(presented: true), size: size))
-        let closed = try #require(render(Host(presented: false), size: size))
-
-        #expect(inkedPixels(open) > 300, "시트 내용이 그려지지 않았다")
-        #expect(inkedPixels(closed) < inkedPixels(open) / 4, "닫힌 상태인데 무언가 남아 있다")
-    }
-
-    @Test("비율 시트는 화면을 다 차지하지 않고 아래에 붙는다", arguments: [CGFloat(0.5), 0.62, 0.72])
-    func fractionSheetSitsAtTheBottom(fraction: CGFloat) throws {
+    /// **픽셀로 확인하지 않는다.** 모달이 window에 표현되므로 `ImageRenderer`가 그리는
+    /// view 계층에 들어오지 않는다 — 예전 픽셀 검사는 대상 자체를 잃었다. 대신 자리를
+    /// 정하는 규칙을 본다. 화면 좌표에 뜨는지는 `InkModalPresentationTests`가 고정한다.
+    @Test("비율 시트는 높이를 한 번만 정한다")
+    func fractionSheetSetsItsHeightOnce() throws {
+        let modal = try sheetSource("Shared/InkModal.swift")
         // 회귀: 비율을 준 뒤 maxHeight: .infinity가 덮어써서 카드가 화면 전체를 차지했다.
         // 내용이 위로 붙고 아래에 빈 종이가 잔뜩 남았다.
-        struct Host: View {
-            let fraction: CGFloat
-            var body: some View {
-                Color.white.inkBottomSheet(isPresented: .constant(true), size: .fraction(fraction)) {
-                    // 실제 시트처럼 안에 스크롤이 있고 내용은 짧다.
-                    ScrollView { Text("스티커").font(InkFont.cardTitle).padding(20) }
-                }
-            }
-        }
-        let size = CGSize(width: 320, height: 700)
-        let image = try #require(render(Host(fraction: fraction), size: size))
-        let data = pixels(image)
+        #expect(modal.contains("content.frame(height: size.maxHeight(in: available), alignment: .top)"))
+        #expect(modal.contains("content.frame(maxHeight: size.maxHeight(in: available), alignment: .top)"))
 
-        func isPaper(y: Int) -> Bool {
-            let index = (y * image.width + image.width / 2) * 4
-            // 종이는 아주 밝다. dim이 덮인 자리는 어둡다.
-            return data[index] > 230
+        // 어떤 비율을 줘도 뒤가 조금은 보인다 — 그래야 시트로 읽힌다.
+        for fraction in [CGFloat(0.5), 0.62, 0.72, 0.92, 1.4] {
+            #expect(InkSheetSize.fraction(fraction).maxHeight(in: 700) < 700)
         }
+    }
 
-        // 카드가 시작되는 첫 줄을 위에서부터 찾는다.
-        let top = (0..<image.height).first { isPaper(y: $0) } ?? image.height
-        let expected = Double(image.height) * (1 - fraction)
-        #expect(
-            abs(Double(top) - expected) < Double(image.height) * 0.08,
-            "카드 위쪽이 \(top)px인데 \(Int(expected))px 근처여야 한다 (fraction \(fraction))"
-        )
-        // 위쪽은 dim, 맨 아래는 종이여야 한다.
-        #expect(!isPaper(y: 8), "화면 맨 위까지 카드가 올라와 있다")
-        #expect(isPaper(y: image.height - 4), "시트 아래가 종이로 채워지지 않았다")
+    @Test("dim이 아래 화면을 덮고 배경 탭으로 닫는다")
+    func dimCoversAndClosesTheSheet() throws {
+        let modal = try sheetSource("Shared/InkModal.swift")
+        // dim은 표현 host 안에 있다 — 시트든 다이얼로그든 같은 자리다.
+        #expect(modal.contains("InkDim(onTap: dismissesOnBackgroundTap ? onBackgroundTap : nil)"))
+        #expect(modal.contains("PaperTheme.ink.opacity(0.28)"))
+        #expect(modal.contains(".accessibilityAddTraits(.isModal)"))
     }
 
     /// repo 안의 소스 파일 하나를 읽는다.
@@ -317,21 +288,18 @@ struct UIPolishTests {
 
     /// 회귀: 거울/스티커 등록 시트가 `InkTabBar`에 아래쪽 108pt를 가려졌다.
     ///
-    /// 시트는 `.overlay`라 **자기 subtree 안에서만** 위다. 탭바는 조상 ZStack의
-    /// 뒤 형제라 항상 그 위에 그려졌다 — 홈에서 연 조각 상점만 멀쩡했던 이유다
-    /// (그건 ZStack 자체에 붙어 있었다).
-    @Test("모달이 뜨면 탭바가 비켜선다")
-    func tabBarStepsAsideForModals() throws {
+    /// 예전에는 시트가 `.overlay`라 **자기 subtree 안에서만** 위였다. 탭바는 조상
+    /// ZStack의 뒤 형제라 항상 그 위에 그려져서, preference로 탭바를 감추는 우회를 뒀다.
+    /// 지금은 모달이 window에 표현되므로 그 우회가 필요 없다.
+    @Test("탭바를 감추던 우회 없이도 모달이 위에 있다")
+    func tabBarNeedsNoWorkaround() throws {
         let modal = try sheetSource("Shared/InkModal.swift")
-        // 시트와 다이얼로그 **둘 다** 알린다.
-        #expect(modal.components(separatedBy: "preference(key: InkModalPresentedKey.self").count - 1 == 2)
-        #expect(modal.contains("func inkHiddenWhileModalPresented"))
+        #expect(modal.contains("fullScreenCover(isPresented: $isPresented, onDismiss:"))
+        #expect(!modal.contains("InkModalPresentedKey"))
+        #expect(!modal.contains("func inkHiddenWhileModalPresented"))
 
         let home = try sheetSource("Home/HomeView.swift")
-        #expect(
-            home.contains("InkTabBar(selection: $tab)\n                .inkHiddenWhileModalPresented()"),
-            "탭바가 모달을 덮는다"
-        )
+        #expect(!home.contains("inkHiddenWhileModalPresented"))
     }
 
     /// 가려짐을 개별 화면의 여백으로 숨기지 않는다 — 그러면 화면마다 숫자가 흩어진다.
@@ -381,29 +349,6 @@ struct UIPolishTests {
                 "\(file)이 시스템 dismiss를 쓴다 — 시트가 아니라 뒤 화면이 닫힌다"
             )
         }
-    }
-
-    @Test("dim이 아래 화면을 덮어 실수로 눌리지 않게 한다")
-    func dimBlocksUnderlyingInteraction() throws {
-        struct Host: View {
-            let presented: Bool
-            var body: some View {
-                // 아래 화면을 흰색으로 꽉 채운다. dim이 덮으면 어두워진다.
-                Color.white
-                    .inkBottomSheet(isPresented: .constant(presented)) { Text("시트").padding(20) }
-            }
-        }
-        let size = CGSize(width: 200, height: 400)
-        let open = try #require(render(Host(presented: true), size: size))
-        let closed = try #require(render(Host(presented: false), size: size))
-
-        // 시트 위쪽(내용이 없는 자리)의 밝기를 본다.
-        func brightness(_ image: CGImage, y: Int) -> Int {
-            let data = pixels(image)
-            let index = (y * image.width + image.width / 2) * 4
-            return Int(data[index])
-        }
-        #expect(brightness(open, y: 20) < brightness(closed, y: 20) - 20, "dim이 덮이지 않았다")
     }
 
     @Test("Dialog 주 버튼이 눌리면 동작하고 닫힌다")

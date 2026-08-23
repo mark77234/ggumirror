@@ -83,26 +83,61 @@ enum InkSheetMetrics {
     static let actionClearance: CGFloat = 20
 }
 
-/// **모달이 떠 있다**는 사실을 조상에게 알린다.
+/// 모달을 **화면(window) 좌표**에 그린다. 모든 Ink dialog · sheet가 지나는 한 곳이다.
 ///
-/// `inkBottomSheet` / `inkDialog`는 `.overlay`로 그려지므로 **자기 subtree 안에서만** 위다.
-/// `InkTabBar`처럼 조상 ZStack의 **뒤 형제**로 있는 것은 시트보다 위에 그려진다 —
-/// 실제로 거울/스티커 등록 시트 아래쪽 108pt가 탭바에 가려졌다.
+/// 왜 `.overlay`가 아닌가: overlay는 **붙은 view의 좌표계**에 놓인다. 그 view가
+/// ScrollView 내용 안이면 모달이 화면이 아니라 스크롤 내용 기준으로 자리를 잡아,
+/// 아래로 내려간 상태에서 열면 화면 밖에 그려진다. 실기기에서 삭제 확인이 그랬다.
 ///
-/// environment는 아래로만 흐르므로 반대 방향인 preference를 쓴다. 이걸 읽는 쪽
-/// (`HomeView`)이 탭바를 감추면, **어느 깊이에서 시트를 띄우든** 같은 문제가 재발하지 않는다.
-struct InkModalPresentedKey: PreferenceKey {
-    static let defaultValue = false
-    /// 하나라도 떠 있으면 true. 형제 시트가 여럿이어도 안전하다.
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = value || nextValue()
+/// `.overlay`를 쓰던 시절에는 조상 ZStack의 뒤 형제인 `InkTabBar`가 시트 위에
+/// 그려져서, preference로 탭바를 감추는 우회가 필요했다. cover는 window에
+/// 표현되므로 **탭바보다 위이고 safe area를 스스로 안다** — 그 우회가 사라졌다.
+///
+/// 새 UI framework를 만들지 않는다. 카드 모양 · dim · 전환은 기존 Ink 것을 그대로 쓴다.
+private struct InkModalPresentation<Modal: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    var alignment: Alignment
+    /// 배경을 눌러 닫을 수 있는가. 끄면 dim이 탭을 받지 않는다.
+    var dismissesOnBackgroundTap: Bool
+    var onBackgroundTap: () -> Void
+    /// 완전히 닫힌 뒤에 부른다. **다음 모달은 여기서 연다** —
+    /// 닫히는 중에 띄우면 시스템이 두 번째 표현을 조용히 버린다.
+    var onDismiss: () -> Void
+    @ViewBuilder var modal: () -> Modal
+
+    func body(content: Content) -> some View {
+        content.fullScreenCover(isPresented: $isPresented, onDismiss: onDismiss) {
+            ZStack(alignment: alignment) {
+                InkDim(onTap: dismissesOnBackgroundTap ? onBackgroundTap : nil)
+                modal()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 우리 종이만 보이게 한다 — 시스템 카드 배경을 쓰지 않는다.
+            .presentationBackground(.clear)
+            .accessibilityAddTraits(.isModal)
+        }
     }
 }
 
 extension View {
-    /// 이 subtree에 모달이 떠 있으면 아래 내용을 감춘다. `InkTabBar`가 유일한 사용자다.
-    func inkHiddenWhileModalPresented() -> some View {
-        modifier(InkHideWhileModal())
+    fileprivate func inkModalPresentation<Modal: View>(
+        isPresented: Binding<Bool>,
+        alignment: Alignment,
+        dismissesOnBackgroundTap: Bool,
+        onBackgroundTap: @escaping () -> Void,
+        onDismiss: @escaping () -> Void,
+        @ViewBuilder modal: @escaping () -> Modal
+    ) -> some View {
+        modifier(
+            InkModalPresentation(
+                isPresented: isPresented,
+                alignment: alignment,
+                dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+                onBackgroundTap: onBackgroundTap,
+                onDismiss: onDismiss,
+                modal: modal
+            )
+        )
     }
 
     /// 시트의 **주 동작 줄을 스크롤 밖에 고정**하고 아래 여백을 붙인다.
@@ -123,18 +158,6 @@ extension View {
     }
 }
 
-private struct InkHideWhileModal: ViewModifier {
-    @State private var isModalPresented = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isModalPresented ? 0 : 1)
-            // 보이지 않는 동안 탭이 눌리면 안 된다.
-            .allowsHitTesting(!isModalPresented)
-            .animation(InkMotion.modal, value: isModalPresented)
-            .onPreferenceChange(InkModalPresentedKey.self) { isModalPresented = $0 }
-    }
-}
 
 // MARK: - 공용 표면
 
@@ -198,6 +221,7 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     var size: InkSheetSize
     var dismissesOnBackgroundTap: Bool
+    var onDismiss: () -> Void
     @ViewBuilder var sheetContent: () -> SheetContent
 
     /// 끌어내리는 중의 이동량. 손을 떼면 0으로 돌아가거나 닫힌다.
@@ -205,26 +229,25 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                if isPresented {
-                    ZStack(alignment: .bottom) {
-                        // dim만 화면 끝까지 덮는다.
-                        InkDim(onTap: dismissesOnBackgroundTap ? { close() } : nil)
-
-                        // 카드는 safe area를 지킨다 — 내용이 홈 인디케이터 아래로 들어가지 않는다.
-                        // 종이 면만 `InkModalSurface`에서 아래 safe area까지 내려간다.
-                        GeometryReader { geometry in
-                            card(available: geometry.size.height)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        }
-                    }
-                    .accessibilityAddTraits(.isModal)
+            // **화면 좌표에 그린다.** `.overlay`는 붙은 view의 좌표계라, ScrollView 안에서
+            // 띄우면 스크롤 내용 기준으로 자리를 잡는다 — 아래로 내려간 상태에서 열면
+            // 시트가 화면 밖(위쪽)에 그려져 보이지도 눌리지도 않았다. 실기기에서 그랬다.
+            //
+            // cover는 window에 표현되므로 스크롤 위치와 무관하고, **탭바보다 위**이며,
+            // safe area를 스스로 안다. 우리 카드 모양은 그대로 쓴다.
+            .inkModalPresentation(
+                isPresented: $isPresented,
+                alignment: .bottom,
+                dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+                onBackgroundTap: close,
+                onDismiss: onDismiss
+            ) {
+                GeometryReader { geometry in
+                    card(available: geometry.size.height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
             }
-            .animation(InkMotion.modal, value: isPresented)
             .onChange(of: isPresented) { _, _ in drag = 0 }
-            // 조상(`InkTabBar`)이 비켜설 수 있게 알린다. 시트는 자기 subtree 안에서만 위다.
-            .preference(key: InkModalPresentedKey.self, value: isPresented)
     }
 
     private func close() {
@@ -311,31 +334,29 @@ struct InkDialogAction: Identifiable {
 private struct InkDialogModifier<DialogContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     var dismissesOnBackgroundTap: Bool
+    var onDismiss: () -> Void
     @ViewBuilder var dialogContent: () -> DialogContent
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                if isPresented {
-                    ZStack {
-                        InkDim(onTap: dismissesOnBackgroundTap ? { close() } : nil)
-
-                        dialogContent()
-                            .environment(\.inkModalDismiss) { close() }
-                            .frame(maxWidth: 340)
-                            .background { InkModalSurface(isSheet: false) }
-                            .padding(.horizontal, 24)
-                            // 커지며 나타나고 작아지며 사라진다. 튕기지 않는다.
-                            .transition(.scale(scale: 0.94).combined(with: .opacity))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
-                    .accessibilityAddTraits(.isModal)
-                }
+            // 시트와 **같은 표현 경로**다. 스크롤을 얼마나 내렸든 지금 보고 있는
+            // 화면 한가운데에 뜬다 — 삭제 확인이 위쪽 어딘가에 그려져 다시 스크롤해야
+            // 누를 수 있던 문제가 여기서 사라진다.
+            .inkModalPresentation(
+                isPresented: $isPresented,
+                alignment: .center,
+                dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+                onBackgroundTap: close,
+                onDismiss: onDismiss
+            ) {
+                dialogContent()
+                    .environment(\.inkModalDismiss) { close() }
+                    .frame(maxWidth: 340)
+                    .background { InkModalSurface(isSheet: false) }
+                    .padding(.horizontal, 24)
+                    // 커지며 나타나고 작아지며 사라진다. 튕기지 않는다.
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
             }
-            .animation(InkMotion.modal, value: isPresented)
-            // 시트와 같은 규칙 — dialog도 탭바에 가려지면 안 된다.
-            .preference(key: InkModalPresentedKey.self, value: isPresented)
     }
 
     private func close() {
@@ -412,12 +433,17 @@ extension View {
         isPresented: Binding<Bool>,
         size: InkSheetSize = .content,
         dismissesOnBackgroundTap: Bool = true,
+        /// 완전히 닫힌 뒤. **다른 시트를 이어서 열 때 여기서 연다** —
+        /// 같은 순간에 하나를 닫고 다른 하나를 열면 시스템이 두 번째를 조용히 버려서,
+        /// 사용자에게는 버튼을 눌렀는데 아무 일도 안 일어난 것으로 보인다.
+        onDismiss: @escaping () -> Void = {},
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         modifier(InkBottomSheetModifier(
             isPresented: isPresented,
             size: size,
             dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+            onDismiss: onDismiss,
             sheetContent: content
         ))
     }
@@ -431,15 +457,18 @@ extension View {
         modifier(InkItemSheetModifier(item: item, size: size, sheetContent: content))
     }
 
+
     /// 화면 가운데 뜨는 종이 Dialog. 내용을 직접 채운다.
     func inkDialog<Content: View>(
         isPresented: Binding<Bool>,
         dismissesOnBackgroundTap: Bool = true,
+        onDismiss: @escaping () -> Void = {},
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         modifier(InkDialogModifier(
             isPresented: isPresented,
             dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+            onDismiss: onDismiss,
             dialogContent: content
         ))
     }
@@ -449,9 +478,10 @@ extension View {
         _ title: String,
         message: String? = nil,
         isPresented: Binding<Bool>,
+        onDismiss: @escaping () -> Void = {},
         actions: @escaping () -> [InkDialogAction]
     ) -> some View {
-        inkDialog(isPresented: isPresented) {
+        inkDialog(isPresented: isPresented, onDismiss: onDismiss) {
             InkDialogBody(
                 title: title,
                 message: message,

@@ -323,7 +323,7 @@ struct PublishDraftTests {
 
             let originBefore = mirror.origin
             let createdBefore = library.createdCount
-            let capacityBefore = library.createdCapacity
+            let capacityBefore = library.mirrorCapacity
             let storeListingsBefore = StoreCatalog.samples.count
 
             var draft = valid(mirror)
@@ -333,7 +333,7 @@ struct PublishDraftTests {
             #expect(library.mirrors[0].origin == originBefore)          // 판매 중으로 바뀌지 않는다
             #expect(library.mirrors[0].origin == .made)
             #expect(library.createdCount == createdBefore)              // 슬롯 변화 없음
-            #expect(library.createdCapacity == capacityBefore)
+            #expect(library.mirrorCapacity == capacityBefore)
             #expect(StoreCatalog.samples.count == storeListingsBefore)  // 상점 목록에 끼어들지 않는다
             #expect(!StoreCatalog.samples.contains { $0.id == mirror.id })
             // 거울 디자인 데이터도 그대로다.

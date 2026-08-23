@@ -392,13 +392,13 @@ struct AppleSignInTests {
             let mirrors = library(store)
             _ = mirrors.save(MirrorDesign.blank, name: "거울 하나", context: .createNew)
             let usedBefore = mirrors.createdCount
-            let capacityBefore = mirrors.createdCapacity
+            let capacityBefore = mirrors.mirrorCapacity
 
             let auth = session()
             await signIn(auth, firstSignIn())
 
             #expect(mirrors.createdCount == usedBefore)
-            #expect(mirrors.createdCapacity == capacityBefore)
+            #expect(mirrors.mirrorCapacity == capacityBefore)
         }
     }
 

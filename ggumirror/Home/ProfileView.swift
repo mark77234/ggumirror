@@ -63,6 +63,7 @@ struct ProfileView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
+            .inkDismissesKeyboardOnTap()
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
