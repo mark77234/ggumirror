@@ -574,14 +574,44 @@ server status/schema는 그대로다.
 
 ## 내 거울 보관 한도 (UI Overlay Hardening)
 
-무료 **5개**. **origin을 가리지 않는다** — 만든 것 · 내장 템플릿 · 상점에서 받은 것을
-전부 센다. 예전에는 `.made`만 세서 화면의 "3 / 3"이 실제 보관량과 달랐다.
+무료 **5개**, 조각으로 늘린다. **origin을 가리지 않는다** — 만든 것 · 내장 템플릿 ·
+상점에서 받은 것을 전부 센다. 예전에는 `.made`만 세서 화면의 "3 / 3"이 실제 보관량과 달랐다.
 
 | | |
 |---|---|
 | 표시 | `보관 중 N / M` (`storedCount` / `mirrorCapacity`) |
-| 무료 기본 | `MirrorStoragePolicy.freeMirrorSlots = 5` → `baseMirrorCapacity` |
-| 늘린 자리 | `purchasedMirrorSlots` (저장 key는 `purchasedCreatedSlots` 그대로) |
+| 무료 기본 | `MirrorStoragePolicy.freeMirrorSlots = 5` — **서버에 닿기 전의 보수적 기본값** |
+| 담을 수 있는 칸 | **서버가 authority다** (`GET /users/me/mirror-capacity`) |
+| 확장 | `mirror_slots_5` — 서버가 알려주는 값(현재 10조각 → +5칸), 반복 구매 가능 |
+
+### 칸은 서버에 있다
+
+산 칸은 **서버 사용자 문서**에 있다 — 이 기기의 저장 파일이 아니다.
+앱을 지우거나 기기를 바꿔도 산 칸은 그대로다.
+
+- `MirrorLibrary.mirrorCapacity`를 바꾸는 자리는 **`applyServerCapacity(_:)` 하나**다.
+  `ShardWallet.apply(balance:)`와 같은 규칙 — 여기서 더하거나 빼지 않는다
+- 서버를 못 읽으면 **마지막으로 본 값을 그대로 둔다.** 예전 로컬 값을 authority로
+  올리지 않는다(그러면 결제하지 않은 칸이 생긴다). 무료 기본값 아래로도 내려가지 않는다
+- 저장 파일의 `purchasedCreatedSlots`는 **더 이상 읽지 않고 언제나 0으로 쓴다.**
+  field는 남겨 둔다 — 예전 파일이 깨지지 않게. 로컬 `grantSlotPack`은 삭제했다
+
+### 구매 — 의도 하나 = operationId 하나
+
+client가 UUID를 만들어 보낸다. **응답을 잃으면 같은 id로 재시도한다** —
+새 id를 만들면 서버가 다른 의도로 보고 조각이 두 번 빠진다.
+`MirrorCapacityStore.pendingOperationID`가 그 값을 들고 있고, 성공이나 명시적 거절
+(409)에서만 지운다. 요청 중에는 버튼이 잠겨 의도가 여러 개 생기지 않는다.
+
+- **client가 가격도 칸도 계산하지 않는다.** 보내는 것은 `packId`와 `operationId`뿐이고,
+  결과는 서버가 준 `balance` · `effectiveSlots`를 그대로 옮겨 적는다
+- **가격을 앱에 적지 않는다.** `10`과 `5`는 서버 응답(`pack`)에서 온다 —
+  서버가 값을 바꾸면 화면이 따라간다. 상품을 못 읽었으면 CTA 자체를 그리지 않는다
+- 확인 창 · 부족 안내 · 결과 안내는 **`inkMirrorStorageFullDialog` 한 곳**에 있다.
+  가득 찼을 때의 `공간 늘리기`가 그대로 그 확인 창을 연다 — 새 시트를 만들지 않는다.
+  `내 거울`의 `+N칸` 버튼도 같은 창을 연다
+- 이 modifier는 Editor · 상점 상세에도 붙으므로 환경값을 **optional로 읽는다.**
+  필수로 읽으면 그 화면을 따로 그리는 테스트·미리보기가 그 자리에서 죽는다
 
 - **거울이 늘어나는 길 셋을 모두 막는다** — 만들기(`save`) · 내장 받기(`acquire`) ·
   상점에서 받기(`adopt`). 한 곳만 막으면 나머지로 계속 늘어난다.

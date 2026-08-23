@@ -402,19 +402,23 @@ struct MirrorPersistenceTests {
         }
     }
 
-    @Test("보관 슬롯 개수가 거울 목록과 구매분에서 복원된다")
-    func slotStateRestored() throws {
+    @Test("거울 목록은 복원되지만 **산 칸은 로컬에서 복원되지 않는다**")
+    func mirrorsRestoreButCapacityComesFromTheServer() throws {
         try withStore { store in
             let library = MirrorLibrary(store: store, assets: PhotoStickerAssetStore())
             library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "하나", context: .createNew)
             library.save(MirrorDesign(mirror: MirrorLibrary.defaultMirror), name: "둘", context: .createNew)
-            library.acquire(StoreCatalog.basics[1])       // 받은 거울은 슬롯을 쓰지 않는다
-            library.grantSlotPack()
+            library.acquire(StoreCatalog.basics[1])
+            library.applyServerCapacity(MirrorStoragePolicy.freeMirrorSlots + 5)
+            #expect(library.mirrorCapacity == 10)
 
             let reopened = relaunch(store)
+            // 거울은 그대로 돌아온다.
             #expect(reopened.createdCount == 2)
-            #expect(reopened.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots + MirrorStoragePolicy.slotPackSize)
-            #expect(reopened.hasFreeMirrorSlot)
+            #expect(reopened.storedCount == 3)
+            // **칸은 무료 기본값으로 시작한다.** 산 칸은 서버에 있고, 다음 fetch가 채운다 —
+            // 로컬 파일을 authority로 삼으면 결제하지 않은 칸을 만들 수 있다.
+            #expect(reopened.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots)
         }
     }
 

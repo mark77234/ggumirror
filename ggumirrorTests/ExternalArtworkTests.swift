@@ -773,7 +773,9 @@ struct ExternalArtworkTests {
             #expect(restored.texts[0].style == .rounded)
             #expect(restored.texts[0].zIndex == 7)
             #expect(library.currentID == mirrorID)
-            #expect(library.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots + 5)
+            // **예전 파일의 구매 슬롯을 읽지 않는다.** 산 칸은 서버에 있고,
+            // 로컬 파일을 authority로 삼으면 결제하지 않은 칸이 생긴다.
+            #expect(library.mirrorCapacity == MirrorStoragePolicy.freeMirrorSlots)
             // 새 필드는 빈 배열로 들어온다.
             #expect(restored.importedArtworks.isEmpty)
 

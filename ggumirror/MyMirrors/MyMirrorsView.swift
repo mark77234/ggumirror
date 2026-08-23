@@ -30,6 +30,12 @@ struct MyMirrorsView: View {
     /// 판매 상태의 authority. RootView가 소유한 하나를 쓴다.
     @Environment(MarketplaceStore.self) private var marketplace
     @Environment(AuthSession.self) private var session
+    /// 담을 수 있는 칸의 authority. 산 칸은 서버에 있다.
+    /// **optional이다** — 이 화면을 따로 그리는 곳(미리보기 · 테스트)에 환경값이 없다.
+    @Environment(MirrorCapacityStore.self) private var capacity: MirrorCapacityStore?
+
+    /// 확장 확인 창.
+    @State private var isConfirmingExpand = false
 
     private var mirrors: [MyMirror] {
         // **판매 중은 서버가 정한다.** `MirrorOrigin.listed`를 설정하는 코드가 없어서
@@ -63,6 +69,8 @@ struct MyMirrorsView: View {
             HStack(spacing: 12) {
                 // **보관 중인 전부**를 센다. 만든 것만 세면 화면 숫자와 실제로 담을 수
                 // 있는 양이 달라서, 왜 더 못 담는지 설명할 수 없다.
+                //
+                // 칸 수는 서버가 정한다 — 조각으로 산 칸은 이 기기가 아니라 서버에 있다.
                 Text("보관 중 \(library.storedCount) / \(library.mirrorCapacity)")
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.secondaryInk)
@@ -70,6 +78,8 @@ struct MyMirrorsView: View {
                     .accessibilityLabel(
                         "거울 \(library.storedCount)개 보관 중, 최대 \(library.mirrorCapacity)개"
                     )
+
+                expandButton
 
                 createButton
             }
@@ -133,7 +143,17 @@ struct MyMirrorsView: View {
                 onCreateMirror(design)
             }
         }
-        .inkMirrorStorageFullDialog("만들려면", isPresented: $showsSlotFull)
+        .inkMirrorStorageFullDialog(
+            "만들려면",
+            isPresented: $showsSlotFull,
+            library: library,
+            // `+칸 늘리기` 버튼도 **같은 확인 창**을 연다. 창을 두 번 만들지 않는다.
+            isConfirmingExpansion: $isConfirmingExpand
+        )
+        // 화면에 들어올 때 한 번 읽는다. 다시 그릴 때마다 부르지 않는다.
+        .task(id: session.server?.userID) {
+            await capacity?.refresh(session: session.server, library: library)
+        }
     }
 
     /// 카드 아래에 **바로 보이는** 상점 등록 CTA.
@@ -230,6 +250,40 @@ struct MyMirrorsView: View {
         }
         .buttonStyle(InkPressStyle())
         .accessibilityLabel("새 거울 만들기")
+    }
+
+    /// 조각으로 칸을 늘린다. **가격과 칸 수는 서버가 알려준 값**이다.
+    ///
+    /// 상품을 못 읽었으면(로그아웃 · 서버 미도달) 보여 주지 않는다 —
+    /// 누를 수 없는 버튼이나 지어낸 숫자를 두지 않는다.
+    @ViewBuilder
+    private var expandButton: some View {
+        if let pack = capacity?.pack {
+            Button {
+                isConfirmingExpand = true
+            } label: {
+                HStack(spacing: 4) {
+                    Text("+\(pack.slotDelta)칸")
+                    ShardAmount(amount: pack.costShards, font: InkFont.caption, iconSize: 13)
+                }
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background {
+                    UnevenRoundedRectangle.ink(13, 11, 14, 12)
+                        .stroke(PaperTheme.ink, lineWidth: 1.5)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(InkPressStyle())
+            // 요청 중에는 잠근다 — 연타로 구매 의도가 여러 개 생기면 안 된다.
+            .disabled(capacity?.isPurchasing == true)
+            .opacity(capacity?.isPurchasing == true ? 0.4 : 1)
+            .accessibilityLabel(
+                "보관 공간 \(pack.slotDelta)칸 늘리기, \(pack.costShards) 조각"
+            )
+        }
     }
 
     /// 보관 공간이 없으면 들어가기 전에 막는다 — 다 꾸미고 나서 저장이 실패하지 않게.

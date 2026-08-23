@@ -85,7 +85,9 @@ struct EditorView: View {
                 onSave: { saveMirror() }
             )
         }
-        .inkMirrorStorageFullDialog("저장하려면", isPresented: $showsSlotFull)
+        .inkMirrorStorageFullDialog(
+            "저장하려면", isPresented: $showsSlotFull, library: library
+        )
         .inkBottomSheet(isPresented: $isChoosingStickerColor) {
             if let sticker = selectedSticker {
                 StickerColorSheet(

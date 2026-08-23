@@ -1053,19 +1053,19 @@ struct EditorGeometryTests {
     func slotPackExpandsCapacity() {
         let library = MirrorLibrary()
         let before = library.mirrorCapacity
-        library.grantSlotPack()
-        #expect(library.mirrorCapacity == before + MirrorStoragePolicy.slotPackSize)
+        library.applyServerCapacity(MirrorStoragePolicy.freeMirrorSlots + 5)
+        #expect(library.mirrorCapacity == before + 5)
     }
 
     @Test("보관 슬롯 확장은 조각을 건드리지 않는다")
     func slotsAreNotShards() {
         let library = MirrorLibrary()
         let capacityBefore = library.mirrorCapacity
-        library.grantSlotPack()
+        library.applyServerCapacity(MirrorStoragePolicy.freeMirrorSlots + 5)
 
         // 슬롯만 늘어난다. 조각은 client가 만질 수 없고 서버 원장에만 있다
         // (ShardWalletTests가 client에 mutation 통로가 없음을 고정한다).
-        #expect(library.mirrorCapacity == capacityBefore + MirrorStoragePolicy.slotPackSize)
+        #expect(library.mirrorCapacity == capacityBefore + 5)
     }
 
     // MARK: - 지우개
@@ -1359,7 +1359,7 @@ struct EditorGeometryTests {
         }
         let kept = library.storedCount
         // 예전 정책에서 더 만들어 둔 사용자를 흉내 낸다.
-        library.grantSlotPack()
+        library.applyServerCapacity(MirrorStoragePolicy.freeMirrorSlots + 5)
         _ = library.save(.blank, name: "예전에 만든 것", context: .createNew)
         let overCapacity = library.storedCount
         #expect(overCapacity > kept)

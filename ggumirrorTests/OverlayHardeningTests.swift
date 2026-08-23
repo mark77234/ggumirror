@@ -149,9 +149,8 @@ struct MirrorCapacityTests {
     func freeCapacityCountsEverything() {
         #expect(MirrorStoragePolicy.freeMirrorSlots == 5)
         let library = MirrorLibrary()
+        // 서버에 닿기 전에는 무료 기본값이다. 산 칸은 서버가 알려준다.
         #expect(library.mirrorCapacity == 5)
-        #expect(library.baseMirrorCapacity == 5)
-        #expect(library.purchasedMirrorSlots == 0)
 
         // 받은 것 3개 + 만든 것 2개 = 5. 종류를 가리지 않는다.
         for template in StoreCatalog.basics.prefix(3) { _ = library.acquire(template) }
@@ -196,14 +195,17 @@ struct MirrorCapacityTests {
         #expect(library.acquire(template)?.id == template.id)
     }
 
-    @Test("가득 찬 안내에 가격이 없다")
-    func storageFullDialogHasNoPrice() throws {
+    @Test("가득 찬 안내는 **가격을 적어 두지 않는다**")
+    func storageFullDialogNeverHardcodesPrice() throws {
         let code = try overlaySource("Shared/MirrorStorageFullDialog.swift")
         #expect(code.contains("\"거울 보관 공간이 가득 찼어요\""))
-        // 임의 가격으로 조각을 차감하는 버튼을 만들지 않는다.
-        #expect(!code.contains("조각"))
-        #expect(!code.contains("ShardIcon"))
-        #expect(!code.contains("wallet"))
+        // 이제 실제로 조각을 쓴다(Mirror Capacity Purchase). 다만 숫자는 **서버가 준 값**이고
+        // 앱에 적어 두지 않는다 — 서버가 가격을 바꾸면 화면이 거짓말을 하게 된다.
+        #expect(code.contains("costShards"), "서버가 준 가격을 쓰지 않는다")
+        #expect(code.contains("slotDelta"), "서버가 준 칸 수를 쓰지 않는다")
+        for guessed in ["10조각", "5칸", "costShards: 10", "slotDelta: 5"] {
+            #expect(!code.contains(guessed), "가격을 적어 두었다: \(guessed)")
+        }
     }
 
     @Test("보관 한도 안내는 한 곳에서만 나온다")
@@ -226,11 +228,20 @@ struct MirrorCapacityTests {
         #expect(gate.lowerBound < download.lowerBound)
     }
 
-    @Test("보관 한도는 조각 원장과 섞이지 않는다")
-    func capacityIsNotAnEconomyTransaction() throws {
+    @Test("보관 한도는 **로컬 저장 규칙**이지 원장 계산이 아니다")
+    func capacityIsNotComputedFromTheLedger() throws {
         let code = try overlaySource("Shared/MirrorStorageFullDialog.swift")
-        #expect(!code.contains("ShardWallet"))
+        // 지갑은 **서버가 준 잔액을 옮겨 적을 때만** 쓴다. 여기서 계산하지 않는다.
         #expect(!code.contains("ShardReason"))
+        #expect(!code.contains("balance -"))
+        #expect(!code.contains("balance +"))
+
+        // 담을 수 있는 칸도 client가 더하지 않는다.
+        // 값이 바뀌는 자리는 **서버 값을 옮겨 적는 한 곳**뿐이다.
+        let library = try overlaySource("Shared/MirrorSampleData.swift")
+        #expect(!library.contains("mirrorCapacity +="))
+        #expect(library.components(separatedBy: "mirrorCapacity = ").count - 1 == 1)
+        #expect(library.contains("mirrorCapacity = effectiveSlots"))
     }
 }
 

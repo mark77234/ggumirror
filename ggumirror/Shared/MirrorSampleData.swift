@@ -99,9 +99,9 @@ struct MyMirror: Identifiable, Hashable {
 ///
 /// 추가 슬롯은 향후 조각으로 늘린다. **가격은 아직 없다** — 임의 숫자를 적지 않는다.
 enum MirrorStoragePolicy {
-    /// 무료로 주어지는 보관 수.
+    /// 무료로 주어지는 보관 수. **서버에 닿기 전의 보수적 기본값이다** —
+    /// 실제 authority는 서버(`GET /users/me/mirror-capacity`)다.
     static let freeMirrorSlots = 5
-    static let slotPackSize = 5
     /// 이름 입력 제한.
     static let maxNameLength = 24
 
@@ -223,7 +223,8 @@ final class MirrorLibrary {
         case .loaded(let saved):
             isReadOnly = false
             mirrors = saved.mirrors
-            purchasedCreatedSlots = saved.purchasedCreatedSlots
+            // 저장 파일의 `purchasedCreatedSlots`는 **더 이상 읽지 않는다** —
+            // 산 칸은 서버에 있다. field 자체는 남겨 둔다(예전 파일이 깨지지 않게).
             // 지워진 거울을 가리키고 있으면 기본 거울로 돌아간다.
             currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
                 ? saved.currentMirrorID
@@ -289,7 +290,8 @@ final class MirrorLibrary {
         store.save(PersistedLibrary(
             currentMirrorID: currentID,
             mirrors: mirrors,
-            purchasedCreatedSlots: purchasedCreatedSlots
+            // 로컬에 칸을 적지 않는다. 이 값이 authority가 되는 길을 남기지 않는다.
+            purchasedCreatedSlots: 0
         ))
     }
 
@@ -304,20 +306,24 @@ final class MirrorLibrary {
     /// 보는 용도다 — 한도를 origin으로 나누던 시절의 뜻이 아니다.
     var createdCount: Int { mirrors.count { $0.origin == .made } }
 
-    /// 무료 기본 보관 수.
+    /// 담을 수 있는 칸. **서버가 authority다.**
     ///
-    /// 서버가 authority가 되면 **이 한 줄**만 서버 값으로 바꾼다. 조각 원장과 섞지 않는다 —
-    /// 보관 공간은 경제 거래가 아니라 이 기기의 저장 용량 규칙이다.
-    var baseMirrorCapacity: Int { MirrorStoragePolicy.freeMirrorSlots }
-
-    /// 조각으로 늘린 보관 수.
+    /// 조각으로 산 칸은 서버 사용자 문서에 있다 — 이 기기의 저장 파일이 아니다.
+    /// 앱을 지우거나 기기를 바꿔도 산 칸은 그대로 남는다.
     ///
-    /// 저장 파일의 key(`purchasedCreatedSlots`)는 **그대로 둔다** — 이름을 바꾸면
-    /// 이미 저장된 값을 못 읽는다. 밖으로는 지금 뜻에 맞는 이름으로 낸다.
-    var purchasedMirrorSlots: Int { purchasedCreatedSlots }
-    private(set) var purchasedCreatedSlots = 0
+    /// 서버에 닿기 전에는 **무료 기본값**이다. 못 읽었다고 예전 로컬 값을 authority로
+    /// 올리지 않는다 — 그러면 결제하지 않은 칸이 생긴다.
+    private(set) var mirrorCapacity: Int = MirrorStoragePolicy.freeMirrorSlots
 
-    var mirrorCapacity: Int { baseMirrorCapacity + purchasedMirrorSlots }
+    /// 서버가 알려준 칸 수를 옮겨 적는다. **`ShardWallet.apply(balance:)`와 같은 규칙이다** —
+    /// 여기서 더하거나 빼지 않고 받은 값을 그대로 쓴다.
+    ///
+    /// 무료 기본값보다 작은 값은 무시한다. 잘못된 응답 하나로 이미 담아 둔 거울을
+    /// 못 쓰게 만들지 않는다.
+    func applyServerCapacity(_ effectiveSlots: Int) {
+        guard effectiveSlots >= MirrorStoragePolicy.freeMirrorSlots else { return }
+        mirrorCapacity = effectiveSlots
+    }
 
     /// 하나 더 담을 수 있는가.
     ///
@@ -325,11 +331,6 @@ final class MirrorLibrary {
     /// 예전 정책에서는 셋 이상 만들 수 있었으므로 실제로 넘긴 사용자가 있다.
     var hasFreeMirrorSlot: Bool { storedCount < mirrorCapacity }
 
-    /// 향후 조각 결제가 붙을 자리. 지금은 호출되지 않는다.
-    func grantSlotPack() {
-        purchasedCreatedSlots += MirrorStoragePolicy.slotPackSize
-        persist()
-    }
 
     /// Editor 저장. 무엇이 될지는 **어디서 들어왔는가**(context)가 정한다.
     /// - `.editCurrent`: 내 거울에 이미 있는 거울이면 제자리 갱신(이름 유지, 슬롯 소모 없음).

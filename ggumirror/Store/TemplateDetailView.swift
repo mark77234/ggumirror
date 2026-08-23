@@ -62,7 +62,9 @@ struct TemplateDetailView: View {
         ) {
             [InkDialogAction("확인", role: .primary)]
         }
-        .inkMirrorStorageFullDialog("받으려면", isPresented: $showsStorageFull)
+        .inkMirrorStorageFullDialog(
+            "받으려면", isPresented: $showsStorageFull, library: library
+        )
     }
 
     /// 카드보다 조금 더 또렷하게. 값의 출처는 카드와 **같은 model field**다.

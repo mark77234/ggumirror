@@ -34,6 +34,8 @@ struct RootView: View {
     @State private var marketplace = MarketplaceStore.live
     /// 내장 템플릿 다운로드 수. **서버가 센다.**
     @State private var catalogStats = CatalogStats.live
+    /// 거울 보관 칸. **서버가 authority다** — 산 칸은 이 기기가 아니라 서버에 있다.
+    @State private var mirrorCapacity = MirrorCapacityStore.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -59,6 +61,7 @@ struct RootView: View {
             .environment(shardStore)
             .environment(marketplace)
             .environment(catalogStats)
+            .environment(mirrorCapacity)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -75,6 +78,13 @@ struct RootView: View {
             .onChange(of: session.server) { _, server in
                 Task {
                     await shards.refresh(session: server)
+                    // 산 보관 칸도 서버에 있다. 로그아웃하면 무료 기본값으로 돌아간다
+                    // (서버 값은 그대로 남는다 — 이 기기의 표시만 바뀐다).
+                    if server == nil {
+                        mirrorCapacity.clear(library: library)
+                    } else {
+                        await mirrorCapacity.refresh(session: server, library: library)
+                    }
                     // AI 스티커도 로그인 상태에 따라 켜지고 꺼진다. 로그아웃하면 CTA가 사라진다.
                     await aiStickers.refresh(session: server)
                     // 로그인 직후 광고를 미리 받아 둔다. 로그아웃하면 받지 않는다.
