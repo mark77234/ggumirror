@@ -62,10 +62,81 @@ Camera Area:
 - front는 mirrored, rear는 **mirrored 아님**
 - 잠금화면 Quick Mirror: **front 고정** (전환 없음)
 - portrait
-- no user zoom
-- videoZoomFactor = 1
-- rear도 **일반 1x wide 하나만** 쓴다 (ultra-wide / tele 선택 없음)
+- 본앱 Mirror는 **0.5x / 1x / 2x preset + pinch**를 지원한다 (아래 참고).
+  잠금화면 Quick Mirror(`.viewfinder`)는 여전히 **1x 고정**이다
+- 시작 배율은 언제나 **1x**이고 저장하지 않는다
 - Camera framing 문제를 해결하기 위해 Mirror frame geometry를 변경하지 않는다
+
+## Mirror Camera 배율 (Zoom)
+
+**사용자가 보는 배율(logical)과 기기가 쓰는 배율(device factor)은 다르다.**
+
+ultra-wide를 품은 virtual 카메라에서 `videoZoomFactor == 1`은 1x가 아니라 **0.5x**다.
+이걸 모르고 `videoZoomFactor = 0.5`를 쓰면 어느 기기에서도 실패하고
+(`minAvailableVideoZoomFactor`가 1이다), `= 1`을 쓰면 0.5x 화면을 1x라고 표시한다.
+
+| | |
+|---|---|
+| 변환 | `device = logical × baseFactor` |
+| `baseFactor` | 첫 렌즈가 ultra-wide면 **첫 전환 지점**(보통 2), 아니면 1 |
+| 출처 | `constituentDevices` · `virtualDeviceSwitchOverVideoZoomFactors` |
+
+`MirrorCamera.ZoomCapability`가 변환·clamp를 전부 들고 있고 **순수 값**이라
+기기 없이 시험한다. `baseZoomFactor` · `zoomPresets` · `selectedPreset`도 순수 함수다.
+
+### 렌즈 선택
+
+- **전면은 언제나 물리 wide 하나**(`.builtInWideAngleCamera`)다. virtual 전면 카메라를
+  가진 iPhone이 없으므로 **전면에는 0.5x가 없고 그것이 정상이다.**
+  요구를 맞추려고 software로 화각을 넓히지 않는다 — 없는 렌즈는 만들 수 없다
+- 후면은 `.builtInTripleCamera` → `.builtInDualWideCamera` → `.builtInWideAngleCamera`
+  순으로 찾는다. **0.5x는 렌즈가 있어야 나온다.** 없는 기기에는 버튼이 없다.
+  (예전 정책은 후면도 wide 하나였다 — 0.5x를 주려면 virtual 카메라여야 한다)
+- tele 단독 · ultra-wide 없는 `.builtInDualCamera`는 고르지 않는다 —
+  0.5x도 못 얻으면서 화각만 좁아진다
+- **기기 이름으로 분기하지 않는다.** `DiscoverySession`과 device property가 authority다
+
+### 배율 범위는 format 뒤에 읽는다
+
+`activeFormat`이 쓸 수 있는 렌즈와 전환 지점을 정한다. 순서가 바뀌면 **없는 0.5x를
+있다고 말하게 된다.** `configure(_:)`가 format → capability 순서를 지키고 그 값을 돌려준다.
+
+### 버튼
+
+후보는 `zoomPresetCandidates = [0.5, 1, 2]`이고 **기기가 낼 수 있는 것만** 남는다.
+나중에 3x·5x를 더하려면 이 줄에만 더한다. 고를 것이 하나뿐이면 selector를 그리지 않는다.
+
+- 자리는 **촬영 버튼 바로 위 가운데**. 전환/플래시/홈으로와 겹치지 않고 거울 가운데를 가리지 않는다
+- 글자는 작아도 tap target은 **44pt**. 낭독기 label은 `0.5배` · `1배` · `2배`
+- **기존 control set의 일부다** — 같이 나타나고 같이 숨는다.
+  누르면 기존 `onInteraction`으로 auto-hide 타이머를 다시 돌린다. 새 timer를 만들지 않는다
+
+### pinch
+
+두 손가락이라 컨트롤을 여닫는 한 손가락 탭과 섞이지 않는다.
+`MagnifyGesture`에는 시작 callback이 없으므로 **첫 `onChanged`가 기준점을 잡고**
+`endPinch`가 지운다 — 다음 gesture는 끝난 자리에서 시작한다.
+
+- pinch는 손가락을 따라가야 하므로 **ramp를 쓰지 않고** 곧바로 넣는다.
+  preset은 `ramp(toVideoZoomFactor:withRate:)`로 짧게 미끄러진다(rate 8 ≈ 0.25초).
+  cinematic ramp는 거울에 느리다
+- 언제나 **실제 지원 범위로 clamp**한다
+- pinch로 preset 사이(예: 1.37x)에 있으면 **아무 버튼도 켜지지 않고** 현재 값이
+  작은 label로 보인다. 화면이 말하는 것과 실제 배율이 다르면 안 된다
+- pinch 뒤 `1x`를 누르면 **정확히** 1x다
+
+### 카메라 전환
+
+전환하면 배율 범위를 **다시 읽고**(`adoptActiveCapability`) 버튼 목록을 다시 만들고
+1x로 맞춘다. 후면(0.5/1/2)에서 전면(1/2)으로 가면 0.5x 버튼이 사라진다.
+
+### 촬영
+
+`videoZoomFactor`는 **device 단계**라 preview · frame output · photo output이
+같은 화각을 본다. preview만 확대되고 사진은 1x인 상태가 구조적으로 생기지 않는다.
+
+`ggumirrorTests/MirrorZoomTests.swift`가 위 전부를 고정한다 —
+**기기 이름이 아니라 capability 값으로** 시험한다.
 
 ## 전/후면 전환 + 플래시 (C-2B)
 

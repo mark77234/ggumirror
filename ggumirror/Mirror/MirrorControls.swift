@@ -21,6 +21,14 @@ struct MirrorControls: View {
     var canSwitchCamera: Bool = false
     var onSwitchCamera: () -> Void = {}
 
+    /// 이 카메라가 실제로 낼 수 있는 배율만 온다. **하나뿐이면 고를 것이 없어 감춘다.**
+    var zoomPresets: [CGFloat] = []
+    /// 켜져 보일 배율. pinch로 사이 값에 있으면 `nil`이라 아무것도 켜지지 않는다.
+    var selectedZoomPreset: CGFloat?
+    /// 지금 실제 배율. 사이 값일 때만 숫자로 보여 준다.
+    var logicalZoom: CGFloat = 1
+    var onSelectZoom: (CGFloat) -> Void = { _ in }
+
     /// Claude Design(Mirror App v2, 402 x 874 기준)의 배치를 0...1 normalized로 옮긴 값.
     /// 기기 크기가 달라져도 같은 비율로 놓인다.
     private enum Layout {
@@ -28,6 +36,9 @@ struct MirrorControls: View {
         static let homeLeading = 60.0 / 402.0
         static let homeTop = 96.0 / 874.0
         static let scrimHeight = 58.0
+        /// 배율은 촬영 버튼 **바로 위**다. 카메라 앱과 같은 자리라 배우지 않아도 알고,
+        /// 한 손 엄지가 닿는다. 거울(화면 가운데)을 가리지 않는다.
+        static let zoomAboveShutter = 74.0
     }
 
     var body: some View {
@@ -61,6 +72,11 @@ struct MirrorControls: View {
                 // 촬영 버튼 자리는 그대로다. 전환은 그 오른쪽에 얹기만 한다 —
                 // 카메라 앱과 같은 자리라 배우지 않아도 안다.
                 if showsCapture {
+                    // 촬영 버튼 위. 전환 칩과 겹치지 않게 가운데에만 둔다.
+                    zoomSelector
+                        .padding(.bottom, height * Layout.shutterBottom + Layout.zoomAboveShutter)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+
                     captureButton
                         .padding(.bottom, height * Layout.shutterBottom)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -101,6 +117,78 @@ struct MirrorControls: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(label)
+    }
+
+    // MARK: - 배율
+
+    /// 고를 것이 하나뿐이면 아무것도 그리지 않는다 — 누를 수 없는 버튼을 두지 않는다.
+    @ViewBuilder
+    private var zoomSelector: some View {
+        if zoomPresets.count > 1 {
+            VStack(spacing: 6) {
+                // pinch로 preset 사이에 있으면 버튼이 하나도 켜지지 않는다.
+                // 그때 지금 배율이 얼마인지는 알아야 하므로 값을 그대로 보여 준다.
+                // **자리를 늘 차지한다** — 나타났다 사라지며 버튼 줄이 흔들리지 않게.
+                Text(Self.zoomLabel(logicalZoom))
+                    .font(InkFont.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(white: 0.11).opacity(0.5), in: .capsule)
+                    .opacity(selectedZoomPreset == nil ? 1 : 0)
+                    .accessibilityHidden(selectedZoomPreset != nil)
+                    .accessibilityLabel("현재 \(Self.zoomAccessibilityLabel(logicalZoom))")
+
+                HStack(spacing: 4) {
+                    ForEach(zoomPresets, id: \.self) { preset in
+                        zoomChip(preset)
+                    }
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 5)
+                .background(Color(white: 0.11).opacity(0.5), in: .capsule)
+            }
+        }
+    }
+
+    private func zoomChip(_ preset: CGFloat) -> some View {
+        let isSelected = selectedZoomPreset == preset
+        return Button {
+            onInteraction()
+            onSelectZoom(preset)
+        } label: {
+            Text(Self.zoomLabel(preset))
+                .font(InkFont.caption)
+                .monospacedDigit()
+                .foregroundStyle(isSelected ? Color(white: 0.11) : .white)
+                .padding(.horizontal, 4)
+                // 글자는 작아도 **손가락이 닿는 자리는 44pt**다.
+                .frame(minWidth: 44, minHeight: 44)
+                .background(alignment: .center) {
+                    Circle()
+                        .fill(isSelected ? Color.white.opacity(0.92) : .clear)
+                        .frame(width: 34, height: 34)
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Self.zoomAccessibilityLabel(preset))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// `0.5x` · `1x` · `1.4x`. 정수는 소수점을 붙이지 않는다.
+    static func zoomLabel(_ zoom: CGFloat) -> String {
+        let rounded = (zoom * 10).rounded() / 10
+        if rounded == rounded.rounded() { return "\(Int(rounded))x" }
+        return String(format: "%.1fx", Double(rounded))
+    }
+
+    /// 낭독기는 `x`를 읽지 못한다. 기존 화면들과 같은 우리말 표기를 쓴다.
+    static func zoomAccessibilityLabel(_ zoom: CGFloat) -> String {
+        let rounded = (zoom * 10).rounded() / 10
+        if rounded == rounded.rounded() { return "\(Int(rounded))배" }
+        return String(format: "%.1f배", Double(rounded))
     }
 
     private var flashButton: some View {

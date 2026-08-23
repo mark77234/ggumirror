@@ -79,7 +79,12 @@ struct MirrorView: View {
                     isFlashOn: isFlashOn,
                     onToggleFlash: { isFlashOn.toggle() },
                     canSwitchCamera: camera.canSwitchCamera && !isCapturing,
-                    onSwitchCamera: switchCamera
+                    onSwitchCamera: switchCamera,
+                    // 배율도 같은 control set이다 — 함께 나타나고 함께 숨는다.
+                    zoomPresets: camera.zoomPresets,
+                    selectedZoomPreset: camera.selectedZoomPreset,
+                    logicalZoom: camera.logicalZoom,
+                    onSelectZoom: { camera.selectZoom(logical: $0) }
                 )
                 .transition(.opacity)
             }
@@ -100,6 +105,22 @@ struct MirrorView: View {
         .statusBarHidden()
         .contentShape(.rect)
         .onTapGesture { toggleControls() }
+        // 손가락 두 개라 한 손가락 탭(컨트롤 열기/닫기)과 섞이지 않는다.
+        // 배율을 바꾸는 동안에는 컨트롤이 보여야 하므로 auto-hide 타이머도 같이 민다.
+        .gesture(
+            MagnifyGesture(minimumScaleDelta: 0)
+                .onChanged { value in
+                    if !areControlsVisible {
+                        withAnimation(.easeOut(duration: 0.18)) { areControlsVisible = true }
+                    }
+                    camera.updatePinch(magnification: value.magnification)
+                    registerInteraction()
+                }
+                .onEnded { _ in
+                    camera.endPinch()
+                    registerInteraction()
+                }
+        )
         .task { await camera.start() }
         .task(id: lastInteraction) { await autoHideControls() }
         // 거울 화면에도 같은 종이 Dialog를 쓴다. 카메라 영상 위에 잠깐 떠 있다 사라지는 카드다.

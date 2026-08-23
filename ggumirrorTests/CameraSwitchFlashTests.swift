@@ -122,17 +122,29 @@ struct CameraSwitchFlashTests {
         }
     }
 
-    @Test("후면도 일반 1x wide 하나만 쓴다")
-    func rearUsesWideAngleOnly() throws {
+    @Test("전면은 물리 wide 하나, 후면만 ultra-wide를 품은 렌즈를 찾는다")
+    func lensSelectionFollowsHardware() throws {
         let source = codeOnly(try repoFile("ggumirror/Mirror/MirrorCamera.swift"))
         #expect(source.contains(".builtInWideAngleCamera"))
-        for forbidden in [".builtInUltraWideCamera", ".builtInTelephotoCamera", ".builtInDualCamera",
-                          ".builtInTripleCamera"] {
-            #expect(!source.contains(forbidden))
+        // 0.5x는 렌즈가 있어야 나온다 — 후면에서만 찾는다.
+        #expect(source.contains(".builtInDualWideCamera"))
+        #expect(source.contains(".builtInTripleCamera"))
+        #expect(source.contains("position == .back"))
+
+        // tele 단독 · ultra-wide 없는 dual을 고르지 않는다. 그러면 0.5x가 없으면서
+        // 화각만 좁아진다.
+        for forbidden in [".builtInTelephotoCamera", ".builtInDualCamera,"] {
+            #expect(!source.contains(forbidden), "\(forbidden)를 고른다")
         }
-        // 줌 정책도 그대로다.
-        #expect(MirrorCamera.zoomFactor == 1)
-        #expect(source.contains("device.videoZoomFactor = Self.zoomFactor"))
+
+        // 배율은 **사용자가 아는 1x**로 시작한다. virtual 카메라에서 `= 1`은 0.5x다.
+        #expect(source.contains("device.videoZoomFactor = capability.deviceFactor(forLogical: 1)"))
+        #expect(!source.contains("device.videoZoomFactor = 1"))
+
+        // 기기 이름으로 분기하지 않는다.
+        for forbidden in ["iPhone1", "utsname", "modelIdentifier", "machine"] {
+            #expect(!source.contains(forbidden), "기기 이름을 본다: \(forbidden)")
+        }
     }
 
     @Test("Portrait 고정과 화각 정책은 그대로다")

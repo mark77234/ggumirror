@@ -755,7 +755,7 @@ struct QuickMirrorTests {
     @Test("Quick Mirror가 본앱 카메라 정책을 그대로 쓴다")
     func sharesMainCameraPolicy() throws {
         // 같은 파일을 공유하므로 정책이 갈라질 수 없다.
-        #expect(MirrorCamera.zoomFactor == 1)
+        // 잠금화면은 `.viewfinder`라 배율 UI도 배율 변경도 없다 — 언제나 1x다.
         #expect(MirrorCamera.previewGravity == .resizeAspectFill)
         #expect(MirrorCamera.portraitRotationAngle == 90)
 
