@@ -268,3 +268,42 @@ struct StickerCardLayoutTests {
         }
     }
 }
+
+
+@Suite("로그아웃하면 개인화 상태가 남지 않는다")
+struct SignOutStateResetTests {
+
+    @Test("계정이 바뀌면 좋아요 · 구매 · 판매 목록을 다시 맞춘다")
+    func personalizedStateFollowsTheAccount() throws {
+        // **회귀**: 공개 목록 `.task`는 갈래·정렬로만 다시 돈다. 상점 화면에 머문 채
+        // 로그아웃하면 이전 계정의 하트가 채워진 채 남아 있었다.
+        let root = try browseSource("ggumirror/RootView.swift")
+        #expect(root.contains("await marketplace.refreshMine(session: server)"))
+        #expect(root.contains("await marketplace.refreshMyListings(session: server)"))
+        #expect(root.contains("if server == nil { catalogStats.clear() }"))
+    }
+
+    @Test("로그인하지 않았으면 개인화 목록이 비어 있다")
+    func signedOutMeansEmptyPersonalState() throws {
+        let store = try browseSource("ggumirror/Store/MarketplaceStore.swift")
+        #expect(store.contains("likedListingIDs = []"))
+        #expect(store.contains("purchasedListingIDs = []"))
+        #expect(store.contains("myListings = []"))
+    }
+
+    @Test("공개 목록까지 지우지는 않는다")
+    func publicFeedSurvivesSignOut() throws {
+        let store = try browseSource("ggumirror/Store/MarketplaceStore.swift")
+        // 로그아웃했다고 상점이 통째로 비면 안 된다 — guest도 구경할 수 있다.
+        let mine = try #require(store.range(of: "func refreshMine(session: ServerSession?) async"))
+        let body = store[mine.lowerBound...].prefix(500)
+        #expect(!body.contains("listings = []"))
+    }
+
+    @Test("지갑도 로그아웃에서 표시만 지운다")
+    func walletClearsDisplayOnly() throws {
+        let wallet = try browseSource("ggumirror/Shared/ShardWallet.swift")
+        #expect(wallet.contains("guard let session, session.isValid() else {"))
+        #expect(wallet.contains("clear()"))
+    }
+}

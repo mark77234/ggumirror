@@ -91,6 +91,15 @@ struct RootView: View {
                     } else {
                         await mirrorCapacity.refresh(session: server, library: library)
                     }
+                    // **개인화 상태는 계정을 따라간다.** 공개 목록은 그대로 두고
+                    // 좋아요 · 구매 · 판매 목록만 다시 맞춘다 — 로그아웃하면 비워진다.
+                    //
+                    // 공개 목록 `.task`는 정렬과 갈래로만 다시 도는지라, 상점 화면에
+                    // 머문 채 로그아웃하면 **이전 계정의 하트가 채워진 채 남아 있었다.**
+                    await marketplace.refreshMine(session: server)
+                    await marketplace.refreshMyListings(session: server)
+                    // 다음 사용자가 자기 내장 템플릿을 다시 맞춰 볼 수 있게 한다.
+                    if server == nil { catalogStats.clear() }
                     // AI 스티커도 로그인 상태에 따라 켜지고 꺼진다. 로그아웃하면 CTA가 사라진다.
                     await aiStickers.refresh(session: server)
                     // 로그인 직후 광고를 미리 받아 둔다. 로그아웃하면 받지 않는다.
