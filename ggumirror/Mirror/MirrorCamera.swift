@@ -182,12 +182,85 @@ final class MirrorCamera {
         presets.first { abs($0 - logical) <= tolerance }
     }
 
-    /// 화면에 놓는 방법. **Camera Area를 꽉 채운다.**
+    // MARK: - 화면에 담는 방법 (framing)
+
+    /// 카메라가 보내 준 그림을 **세로로 긴 화면에 어떻게 놓을 것인가.**
     ///
-    /// 거울 프레임 두께(108 / 108 / 180 / 220)와 Camera Area(864 × 1940)는 확정값이다.
-    /// 카메라 화각을 넓히겠다고 이걸 `.resizeAspect`로 바꾸면 영상이 작아지고
-    /// 남는 자리만큼 프레임이 두꺼워 보인다 — 디자인이 바뀌므로 하지 않는다.
+    /// 전면 센서는 4:3에 가깝고 화면은 9:19.5쯤이다. 꽉 채우려면 **좌우를 크게 잘라야**
+    /// 하고, 그래서 얼굴이 기본 카메라 앱보다 훨씬 크게 보였다. 잘라낸 화각은
+    /// 돌아오지 않는다 — software로 넓힐 수 없으므로 **자르지 않는 선택지**를 준다.
+    ///
+    /// 이건 **배율이 아니다.** 기기 zoom factor는 어느 쪽에서도 그대로다.
+    nonisolated enum Framing: String, CaseIterable, Sendable {
+        /// 센서가 보내 준 화각을 **하나도 자르지 않는다.** 위아래가 남는 것이 정상이다.
+        case wide
+        /// 화면을 꽉 채운다. 좌우가 잘린다. (기존 동작)
+        case fill
+
+        /// 전면 첫 진입은 언제나 넓게 본다.
+        static let initial: Framing = .wide
+
+        var previewGravity: AVLayerVideoGravity {
+            self == .wide ? .resizeAspect : .resizeAspectFill
+        }
+
+        var title: String { self == .wide ? "넓게" : "채우기" }
+        var accessibilityTitle: String { self == .wide ? "넓게 보기" : "화면 채우기" }
+    }
+
+    /// 전면에서 고른 방법. **이 session 동안만 유지된다** — 저장하지 않는다.
+    /// 후면으로 갔다 돌아와도 고른 값이 살아 있다.
+    var frontFraming: Framing = .initial
+
+    /// 지금 실제로 쓰는 방법. **후면은 언제나 꽉 채운다** — 후면 UX는 그대로다.
+    var framing: Framing { position == .front ? frontFraming : .fill }
+
+    /// 전면에서만 고를 수 있다. 후면에는 이 버튼이 없다.
+    var canChooseFraming: Bool {
+        role == .mirror && status == .ready && position == .front
+    }
+
+    /// 지금 카메라가 보내 주는 그림의 비율(세로 기준 가로/세로).
+    ///
+    /// **4:3을 코드에 적지 않는다** — `activeFormat`이 실제로 무엇을 주는지 읽는다.
+    /// 화면 회전(90도)을 이미 걸어 두었으므로 가로/세로를 뒤집어 본다.
+    private(set) var sourceAspectRatio: CGFloat?
+
+    /// 세션 큐가 읽어 둔 값. `activeCapability`와 같은 규칙이다.
+    @ObservationIgnored private nonisolated(unsafe) var activeSourceAspect: CGFloat?
+
+    /// 원본에서 **실제로 화면에 남는 넓이의 비율**(0...1). 1이면 하나도 자르지 않았다.
+    ///
+    /// 순수 함수라 기기 없이 시험한다. 여기가 "넓게 보기가 정말 덜 자르는가"의 근거다.
+    nonisolated static func visibleSourceFraction(
+        source: CGSize, viewport: CGSize, framing: Framing
+    ) -> CGFloat {
+        guard source.width > 0, source.height > 0,
+              viewport.width > 0, viewport.height > 0
+        else { return 1 }
+
+        switch framing {
+        case .wide:
+            // 통째로 넣는다. 남는 자리는 화면 쪽에 생기지 원본이 잘리지 않는다.
+            return 1
+        case .fill:
+            // 짧은 쪽을 기준으로 키우므로 긴 쪽이 잘린다.
+            let scale = max(viewport.width / source.width, viewport.height / source.height)
+            let visible = CGSize(width: viewport.width / scale, height: viewport.height / scale)
+            return (visible.width * visible.height) / (source.width * source.height)
+        }
+    }
+
+    /// 화면에 놓는 방법의 예전 기본값. `Framing.fill`과 같다 —
+    /// 기존 호출부와 테스트가 가리키던 상수를 유지한다.
     nonisolated static let previewGravity: AVLayerVideoGravity = .resizeAspectFill
+
+    /// 전면 framing을 바꾼다. **기기 배율은 건드리지 않는다** — 다른 문제다.
+    func setFrontFraming(_ next: Framing) {
+        guard canChooseFraming else { return }
+        frontFraming = next
+        CameraLog.event("front framing \(next.rawValue)")
+    }
 
     // MARK: - 가장 넓은 화각 고르기
 
@@ -471,6 +544,11 @@ final class MirrorCamera {
             device.activeFormat = candidates[index]
             CameraLog.event("format \(choices[index]) / 후보 \(choices.count)개 중 화각 최대")
         }
+        // **고른 format이 실제로 주는 비율**을 읽는다. 세로로 세워서 본다(회전 90도 고정).
+        let active = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        activeSourceAspect = active.height > 0
+            ? CGFloat(active.height) / CGFloat(active.width)
+            : nil
 
         // **format을 정한 뒤에** 범위를 읽는다 — format이 쓸 수 있는 렌즈를 정한다.
         let capability = Self.capability(of: device)
@@ -541,6 +619,7 @@ final class MirrorCamera {
     /// **카메라가 바뀔 때마다 부른다** — 전면으로 가면 0.5x 버튼이 사라져야 한다.
     private func adoptActiveCapability() {
         zoomCapability = activeCapability
+        sourceAspectRatio = activeSourceAspect
         pinchBaseline = nil
         // 새 카메라의 범위 밖이면 잘라 넣는다. 1x는 언제나 범위 안이다.
         logicalZoom = zoomCapability.clampedLogical(1)

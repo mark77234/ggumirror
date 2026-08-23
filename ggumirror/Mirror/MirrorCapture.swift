@@ -17,19 +17,26 @@ enum MirrorCapture {
     }
 
     /// 사용자가 보고 있는 "완성된 거울 화면"을 만든다.
-    /// 화면 overlay와 **같은 MirrorRenderer / 같은 aspect-fill 변환**을 쓰므로
+    /// 화면 overlay와 **같은 MirrorRenderer / 같은 framing 규칙**을 쓰므로
     /// 좌우 반전 방향 / 장식 위치 / 비율 / crop이 화면과 일치한다.
+    ///
+    /// - Parameter framing: 화면에서 쓰던 것과 **같은 값**이어야 한다.
+    ///   preview는 넓게 보는데 저장은 잘려 나오면 사용자가 본 것과 다른 사진이 된다.
     @MainActor
-    static func compose(frame: UIImage?, design: MirrorDesign, size: CGSize) -> UIImage? {
+    static func compose(
+        frame: UIImage?,
+        design: MirrorDesign,
+        size: CGSize,
+        framing: MirrorCamera.Framing = .fill
+    ) -> UIImage? {
         guard size.width > 0, size.height > 0 else { return nil }
 
         let composition = ZStack {
             Color.black
             if let frame {
-                // 화면과 **같은 규칙**(aspect fill)이다. 미리 보던 화각과 저장되는 화각이 같아야 한다.
-                Image(uiImage: frame)
-                    .resizable()
-                    .scaledToFill()
+                // preview layer의 `videoGravity`와 **같은 규칙**이다.
+                // `.resizeAspect` ↔ `scaledToFit`, `.resizeAspectFill` ↔ `scaledToFill`.
+                mirrorFrame(frame, framing: framing)
                     .frame(width: size.width, height: size.height)
                     .clipped()
             }
@@ -41,6 +48,22 @@ enum MirrorCapture {
         renderer.scale = 1            // size를 이미 픽셀 단위로 받는다
         renderer.isOpaque = true
         return renderer.uiImage
+    }
+
+    /// 화면과 같은 방법으로 그림을 놓는다. **두 방법이 한 곳에만 있다.**
+    ///
+    /// 넓게 보기에서 위아래에 남는 검은 자리는 화면에서 보던 그대로다 —
+    /// 사진에서만 지우면 거울 장식(전체 화면 기준 확정 geometry)이 잘린다.
+    @ViewBuilder
+    private static func mirrorFrame(
+        _ image: UIImage, framing: MirrorCamera.Framing
+    ) -> some View {
+        switch framing {
+        case .wide:
+            Image(uiImage: image).resizable().scaledToFit()
+        case .fill:
+            Image(uiImage: image).resizable().scaledToFill()
+        }
     }
 
     /// 촬영한 거울 사진. 카메라 사진이라 JPEG로 충분하다.

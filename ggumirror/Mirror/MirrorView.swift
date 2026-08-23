@@ -53,7 +53,7 @@ struct MirrorView: View {
 
             switch camera.status {
             case .ready:
-                CameraPreviewView(camera: camera)
+                CameraPreviewView(camera: camera, framing: camera.framing)
                     .accessibilityLabel("거울")
             case .denied:
                 message("카메라 권한이 필요해요", detail: "설정에서 카메라를 켜면 거울을 볼 수 있어요.", showsSettings: true)
@@ -84,7 +84,11 @@ struct MirrorView: View {
                     zoomPresets: camera.zoomPresets,
                     selectedZoomPreset: camera.selectedZoomPreset,
                     logicalZoom: camera.logicalZoom,
-                    onSelectZoom: { camera.selectZoom(logical: $0) }
+                    onSelectZoom: { camera.selectZoom(logical: $0) },
+                    // 전면에서만 고를 수 있다 — 후면 UX는 그대로 꽉 채운다.
+                    framingOptions: camera.canChooseFraming ? MirrorCamera.Framing.allCases : [],
+                    framing: camera.framing,
+                    onSelectFraming: { camera.setFrontFraming($0) }
                 )
                 .transition(.opacity)
             }
@@ -166,6 +170,8 @@ struct MirrorView: View {
         // **요청이 시작될 때 의도를 고정한다.** 촬영 도중 사용자가 플래시를 눌러도
         // 이 사진의 설정이 중간에 바뀌지 않는다.
         let wantsFlash = isFlashOn
+        // framing도 같이 고정한다. 촬영 중에 바꿔도 이 사진은 보던 그대로 저장된다.
+        let framing = camera.framing
         // 공식 flash(후면 LED · 전면 Retina Flash)가 없으면 화면 flash로 대신한다.
         let usesScreenFlash = MirrorCamera.needsScreenFlash(
             wantsFlash: wantsFlash,
@@ -187,7 +193,8 @@ struct MirrorView: View {
             guard let image = MirrorCapture.compose(
                 frame: photo,
                 design: currentDesign,
-                size: screenPixelSize
+                size: screenPixelSize,
+                framing: framing
             ) else {
                 saveAlert = SaveAlert(message: "지금은 저장할 화면을 만들 수 없어요.", showsSettings: false)
                 return

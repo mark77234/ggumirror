@@ -65,7 +65,66 @@ Camera Area:
 - 본앱 Mirror는 **0.5x / 1x / 2x preset + pinch**를 지원한다 (아래 참고).
   잠금화면 Quick Mirror(`.viewfinder`)는 여전히 **1x 고정**이다
 - 시작 배율은 언제나 **1x**이고 저장하지 않는다
+- **전면에는 framing 선택(`넓게` / `채우기`)이 있고 기본값은 `넓게`다** (아래 참고).
+  후면은 언제나 화면을 꽉 채운다
 - Camera framing 문제를 해결하기 위해 Mirror frame geometry를 변경하지 않는다
+
+## 전면 Framing — 넓게 보기 / 화면 채우기
+
+**배율이 아니다.** 센서가 준 그림을 세로로 긴 화면에 **어떻게 놓을 것인가**의 문제다.
+어느 쪽을 골라도 기기 zoom factor는 그대로다.
+
+### 왜 필요한가 (root cause)
+
+전면 센서는 4:3에 가깝고 화면은 9:19.5쯤이다. `.resizeAspectFill`로 꽉 채우면
+**좌우가 크게 잘려서** 기본 카메라 앱보다 얼굴이 훨씬 크게 보였다.
+잘라낸 화각은 software로 되돌릴 수 없다 — 그래서 **자르지 않는 선택지**를 준다.
+
+| | |
+|---|---|
+| `넓게` (`.wide`, **기본값**) | 센서 화각을 하나도 자르지 않는다. 위아래가 남는다 |
+| `채우기` (`.fill`) | 화면을 꽉 채운다. 좌우가 잘린다 (기존 동작) |
+
+### crop이 걸리는 자리는 딱 두 곳이고 짝을 이룬다
+
+| | `넓게` | `채우기` |
+|---|---|---|
+| preview (`AVCaptureVideoPreviewLayer`) | `.resizeAspect` | `.resizeAspectFill` |
+| 저장 (`MirrorCapture.compose`) | `scaledToFit()` | `scaledToFill()` |
+
+**둘이 갈라지면 "화면에서 본 것과 사진이 다르다"가 된다.** `MirrorView`가 같은
+`camera.framing` 하나를 두 곳에 넘기고, 촬영 시작 순간의 값을 고정한다(플래시 의도와 같은 규칙).
+
+넓게 보기에서 위아래에 남는 검은 자리는 **사진에도 그대로 들어간다.** 거울 장식이
+전체 화면 기준 확정 geometry(1080 × 2340)라, 사진만 카메라 띠에 맞춰 자르면 장식이 잘린다.
+
+### 비율을 코드에 적지 않는다
+
+`4:3`도 `0.75`도 어디에도 없다. `activeFormat`이 실제로 주는 크기를 읽어
+`sourceAspectRatio`로 둔다. 화면에 놓는 일은 layer의 `videoGravity`와 SwiftUI의
+`scaledToFit/Fill`이 하므로 **우리가 확대·축소 계산을 하지 않는다** —
+가짜 화각이 생길 구조가 아니다.
+
+`visibleSourceFraction(source:viewport:framing:)`이 "얼마나 남는가"를 돌려주는
+순수 함수다. 기기 없이 "넓게가 채우기보다 덜 자른다"를 시험한다.
+
+### 범위
+
+- **전면에서만** 고를 수 있다(`canChooseFraming`). 후면 UX는 그대로다 —
+  `framing`은 `position == .front ? frontFraming : .fill`
+- 선택은 **이 session 동안만** 산다. `UserDefaults`에 저장하지 않는다.
+  후면에 갔다 전면으로 돌아오면 고른 값이 살아 있다(전환이 `frontFraming`을 건드리지 않는다)
+- 잠금화면 `.viewfinder`는 role guard에 막혀 언제나 예전 동작(`fill`)이다.
+  `compose(framing:)` 기본값도 `.fill`이라 모르는 호출부는 그대로 동작한다
+
+### UI
+
+배율 칩 **왼쪽에 따로 묶어** 둔다 — 같은 캡슐에 섞으면 넓게 보기가 배율처럼 읽힌다.
+사용자에게 `4:3` · `16:9`를 고르게 하지 않는다. 글자는 `넓게` · `채우기`,
+낭독기는 `넓게 보기` · `화면 채우기`. tap target은 배율 칩과 같은 **44pt**이고
+같은 auto-hide 타이머를 쓴다.
+
+`ggumirrorTests/FrontFramingTests.swift`가 위 전부를 고정한다.
 
 ## Mirror Camera 배율 (Zoom)
 

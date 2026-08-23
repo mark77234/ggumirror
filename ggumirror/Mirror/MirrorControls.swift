@@ -29,6 +29,11 @@ struct MirrorControls: View {
     var logicalZoom: CGFloat = 1
     var onSelectZoom: (CGFloat) -> Void = { _ in }
 
+    /// 화면에 담는 방법. **전면에서만 온다** — 비어 있으면 그리지 않는다.
+    var framingOptions: [MirrorCamera.Framing] = []
+    var framing: MirrorCamera.Framing = .fill
+    var onSelectFraming: (MirrorCamera.Framing) -> Void = { _ in }
+
     /// Claude Design(Mirror App v2, 402 x 874 기준)의 배치를 0...1 normalized로 옮긴 값.
     /// 기기 크기가 달라져도 같은 비율로 놓인다.
     private enum Layout {
@@ -124,7 +129,8 @@ struct MirrorControls: View {
     /// 고를 것이 하나뿐이면 아무것도 그리지 않는다 — 누를 수 없는 버튼을 두지 않는다.
     @ViewBuilder
     private var zoomSelector: some View {
-        if zoomPresets.count > 1 {
+        // 배율이 하나뿐인 기기에서도 넓게/채우기는 고를 수 있어야 한다.
+        if zoomPresets.count > 1 || framingOptions.count > 1 {
             VStack(spacing: 6) {
                 // pinch로 preset 사이에 있으면 버튼이 하나도 켜지지 않는다.
                 // 그때 지금 배율이 얼마인지는 알아야 하므로 값을 그대로 보여 준다.
@@ -136,20 +142,66 @@ struct MirrorControls: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Color(white: 0.11).opacity(0.5), in: .capsule)
-                    .opacity(selectedZoomPreset == nil ? 1 : 0)
+                    .opacity(selectedZoomPreset == nil && zoomPresets.count > 1 ? 1 : 0)
                     .accessibilityHidden(selectedZoomPreset != nil)
                     .accessibilityLabel("현재 \(Self.zoomAccessibilityLabel(logicalZoom))")
 
-                HStack(spacing: 4) {
-                    ForEach(zoomPresets, id: \.self) { preset in
-                        zoomChip(preset)
+                HStack(spacing: 10) {
+                    // 배율과 **다른 묶음**이다. 섞어 두면 넓게 보기가 배율처럼 읽힌다.
+                    framingSelector
+
+                    if zoomPresets.count > 1 {
+                        HStack(spacing: 4) {
+                            ForEach(zoomPresets, id: \.self) { preset in
+                                zoomChip(preset)
+                            }
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 5)
+                        .background(Color(white: 0.11).opacity(0.5), in: .capsule)
                     }
                 }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 5)
-                .background(Color(white: 0.11).opacity(0.5), in: .capsule)
             }
         }
+    }
+
+    /// 전면에서만. 배율이 아니라 **자를지 말지**를 고른다.
+    @ViewBuilder
+    private var framingSelector: some View {
+        if framingOptions.count > 1 {
+            HStack(spacing: 4) {
+                ForEach(framingOptions, id: \.self) { option in
+                    framingChip(option)
+                }
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 5)
+            .background(Color(white: 0.11).opacity(0.5), in: .capsule)
+        }
+    }
+
+    private func framingChip(_ option: MirrorCamera.Framing) -> some View {
+        let isSelected = framing == option
+        return Button {
+            onInteraction()
+            onSelectFraming(option)
+        } label: {
+            Text(option.title)
+                .font(InkFont.caption)
+                .foregroundStyle(isSelected ? Color(white: 0.11) : .white)
+                .padding(.horizontal, 10)
+                // 배율 칩과 같은 규칙 — 글자는 작아도 닿는 자리는 44pt다.
+                .frame(minHeight: 44)
+                .background(alignment: .center) {
+                    Capsule()
+                        .fill(isSelected ? Color.white.opacity(0.92) : .clear)
+                        .frame(height: 34)
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.accessibilityTitle)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private func zoomChip(_ preset: CGFloat) -> some View {
