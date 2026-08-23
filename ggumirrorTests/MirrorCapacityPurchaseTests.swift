@@ -66,7 +66,9 @@ private final class FakeCapacityBackend: MirrorCapacityBackend, @unchecked Senda
         packId: String, operationId: String, accessToken: String
     ) async throws -> MirrorCapacityPurchase {
         purchaseCalls.append(operationId)
-        if slowPurchase { try? await Task.sleep(for: .milliseconds(120)) }
+        // 두 번째 탭이 확실히 **진행 중**에 들어오도록 넉넉히 붙잡는다.
+        // 짧게 잡으면 부하가 걸린 전체 실행에서 첫 요청이 먼저 끝나 버린다.
+        if slowPurchase { try? await Task.sleep(for: .seconds(1)) }
 
         if let already = handled[operationId] {
             // 같은 의도가 이미 처리됐다. **경제를 다시 움직이지 않는다.**
@@ -468,5 +470,104 @@ struct CapacityFullDialogTests {
 
         // 담아 둔 거울은 그대로다.
         #expect(library.storedCount == stored)
+    }
+}
+
+
+// MARK: - 가격은 한 줄이다
+
+import SwiftUI
+
+@MainActor
+@Suite("조각 가격은 가로 한 줄로 붙어 있다")
+struct ShardPriceLayoutTests {
+
+    /// 잉크가 찍힌 세로 범위(픽셀). 가격이 쪼개지면 이 높이가 두 줄로 늘어난다.
+    private func inkedHeight(_ view: some View, width: CGFloat) -> Int? {
+        let size = CGSize(width: width, height: 80)
+        let renderer = ImageRenderer(
+            content: view.frame(width: size.width, height: size.height, alignment: .leading)
+        )
+        renderer.scale = 1
+        renderer.isOpaque = false
+        guard let image = renderer.cgImage else { return nil }
+
+        var data = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        guard let context = CGContext(
+            data: &data, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: image.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(image, in: CGRect(origin: .zero, size: CGSize(
+            width: image.width, height: image.height
+        )))
+
+        var top: Int?
+        var bottom = 0
+        for y in 0..<image.height {
+            let inked = (0..<image.width).contains { x in data[(y * image.width + x) * 4 + 3] > 40 }
+            if inked {
+                if top == nil { top = y }
+                bottom = y
+            }
+        }
+        guard let top else { return nil }
+        return bottom - top + 1
+    }
+
+    @Test("좁은 자리에 놓여도 숫자가 아이콘 밑으로 내려가지 않는다")
+    func priceNeverStacksWhenSqueezed() throws {
+        // **회귀**: 내 거울의 `+5칸 ◇10`에서 실제로 이렇게 보였다.
+        //   +5칸     ◇
+        //            10
+        let price = ShardAmount(amount: 10, font: InkFont.caption, iconSize: 13)
+
+        let roomy = try #require(inkedHeight(price, width: 200))
+        let squeezed = try #require(inkedHeight(price, width: 24))
+
+        // 자리가 줄어도 **같은 높이**여야 한다. 두 줄이 되면 훌쩍 커진다.
+        #expect(squeezed == roomy, "좁아지자 가격이 쪼개졌다 (\(roomy) → \(squeezed))")
+    }
+
+    @Test("가격은 쪼갤 수 없는 한 덩어리다")
+    func priceIsAtomic() throws {
+        let source = try capacitySource("ggumirror/Shared/InkComponents.swift")
+        let start = try #require(source.range(of: "struct ShardAmount"))
+        let body = source[start.lowerBound...].prefix(1400)
+        #expect(body.contains(".lineLimit(1)"))
+        #expect(body.contains(".fixedSize(horizontal: true, vertical: false)"))
+    }
+
+    @Test("확장 버튼도 안에서 쪼개지지 않는다")
+    func expandCTAStaysOnOneLine() throws {
+        let view = try capacitySource("ggumirror/MyMirrors/MyMirrorsView.swift")
+        let start = try #require(view.range(of: "private var expandButton"))
+        let button = view[start.lowerBound...].prefix(900)
+        #expect(button.contains("ShardAmount(amount: pack.costShards"))
+        #expect(button.contains(".fixedSize(horizontal: true, vertical: false)"))
+        // 손이 닿는 자리는 그대로 44pt다.
+        #expect(button.contains("frame(minHeight: 44)"))
+    }
+
+    @Test("한 줄에 안 들어가면 화면 폭을 재지 않고 줄을 나눈다")
+    func capacityBarFallsBackWithoutMagicNumbers() throws {
+        let view = try capacitySource("ggumirror/MyMirrors/MyMirrorsView.swift")
+        let start = try #require(view.range(of: "private var capacityBar"))
+        let bar = view[start.lowerBound...].prefix(700)
+        #expect(bar.contains("ViewThatFits(in: .horizontal)"))
+        // 기기 폭 · 글자 크기를 숫자로 재지 않는다.
+        for guessed in ["UIScreen", "393", "dynamicTypeSize >=", ".accessibility1"] {
+            #expect(!bar.contains(guessed), "폭을 손으로 쟀다: \(guessed)")
+        }
+    }
+
+    @Test("확인 창은 아이콘 없이 글로만 말한다 — 같은 문제가 없다")
+    func confirmationDialogHasNoIconRow() throws {
+        let dialog = try capacitySource("ggumirror/Shared/MirrorStorageFullDialog.swift")
+        #expect(!dialog.contains("ShardIcon"))
+        #expect(!dialog.contains("ShardAmount"))
+        // 숫자는 여전히 서버 값이다.
+        #expect(dialog.contains("costShards"))
     }
 }

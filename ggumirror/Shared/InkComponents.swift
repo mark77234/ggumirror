@@ -226,6 +226,11 @@ struct ShardAmount: View {
                 .font(font)
                 .foregroundStyle(PaperTheme.ink)
         }
+        // **가격은 쪼갤 수 없는 한 덩어리다.** 좁은 줄에 함께 놓이면 SwiftUI가 이걸
+        // 먼저 줄여서 숫자가 아이콘 밑으로 내려갔다 — 내 거울의 `+5칸 ◇10`이 그랬다.
+        // 자리가 모자라면 **옆에 있는 것이 줄어야** 한다.
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isFree ? "무료" : "\(amount) 조각")
     }

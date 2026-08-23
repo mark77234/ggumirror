@@ -66,25 +66,9 @@ struct MyMirrorsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 14)
 
-            HStack(spacing: 12) {
-                // **보관 중인 전부**를 센다. 만든 것만 세면 화면 숫자와 실제로 담을 수
-                // 있는 양이 달라서, 왜 더 못 담는지 설명할 수 없다.
-                //
-                // 칸 수는 서버가 정한다 — 조각으로 산 칸은 이 기기가 아니라 서버에 있다.
-                Text("보관 중 \(library.storedCount) / \(library.mirrorCapacity)")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(
-                        "거울 \(library.storedCount)개 보관 중, 최대 \(library.mirrorCapacity)개"
-                    )
-
-                expandButton
-
-                createButton
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 10)
+            capacityBar
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
 
             InkFilterBar(items: MyMirrorFilter.allCases, selection: $filter) { $0.rawValue }
                 .padding(.bottom, 14)
@@ -234,12 +218,54 @@ struct MyMirrorsView: View {
 
 
     /// 거울이 있든 없든 항상 여기서 새 거울을 시작할 수 있다.
+    /// 보관량 + 확장 · 만들기.
+    ///
+    /// 셋을 한 줄에 넣기에는 폭이 빠듯하다. **자리가 모자라면 SwiftUI가 가장 유연한
+    /// 것부터 줄이는데**, 그게 가격이라 숫자가 아이콘 밑으로 내려갔다.
+    /// 이제 가격과 버튼은 줄지 않고, 정말 안 들어가면 **줄을 나눈다** —
+    /// 화면 폭이나 글자 크기를 숫자로 재지 않고 `ViewThatFits`가 판단한다.
+    private var capacityBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                capacityLabel
+                Spacer(minLength: 8)
+                expandButton
+                createButton
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                capacityLabel
+                HStack(spacing: 12) {
+                    expandButton
+                    createButton
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    /// **보관 중인 전부**를 센다. 만든 것만 세면 화면 숫자와 실제로 담을 수 있는 양이
+    /// 달라서, 왜 더 못 담는지 설명할 수 없다.
+    ///
+    /// 칸 수는 서버가 정한다 — 조각으로 산 칸은 이 기기가 아니라 서버에 있다.
+    private var capacityLabel: some View {
+        Text("보관 중 \(library.storedCount) / \(library.mirrorCapacity)")
+            .font(InkFont.caption)
+            .foregroundStyle(PaperTheme.secondaryInk)
+            .lineLimit(1)
+            .accessibilityLabel(
+                "거울 \(library.storedCount)개 보관 중, 최대 \(library.mirrorCapacity)개"
+            )
+    }
+
     private var createButton: some View {
         Button {
             createMirror()
         } label: {
             Label("거울 만들기", systemImage: "plus")
                 .font(InkFont.caption.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(PaperTheme.ink)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
@@ -262,11 +288,14 @@ struct MyMirrorsView: View {
             Button {
                 isConfirmingExpand = true
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text("+\(pack.slotDelta)칸")
+                        .lineLimit(1)
                     ShardAmount(amount: pack.costShards, font: InkFont.caption, iconSize: 13)
                 }
                 .font(InkFont.caption)
+                // 버튼 하나가 통째로 한 덩어리다. 좁다고 안에서 쪼개지 않는다.
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(PaperTheme.ink)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 44)
