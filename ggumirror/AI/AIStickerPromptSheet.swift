@@ -95,14 +95,19 @@ struct AIStickerPromptSheet: View {
 
             // 부족할 때만 충전으로 가는 길을 낸다. 문구는 그대로 두고 CTA만 더한다.
             if !canAfford, let onBuyShards {
-                Button("조각 채우기") { onBuyShards() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
+                Button {
+                    onBuyShards()
+                } label: {
+                    Text("조각 채우기")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
                     .disabled(isGenerating)
                     .accessibilityIdentifier("buyShardsFromAI")
@@ -116,27 +121,37 @@ struct AIStickerPromptSheet: View {
     /// 조각을 쓰는 결정이다. 어떤 글꼴 크기에서도, 키보드가 올라와 있어도 눌릴 수 있어야 한다.
     private var actions: some View {
         HStack(spacing: 10) {
-                Button("취소") { dismiss() }
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
+                Button {
+                    dismiss()
+                } label: {
+                    Text("취소")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
                     .disabled(isGenerating)
 
-                Button(isGenerating ? "만드는 중..." : "만들기") { onGenerate() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.subtleSurface)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .fill(canGenerate ? PaperTheme.ink : PaperTheme.disabled)
-                    }
+                Button {
+                    onGenerate()
+                } label: {
+                    Text(isGenerating ? "만드는 중..." : "만들기")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.subtleSurface)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .fill(canGenerate ? PaperTheme.ink : PaperTheme.disabled)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
                     .disabled(!canGenerate)
         }

@@ -227,9 +227,14 @@ struct StickerCreatorView: View {
     private var header: some View {
         HStack {
             // 취소는 원본을 건드리지 않는다. 사본에서만 작업했다.
-            Button("취소") { dismiss() }
-                .font(InkFont.body)
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                dismiss()
+            } label: {
+                Text("취소")
+                    .font(InkFont.body)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
 
             Spacer(minLength: 8)
 
@@ -239,9 +244,14 @@ struct StickerCreatorView: View {
 
             Spacer(minLength: 8)
 
-            Button("저장") { beginSave() }
-                .font(InkFont.body.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                beginSave()
+            } label: {
+                Text("저장")
+                    .font(InkFont.body.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
                 .disabled(isEmpty)
         }
         .foregroundStyle(PaperTheme.ink)
@@ -442,10 +452,13 @@ struct StickerCreatorView: View {
                 iconButton("복제", icon: "plus.square.on.square", action: onDuplicate)
                 iconButton("삭제", icon: "trash", action: onDelete)
                 Spacer(minLength: 0)
-                Button("완료", action: onDone)
-                    .font(InkFont.button)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(minHeight: 44)
+                Button(action: onDone) {
+                    Text("완료")
+                        .font(InkFont.button)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                }
             }
         }
         .padding(.horizontal, 16)

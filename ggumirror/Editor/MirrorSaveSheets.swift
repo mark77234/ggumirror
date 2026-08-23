@@ -57,27 +57,39 @@ struct MirrorNameSheet: View {
                 }
 
             HStack(spacing: 10) {
-                Button("취소") { dismiss() }
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
-                    .buttonStyle(InkPressStyle())
+                // **겉모습이 label 안에 있다.** 밖에 두면 글자만 눌린다 —
+                // 실기기에서 `저장` 테두리를 눌러도 반응이 없던 이유다.
+                Button {
+                    dismiss()
+                } label: {
+                    Text("취소")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
 
-                Button("저장") { onSave() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.subtleSurface)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .fill(trimmed.isEmpty ? PaperTheme.disabled : PaperTheme.ink)
-                    }
-                    .buttonStyle(InkPressStyle())
+                Button {
+                    onSave()
+                } label: {
+                    Text("저장")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.subtleSurface)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .fill(trimmed.isEmpty ? PaperTheme.disabled : PaperTheme.ink)
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
                     .disabled(trimmed.isEmpty)
             }
         }

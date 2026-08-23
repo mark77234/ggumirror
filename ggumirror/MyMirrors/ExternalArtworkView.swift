@@ -149,14 +149,19 @@ struct ExternalArtworkView: View {
             }
             .buttonStyle(InkPressStyle())
         } else {
-            Button("작업 가이드 저장하기") { guideURL = try? MirrorArtworkGuide.exportPNG() }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.subtleSurface)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 48)
-                .background {
-                    UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
-                }
+            Button {
+                guideURL = try? MirrorArtworkGuide.exportPNG()
+            } label: {
+                Text("작업 가이드 저장하기")
+                    .font(InkFont.body.weight(.semibold))
+                    .foregroundStyle(PaperTheme.subtleSurface)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                    }
+                    .contentShape(.rect)
+            }
                 .buttonStyle(InkPressStyle())
                 .task { guideURL = try? MirrorArtworkGuide.exportPNG() }
         }
@@ -229,15 +234,20 @@ struct ExternalArtworkView: View {
     /// 항상 눌릴 수 있어야 하는 결정 버튼. 스크롤 밖에 둔다.
     private func previewActions(_ artwork: ImportedArtworkObject) -> some View {
         HStack(spacing: 10) {
-            Button("다시 선택") { candidate = nil }
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 48)
-                .background {
-                    UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                        .stroke(PaperTheme.ink, lineWidth: 1.6)
-                }
+            Button {
+                candidate = nil
+            } label: {
+                Text("다시 선택")
+                    .font(InkFont.body)
+                    .foregroundStyle(PaperTheme.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                            .stroke(PaperTheme.ink, lineWidth: 1.6)
+                    }
+                    .contentShape(.rect)
+            }
                 .buttonStyle(InkPressStyle())
 
             Button("이 디자인 사용") {

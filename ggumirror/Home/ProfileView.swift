@@ -90,10 +90,13 @@ struct ProfileView: View {
     private var avatar: some View {
         VStack(spacing: 10) {
             InkAvatar(size: 84)
-            Button("사진 변경") {}
-                .font(InkFont.secondary)
+            Button {} label: {
+                Text("사진 변경")
+                    .font(InkFont.secondary)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+            }
                 .tint(PaperTheme.ink)
-                .frame(minHeight: 44)
                 .disabled(true)   // 사진 선택은 다음 Phase
         }
         .frame(maxWidth: .infinity)

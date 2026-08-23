@@ -159,17 +159,21 @@ struct MyListingsSection: View {
     }
 
     private func action(_ title: String, work: @escaping () async -> Void) -> some View {
-        Button(title) { Task { await work() } }
-            .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.ink)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background {
-                UnevenRoundedRectangle.ink(14, 12, 15, 13)
-                    .stroke(PaperTheme.ink, lineWidth: 1.6)
-            }
-            .buttonStyle(InkPressStyle())
-            .contentShape(.rect)
+        Button {
+            Task { await work() }
+        } label: {
+            Text(title)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background {
+                    UnevenRoundedRectangle.ink(14, 12, 15, 13)
+                        .stroke(PaperTheme.ink, lineWidth: 1.6)
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
     }
 
     /// 내린다. **snapshot을 지우지 않는다** — 이미 산 사람은 계속 받는다.

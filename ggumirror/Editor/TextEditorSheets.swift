@@ -54,27 +54,38 @@ struct TextInputSheet: View {
                 }
 
             HStack(spacing: 10) {
-                Button("취소") { dismiss() }
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
-                    .buttonStyle(InkPressStyle())
+                // 겉모습을 label 안에 둔다 — 밖에 두면 글자만 눌린다.
+                Button {
+                    dismiss()
+                } label: {
+                    Text("취소")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
 
-                Button(isNew ? "추가" : "저장") { onCommit() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.subtleSurface)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(15, 12, 16, 13)
-                            .fill(trimmed.isEmpty ? PaperTheme.disabled : PaperTheme.ink)
-                    }
-                    .buttonStyle(InkPressStyle())
+                Button {
+                    onCommit()
+                } label: {
+                    Text(isNew ? "추가" : "저장")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.subtleSurface)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(15, 12, 16, 13)
+                                .fill(trimmed.isEmpty ? PaperTheme.disabled : PaperTheme.ink)
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
                     // 빈 문자열 / 공백만으로는 만들 수 없다.
                     .disabled(trimmed.isEmpty)
             }

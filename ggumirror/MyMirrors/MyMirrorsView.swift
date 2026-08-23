@@ -376,25 +376,35 @@ struct MyMirrorsView: View {
             }
 
             VStack(spacing: 10) {
-                Button("거울 만들기") { createMirror() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.subtleSurface)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
-                    }
+                Button {
+                    createMirror()
+                } label: {
+                    Text("거울 만들기")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.subtleSurface)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
 
-                Button("상점 둘러보기") { onBrowseStore() }
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
+                Button {
+                    onBrowseStore()
+                } label: {
+                    Text("상점 둘러보기")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
             }
             .padding(.top, 2)

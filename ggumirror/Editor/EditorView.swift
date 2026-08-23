@@ -226,8 +226,13 @@ struct EditorView: View {
 
     private var header: some View {
         HStack {
-            Button("취소") { dismiss() }
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                dismiss()
+            } label: {
+                Text("취소")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
 
             Spacer()
 
@@ -237,9 +242,14 @@ struct EditorView: View {
 
             Spacer()
 
-            Button("저장") { beginSave() }
-                .font(InkFont.body.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                beginSave()
+            } label: {
+                Text("저장")
+                    .font(InkFont.body.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
         }
         .foregroundStyle(PaperTheme.ink)
         .padding(.horizontal, 16)
@@ -1048,17 +1058,22 @@ private struct EditorPreviewView: View {
             MirrorCanvasView(design: design)
                 .padding(24)
 
-            Button("닫기") { dismiss() }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(minHeight: 44)
-                .background {
-                    Capsule().fill(PaperTheme.subtleSurface)
-                        .overlay(Capsule().stroke(PaperTheme.ink, lineWidth: 1.6))
-                }
-                .padding(16)
+            Button {
+                dismiss()
+            } label: {
+                Text("닫기")
+                    .font(InkFont.body.weight(.semibold))
+                    .foregroundStyle(PaperTheme.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .background {
+                        Capsule().fill(PaperTheme.subtleSurface)
+                            .overlay(Capsule().stroke(PaperTheme.ink, lineWidth: 1.6))
+                    }
+                    .padding(16)
+                    .contentShape(.rect)
+            }
         }
         .paperBackground()
     }

@@ -234,7 +234,10 @@ nonisolated enum MarketplaceFailure: Error, Equatable, Sendable {
         case .notFound: "상품을 찾지 못했어요."
         case .cannotPublish: "지금은 상점에 올릴 수 없어요."
         case .invalidPackage: "상점에 올릴 준비를 마치지 못했어요."
-        case .storageUnavailable, .network, .server: "지금은 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요."
+        case .storageUnavailable, .network: "지금은 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요."
+        // **연결은 됐고 서버가 처리하지 못한 것이다.** 둘을 같은 말로 뭉개면
+        // 사용자도 우리도 어디를 봐야 할지 모른다 — 유료 구매 500이 그랬다.
+        case .server: "문제가 생겨 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요."
         }
     }
 

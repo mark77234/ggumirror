@@ -261,17 +261,21 @@ struct MySalesSection: View {
     }
 
     private func action(_ title: String, work: @escaping () -> Void) -> some View {
-        Button(title, action: work)
-            .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.ink)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background {
-                UnevenRoundedRectangle.ink(14, 12, 15, 13)
-                    .stroke(PaperTheme.ink, lineWidth: 1.6)
-            }
-            .buttonStyle(InkPressStyle())
-            .contentShape(.rect)
+        // 테두리 전체가 눌린다. `.contentShape`을 Button 밖에 걸면 소용없다 —
+        // tap 영역은 label이 정한다.
+        Button(action: work) {
+            Text(title)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background {
+                    UnevenRoundedRectangle.ink(14, 12, 15, 13)
+                        .stroke(PaperTheme.ink, lineWidth: 1.6)
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
     }
 
     // MARK: - 동작
