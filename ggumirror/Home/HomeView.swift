@@ -18,6 +18,8 @@ struct HomeView: View {
     var onEdit: (RootView.EditorRequest) -> Void
 
     @State private var tab: MainTab = .home
+    /// 홈 탭의 navigation. 로그인 안내에서 **설정으로 밀어 넣기 위해** 붙잡는다.
+    @State private var homePath = NavigationPath()
     /// 조각 충전 sheet. 홈 잔액과 AI 부족 안내가 같은 화면을 연다.
     @State private var isShowingShardStore = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -43,6 +45,9 @@ struct HomeView: View {
             InkTabBar(selection: $tab)
         }
         .paperBackground()
+        // 로그인이 필요한 동작을 누르면 여기서 안내한다. **어느 탭에서 눌러도 같은 창**이다 —
+        // `로그인`은 설정의 기존 Apple 로그인으로 보낸다(새 auth 화면을 만들지 않는다).
+        .inkSignInRequiredDialog { showSignIn() }
         // 조각 충전. 홈 잔액과 AI 부족 안내가 **같은 화면**을 연다 — 상점 UI를 두 번 만들지 않는다.
         .inkBottomSheet(isPresented: $isShowingShardStore, size: .fraction(0.7)) {
             ShardStoreSheet(
@@ -58,8 +63,15 @@ struct HomeView: View {
 
     // MARK: - 홈 탭
 
+    /// 로그인 화면으로 보낸다. **설정의 기존 Apple 로그인 하나뿐**이다 —
+    /// 새 auth 화면을 만들지 않는다. 로그인해도 누르려던 동작을 자동 실행하지 않는다.
+    private func showSignIn() {
+        tab = .home
+        homePath.append(SettingsRoute.settings)
+    }
+
     private var homeTab: some View {
-        NavigationStack {
+        NavigationStack(path: $homePath) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     // 큰 글씨에서는 한 화면에 물리적으로 담기지 않아 접근성을 우선한다.

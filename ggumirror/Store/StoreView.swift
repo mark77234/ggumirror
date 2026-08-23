@@ -169,6 +169,12 @@ struct StoreView: View {
             ForEach(StoreSection.allCases) { item in
                 let isActive = section == item
                 Button {
+                    // **판매 관리는 로그인이 필요하다.** 빈 목록이나 401을 보여 주지 않고
+                    // 바로 안내한다 — 취소하면 보고 있던 갈래가 그대로 남는다.
+                    guard item != .mySales || session.server != nil else {
+                        _ = session.requireSignIn(for: .shardTransaction)
+                        return
+                    }
                     section = item
                 } label: {
                     Text(item.rawValue)
@@ -220,7 +226,8 @@ struct StoreView: View {
                 store: marketplace,
                 sort: sort,
                 session: session.server,
-                onSelect: { path.append($0) }
+                onSelect: { path.append($0) },
+                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
             )
 
             if templates.isEmpty {

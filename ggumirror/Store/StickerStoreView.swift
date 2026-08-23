@@ -235,7 +235,8 @@ struct StickerStoreView: View {
                     store: store,
                     sort: sort,
                     session: session.server,
-                    onSelect: { selected = $0 }
+                    onSelect: { selected = $0 },
+                    onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
                 )
             } else {
                 VStack(spacing: 8) {

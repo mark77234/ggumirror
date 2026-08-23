@@ -90,9 +90,84 @@ final class MirrorStore: Sendable {
         self.root = root
     }
 
-    static var defaultRoot: URL {
+    /// 예전(계정 구분 없던) 저장 위치. **여기 있는 파일을 지우지 않는다** —
+    /// 로그인한 사용자에게 한 번 넘겨준다(`claimLegacy`).
+    static var legacyRoot: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appending(path: "ggumirror", directoryHint: .isDirectory)
+    }
+
+    /// 계정별 서랍이 사는 곳.
+    static var accountsRoot: URL {
+        legacyRoot.appending(path: "accounts", directoryHint: .isDirectory)
+    }
+
+    /// 이 계정의 서랍. 로그아웃 상태는 `guest`라 **비어 있는 것이 정상**이다.
+    static func root(for owner: MirrorLibraryOwner) -> URL {
+        accountsRoot.appending(path: owner.directoryName, directoryHint: .isDirectory)
+    }
+
+    static func store(for owner: MirrorLibraryOwner) -> MirrorStore {
+        MirrorStore(root: root(for: owner))
+    }
+
+    /// 예전 이름. 계정 구분 이전 코드가 가리키던 곳이다.
+    static var defaultRoot: URL { legacyRoot }
+
+    // MARK: - 예전 데이터 넘겨주기 (한 번만)
+
+    /// 계정 구분이 없던 시절의 파일을 **이 사용자 서랍으로 옮긴다.**
+    ///
+    /// 규칙은 셋뿐이다:
+    /// - 로그인한 사용자가 분명할 때만 옮긴다. guest에게 주지 않는다
+    /// - 그 사용자 서랍에 **이미 무언가 있으면 건드리지 않는다** — 덮어쓰지 않는다
+    /// - 한 번 옮기면 표시를 남겨 다시 하지 않는다
+    ///
+    /// 어느 쪽으로도 확신이 없으면 **예전 파일을 그 자리에 그대로 둔다.**
+    /// 지우지도, 아무에게나 주지도 않는다.
+    /// - Returns: 이번 호출이 실제로 옮겼는가.
+    @discardableResult
+    static func claimLegacy(
+        for owner: MirrorLibraryOwner,
+        legacyRoot: URL = MirrorStore.legacyRoot,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard case .user = owner else { return false }
+        let marker = legacyRoot.appending(path: "legacy-claimed.json")
+        guard !fileManager.fileExists(atPath: marker.path()) else { return false }
+
+        // 거울이든 스티커든 예전 파일이 하나라도 있으면 넘겨준다.
+        let legacyFiles = ["mirror-library.json", "sticker-projects.json"]
+        guard legacyFiles.contains(where: {
+            fileManager.fileExists(atPath: legacyRoot.appending(path: $0).path())
+        }) else { return false }
+
+        let destination = legacyRoot
+            .appending(path: "accounts", directoryHint: .isDirectory)
+            .appending(path: owner.directoryName, directoryHint: .isDirectory)
+        // 이미 자기 서랍이 있으면 손대지 않는다. 예전 파일은 주인 없는 채로 남는다.
+        if legacyFiles.contains(where: {
+            fileManager.fileExists(atPath: destination.appending(path: $0).path())
+        }) { return false }
+
+        do {
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+            // 스티커도 **같은 서랍**으로 간다. 계정 privacy는 거울과 스티커를 구분하지 않는다.
+            for name in [
+                "mirror-library.json", "publish-drafts.json",
+                "sticker-projects.json", "sticker-publish-drafts.json", "UserStickerAssets",
+            ] + MirrorAssetKind.allCases.map(\.rawValue) {
+                let from = legacyRoot.appending(path: name)
+                guard fileManager.fileExists(atPath: from.path()) else { continue }
+                try fileManager.moveItem(at: from, to: destination.appending(path: name))
+            }
+            // 옮긴 뒤에 표시한다 — 중간에 실패하면 다음 실행이 다시 시도한다.
+            try Data("{\"claimed\":true}".utf8).write(to: marker, options: .atomic)
+            return true
+        } catch {
+            // 실패해도 **아무것도 지우지 않았다.** 다음 실행이 다시 시도한다.
+            return false
+        }
     }
 
     var libraryURL: URL { root.appending(path: "mirror-library.json") }

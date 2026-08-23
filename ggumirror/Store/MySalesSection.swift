@@ -227,14 +227,21 @@ struct MySalesSection: View {
         )
     }
 
+    /// 거울과 스티커가 **같은 칸을 쓰지 않는다.** 거울 비율에 스티커를 넣으면
+    /// 좌우가 잘리고 작은 투명 PNG는 늘어나 뭉개진다(실기기에서 그랬다).
     private func preview(_ listing: MarketplaceOwnedListing) -> some View {
         let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
+        let type = listing.contentType
         return ZStack {
-            shape.fill(PaperTheme.subtleSurface)
+            if ListingPreviewStyle.showsTransparency(for: type) {
+                TransparencyCheckerboard(cell: 10).clipShape(shape)
+            } else {
+                shape.fill(PaperTheme.subtleSurface)
+            }
             if let data = store.myPreviews[listing.id], let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: ListingPreviewStyle.contentMode(for: type))
                     .clipShape(shape)
             } else if store.myPreviewFailures.contains(listing.id) {
                 Label("미리보기를 불러오지 못했어요", systemImage: "photo")
@@ -247,7 +254,7 @@ struct MySalesSection: View {
                     .foregroundStyle(PaperTheme.separator)
             }
         }
-        .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
+        .aspectRatio(ListingPreviewStyle.aspectRatio(for: type), contentMode: .fit)
         .frame(maxHeight: 220)
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
         .accessibilityHidden(true)

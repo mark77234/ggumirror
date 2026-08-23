@@ -60,7 +60,13 @@ enum StickerStoreLoad: Equatable {
 // MARK: - 저장소
 
 final class StickerProjectStore: Sendable {
+    /// 계정 구분 이전에 쓰던 위치. 새로 만들지 않는다 — `store(for:)`를 쓴다.
     static let live = StickerProjectStore(root: MirrorStore.defaultRoot)
+
+    /// 이 계정의 서랍. **거울과 같은 폴더를 쓴다** — 계정 privacy는 둘을 구분하지 않는다.
+    static func store(for owner: MirrorLibraryOwner) -> StickerProjectStore {
+        StickerProjectStore(root: MirrorStore.root(for: owner))
+    }
 
     let root: URL
     /// 쓰기는 전부 이 줄 하나를 지난다.
@@ -203,15 +209,19 @@ final class StickerProjectStore: Sendable {
 final class StickerLibrary {
     private(set) var projects: [StickerProject] = []
 
-    private let store: StickerProjectStore?
+    /// **계정이 바뀌면 이 값이 바뀐다**(`activate(owner:)`).
+    private var store: StickerProjectStore?
+    /// 지금 화면이 보고 있는 서랍의 주인.
+    private(set) var owner: MirrorLibraryOwner = .guest
 
     /// 이 library가 쓰는 파일 저장소. **상점에서 받은 완성 PNG를 내려놓을 때만** 쓴다
     /// (`MarketplaceImporter`). 목록 자체는 언제나 library를 통해 바꾼다.
     var assetStore: StickerProjectStore? { store }
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
-    private let isReadOnly: Bool
+    private var isReadOnly: Bool
 
-    static let live = StickerLibrary(store: .live)
+    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 남의 스티커를 보여 주지 않는다.
+    static let live = StickerLibrary(store: .store(for: .guest))
 
     init(store: StickerProjectStore? = nil) {
         self.store = store
@@ -239,6 +249,38 @@ final class StickerLibrary {
             projects.contains { $0.id == draft.stickerProjectID }
         }
         store.collectAssetGarbage(keeping: Set(projects.compactMap(\.finalAssetID)))
+    }
+
+    /// 이 계정의 서랍으로 갈아 끼운다. **로그아웃은 삭제가 아니다** —
+    /// 파일은 그대로 남고 다시 로그인하면 돌아온다. 거울과 같은 규칙이다.
+    func activate(owner next: MirrorLibraryOwner) {
+        guard next != owner else { return }
+        // 저장은 비동기다. 서랍을 갈아 끼우기 전에 쓰기가 끝나기를 기다린다 —
+        // 안 그러면 마지막 변경이 사라진다.
+        store?.flush()
+        owner = next
+        // 예전 파일 넘겨받기는 거울 쪽 `claimLegacy`가 스티커까지 함께 옮긴다.
+        let store = StickerProjectStore.store(for: next)
+        self.store = store
+        reload(from: store)
+    }
+
+    private func reload(from store: StickerProjectStore) {
+        projects = []
+        drafts = []
+        switch store.load() {
+        case .empty, .damaged:
+            isReadOnly = false
+        case .tooNew:
+            isReadOnly = true
+        case .loaded(let saved):
+            isReadOnly = false
+            projects = saved
+        }
+        guard !isReadOnly else { return }
+        drafts = store.loadDrafts().filter { draft in
+            projects.contains { $0.id == draft.stickerProjectID }
+        }
     }
 
     func project(id: String) -> StickerProject? {

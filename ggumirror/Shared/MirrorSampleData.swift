@@ -165,7 +165,17 @@ final class MirrorLibrary {
     private(set) var currentID: String
 
     /// 디스크 저장소. nil이면 메모리에만 산다(미리보기 / 단위 테스트).
-    private let store: MirrorStore?
+    ///
+    /// **계정이 바뀌면 이 값이 바뀐다**(`activate(owner:)`). 서랍을 갈아 끼우는 것이지
+    /// 파일을 지우는 것이 아니다.
+    private var store: MirrorStore?
+
+    /// 지금 화면이 보고 있는 서랍의 주인. 로그아웃하면 `guest`다.
+    private(set) var owner: MirrorLibraryOwner = .guest
+
+    /// 계정 서랍들이 사는 곳. `nil`이면 앱 기본 위치다 —
+    /// 테스트는 임시 폴더를 줘서 **실제 사용자 데이터를 건드리지 않는다.**
+    private let accountsBase: URL?
 
     /// 이 library가 쓰는 파일 저장소. **상점에서 받은 이미지를 내려놓을 때만** 쓴다
     /// (`MarketplaceImporter`). 거울 목록 자체는 언제나 library를 통해 바꾼다 —
@@ -174,7 +184,8 @@ final class MirrorLibrary {
     private let assets: PhotoStickerAssetStore
     private let artworks: ImportedArtworkAssetStore
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
-    private let isReadOnly: Bool
+    /// 계정을 바꾸면 다시 판단한다 — 서랍마다 파일 상태가 다르다.
+    private var isReadOnly: Bool
 
     /// 앱을 처음 설치한 사용자가 바로 거울을 쓸 수 있게 하는 기본값.
     /// My Mirrors 목록에 들어가지 않고, 슬롯도 쓰지 않으며, 구매 이력으로도 치지 않는다.
@@ -187,13 +198,18 @@ final class MirrorLibrary {
 
     /// 앱이 쓰는 하나뿐인 목록. SwiftUI가 View를 다시 만들어도 파일은 한 번만 읽고,
     /// 안 쓰는 사진 정리도 실행당 한 번만 돈다.
-    static let live = MirrorLibrary(store: .live)
+    ///
+    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 아무의 거울도 보여 주지
+    /// 않는다 — 세션이 복구되면 `activate(owner:)`가 그 계정 서랍으로 갈아 끼운다.
+    static let live = MirrorLibrary(store: .store(for: .guest))
 
     init(
         store: MirrorStore? = nil,
         assets: PhotoStickerAssetStore? = nil,
-        artworks: ImportedArtworkAssetStore? = nil
+        artworks: ImportedArtworkAssetStore? = nil,
+        accountsBase: URL? = nil
     ) {
+        self.accountsBase = accountsBase
         let assets = assets ?? .shared
         let artworks = artworks ?? .shared
         self.store = store
@@ -281,6 +297,65 @@ final class MirrorLibrary {
         guard let store else { return }
         for kind in MirrorAssetKind.allCases {
             store.collectAssetGarbage(keeping: referencedAssetIDs(kind), kind: kind)
+        }
+    }
+
+    // MARK: - 계정 전환
+
+    /// 이 계정의 서랍으로 갈아 끼운다.
+    ///
+    /// **로그아웃은 삭제가 아니다.** 보고 있는 서랍만 바꾸고 A의 파일은 그대로 남는다 —
+    /// 다시 로그인하면 그대로 돌아온다.
+    ///
+    /// 로그인한 사용자라면 계정 구분 이전의 파일을 **한 번** 넘겨받는다.
+    /// 자기 서랍에 이미 무언가 있으면 넘겨받지 않는다(덮어쓰지 않는다).
+    func activate(owner next: MirrorLibraryOwner) {
+        guard next != owner else { return }
+        // 지금까지 쓰던 서랍의 내용을 먼저 확정한다. 전환 때문에 잃지 않는다.
+        //
+        // **쓰기가 끝날 때까지 기다린다.** 저장은 비동기라(`queue.async`) 기다리지 않으면
+        // 아직 디스크에 닿지 않은 상태에서 서랍을 갈아 끼우게 된다 —
+        // 다시 돌아왔을 때 마지막 변경이 사라진다.
+        persist()
+        store?.flush()
+
+        MirrorStore.claimLegacy(for: next, legacyRoot: accountsBase ?? MirrorStore.legacyRoot)
+        owner = next
+        let store = accountsBase.map {
+            MirrorStore(root: $0.appending(path: "accounts", directoryHint: .isDirectory)
+                .appending(path: next.directoryName, directoryHint: .isDirectory))
+        } ?? MirrorStore.store(for: next)
+        self.store = store
+        assets.attach(store)
+        artworks.attach(store)
+        reload(from: store)
+    }
+
+    /// 서랍 하나를 화면 상태로 읽어 들인다. 초기화와 **같은 규칙**을 쓴다.
+    private func reload(from store: MirrorStore) {
+        mirrors = []
+        currentID = Self.defaultMirror.id
+        publishDrafts = []
+        // 칸 수는 서버가 준다. 계정이 바뀌면 무료 기본값에서 다시 시작한다.
+        mirrorCapacity = MirrorStoragePolicy.freeMirrorSlots
+
+        switch store.load() {
+        case .empty, .damaged:
+            isReadOnly = false
+        case .tooNew:
+            isReadOnly = true
+        case .loaded(let saved):
+            isReadOnly = false
+            mirrors = saved.mirrors
+            currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
+                ? saved.currentMirrorID
+                : Self.defaultMirror.id
+            assets.preload(saved.referencedAssetIDs(.photoSticker))
+            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
+        }
+        guard !isReadOnly else { return }
+        publishDrafts = store.loadDrafts().filter { draft in
+            mirrors.contains { $0.id == draft.mirrorID }
         }
     }
 

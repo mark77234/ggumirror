@@ -236,12 +236,14 @@ struct MirrorCapacityTests {
         #expect(!code.contains("balance -"))
         #expect(!code.contains("balance +"))
 
-        // 담을 수 있는 칸도 client가 더하지 않는다.
-        // 값이 바뀌는 자리는 **서버 값을 옮겨 적는 한 곳**뿐이다.
+        // 담을 수 있는 칸도 client가 **계산하지 않는다.** 값이 바뀌는 경우는 둘뿐이다:
+        // 서버 값을 옮겨 적을 때와, 계정이 바뀌어 무료 기본값으로 되돌릴 때.
         let library = try overlaySource("Shared/MirrorSampleData.swift")
         #expect(!library.contains("mirrorCapacity +="))
-        #expect(library.components(separatedBy: "mirrorCapacity = ").count - 1 == 1)
+        #expect(!library.contains("mirrorCapacity -="))
         #expect(library.contains("mirrorCapacity = effectiveSlots"))
+        #expect(library.contains("mirrorCapacity = MirrorStoragePolicy.freeMirrorSlots"))
+        #expect(library.components(separatedBy: "mirrorCapacity = ").count - 1 == 2)
     }
 }
 

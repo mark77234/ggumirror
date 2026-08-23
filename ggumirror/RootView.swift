@@ -80,6 +80,12 @@ struct RootView: View {
                     await shards.refresh(session: server)
                     // 산 보관 칸도 서버에 있다. 로그아웃하면 무료 기본값으로 돌아간다
                     // (서버 값은 그대로 남는다 — 이 기기의 표시만 바뀐다).
+                    // **내 거울 서랍을 계정에 맞춘다.** 로그아웃하면 guest(비어 있음)로,
+                    // 로그인하면 그 사용자 서랍으로 간다. 파일은 지우지 않는다.
+                    let owner = MirrorLibraryOwner(userID: server?.userID)
+                    library.activate(owner: owner)
+                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
+                    StickerLibrary.live.activate(owner: owner)
                     if server == nil {
                         mirrorCapacity.clear(library: library)
                     } else {
@@ -129,6 +135,13 @@ struct RootView: View {
                 Task {
                     // 세션 확인 → 그 결과로 지갑/AI/복구. 이 셋은 순서가 의미 있다.
                     await session.refreshServerSession()
+                    // **세션이 확정된 뒤에 서랍을 연다.** `onChange`만 믿으면 시작할 때
+                    // 이미 복구돼 있던 세션에서는 변화가 없어 guest로 남는다.
+                    let owner = MirrorLibraryOwner(userID: session.server?.userID)
+                    library.activate(owner: owner)
+                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
+                    StickerLibrary.live.activate(owner: owner)
+                    await mirrorCapacity.refresh(session: session.server, library: library)
                     await shards.refresh(session: session.server)
                     await aiStickers.refresh(session: session.server)
                     // StoreKit 거래 수신은 **한 번만** 시작한다(내부에서 보장).

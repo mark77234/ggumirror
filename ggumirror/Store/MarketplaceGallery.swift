@@ -59,14 +59,23 @@ struct MarketplaceGalleryItem: View {
     }
 
     /// 내장 카드의 `MirrorPreview`와 같은 비율 · 같은 테두리를 쓴다.
+    /// **칸 크기는 종류가 정하고 그림은 그 안에 들어간다.**
+    /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
     private var previewImage: some View {
         let shape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
+        let type = listing.contentType
         return ZStack {
-            shape.fill(PaperTheme.subtleSurface)
+            if ListingPreviewStyle.showsTransparency(for: type) {
+                // 투명한 것이 정상이라 바탕을 깔아야 보인다.
+                TransparencyCheckerboard(cell: 10).clipShape(shape)
+            } else {
+                shape.fill(PaperTheme.subtleSurface)
+            }
+
             if let preview, let image = UIImage(data: preview) {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: ListingPreviewStyle.contentMode(for: type))
                     .clipShape(shape)
             } else {
                 // 실패/대기 모두 같은 자리표시자다. 가짜 그림을 만들지 않는다.
@@ -75,7 +84,7 @@ struct MarketplaceGalleryItem: View {
                     .foregroundStyle(PaperTheme.separator)
             }
         }
-        .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
+        .aspectRatio(ListingPreviewStyle.aspectRatio(for: type), contentMode: .fit)
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
     }
 
@@ -158,6 +167,8 @@ struct MarketplaceSection: View {
     var session: ServerSession?
     /// 상세로 넘어갈 때 부른다. navigation은 부모가 소유한다.
     var onSelect: (MarketplaceListing) -> Void
+    /// 로그인이 필요할 때. 기존 gate를 그대로 쓴다.
+    var onNeedsSignIn: () -> Void = {}
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -197,9 +208,11 @@ struct MarketplaceSection: View {
                                     isLiking: store.isBusy(.like(listing.id)),
                                     onToggleLike: {
                                         Task {
-                                            await store.toggleLike(
+                                            // 로그인 전이면 요청을 보내지 않고 안내한다.
+                                            let sent = await store.toggleLike(
                                                 listingID: listing.id, session: session
                                             )
+                                            if !sent { onNeedsSignIn() }
                                         }
                                     }
                                 )

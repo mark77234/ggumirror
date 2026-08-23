@@ -460,12 +460,13 @@ final class MarketplaceStore {
     /// 좋아요를 켜거나 끈다. **조각을 움직이지 않는다.**
     ///
     /// 반복 요청은 `changed=false`로 조용히 끝난다. 자기 상품이면 서버가 거절한다.
-    func toggleLike(listingID: String, session: ServerSession?) async {
-        guard let token = session?.accessToken else {
-            failure = .notSignedIn
-            return
-        }
-        guard !isBusy(.like(listingID)) else { return }
+    /// - Returns: 요청을 보냈는가. `false`면 **로그인이 필요해서 아무것도 하지 않았다** —
+    ///   호출부가 안내 창을 띄운다. 서버에 먼저 보내 401을 받고 나서 알리지 않는다.
+    @discardableResult
+    func toggleLike(listingID: String, session: ServerSession?) async -> Bool {
+        guard let token = session?.accessToken else { return false }
+        // 연타는 이미 떠 있는 요청 하나로 끝난다.
+        guard !isBusy(.like(listingID)) else { return true }
         inFlight.insert(.like(listingID))
         defer { inFlight.remove(.like(listingID)) }
 
@@ -484,6 +485,7 @@ final class MarketplaceStore {
         } catch {
             failure = .network
         }
+        return true
     }
 
     // MARK: - 내부
