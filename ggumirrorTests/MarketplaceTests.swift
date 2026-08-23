@@ -1580,8 +1580,7 @@ struct StoreScrollHierarchyTests {
         let code = codeOnly(try source("Store/StoreView.swift"))
         let start = try #require(code.range(of: "private var filters: some View {"))
         let body = String(code[start.upperBound...].prefix(600))
-        #expect(body.contains("StoreCategory.allCases"))
-        #expect(body.contains("TagFilter.allCases"))
+        #expect(body.contains("StorePriceFilter.allCases"))
         #expect(body.contains("StoreSort.allCases"))
     }
 

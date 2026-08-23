@@ -12,7 +12,7 @@
 //
 //  템플릿을 늘릴 때는 `artworkTemplates`에 한 줄 추가하면 된다.
 //  PNG는 Resources/StoreTemplates/<카테고리>/<파일이름>.png 에 둔다.
-//  폴더 갈래는 Free / RibbonHeart / Diary / Y2K / Moments 다섯 가지로 정해 두었다.
+//  에셋 폴더 이름은 그대로 둔다 — 파일 경로이지 사용자에게 보이는 분류가 아니다.
 //  (빈 폴더는 번들에 그대로 복사돼 이름 충돌을 내므로, 첫 PNG를 넣을 때 함께 만든다.)
 //
 
@@ -20,56 +20,29 @@ import CoreGraphics
 import ImageIO
 import SwiftUI
 
-// MARK: - 분류
+// MARK: - 필터
 
-enum StoreTag: String, CaseIterable, Identifiable {
-    case ribbon = "리본"
-    case y2k = "Y2K"
-    case cute = "큐트"
-    case minimal = "미니멀"
-    case vintage = "빈티지"
-    case character = "캐릭터"
-    case diary = "다이어리"
-
-    var id: String { rawValue }
-}
-
-/// 상점 필터 한 줄에 들어가는 항목.
+/// 공개 상점의 유일한 필터. **가격 하나다.**
 ///
-/// **콘텐츠 갈래**(무료 / 리본 & 하트 / 다이어리 / Y2K / 기념일 / 기본)와
-/// **표시 꼬리표**(추천 / 인기 / 신규)를 하나의 열거형으로 다루되,
-/// 템플릿 쪽에서는 갈래를 정확히 하나만 갖고 꼬리표는 따로 담는다.
-/// 문자열 Set 하나에 섞어 넣지 않는다.
-enum StoreCategory: String, CaseIterable, Identifiable {
+/// 예전에는 디자인 갈래(리본 & 하트 · 다이어리 · Y2K …)와 꼬리표(추천 · 인기 · 신규)를
+/// 골라야 했다. 사용자 상품에는 그런 값이 **애초에 없어서** 갈래를 고르면 오히려
+/// 아무것도 안 보였고, 상품이 늘수록 어느 칸에 넣을지 만드는 쪽도 헷갈렸다.
+/// 그래서 분류를 없애고 "얼마인가" 하나만 남겼다.
+///
+/// 정렬과 **독립**이다 — `무료 + 인기 순`처럼 자유롭게 조합된다.
+enum StorePriceFilter: String, CaseIterable, Identifiable {
     case all = "전체"
     case free = "무료"
-    case ribbonHeart = "리본 & 하트"
-    case diary = "다이어리"
-    case y2k = "Y2K"
-    case moments = "기념일"
-    case basic = "기본"
-    case featured = "추천"
-    case popular = "인기"
-    case new = "신규"
 
     var id: String { rawValue }
 
-    /// 템플릿 하나가 정확히 하나씩 갖는 갈래.
-    static let contentGroups: [StoreCategory] = [.free, .ribbonHeart, .diary, .y2k, .moments, .basic]
+    static let `default` = StorePriceFilter.all
 
-    /// 갈래와 별개로 붙는 꼬리표.
-    static let highlightTags: [StoreCategory] = [.featured, .popular, .new]
-
-    /// **actual Store economy 이전 임시 가격.** 갈래마다 한 값만 쓴다 —
-    /// 조각 차감 / 실제 구매는 다음 Backend·Shard Ledger phase의 일이다.
-    var temporaryPrice: Int {
+    /// 이 가격을 보여 줄지. 내장 목록과 사용자 상품이 **같은 함수**를 쓴다.
+    func includes(price: Int) -> Bool {
         switch self {
-        case .free, .basic: 0
-        case .ribbonHeart, .diary: 18
-        case .moments: 20
-        case .y2k: 24
-        // 갈래가 아닌 꼬리표에는 가격이 없다.
-        case .all, .featured, .popular, .new: 0
+        case .all: true
+        case .free: price == 0
         }
     }
 }
@@ -105,11 +78,11 @@ struct MirrorTemplate: Identifiable, Hashable {
     let id: String
     let name: String
     let creator: String
-    /// 콘텐츠 갈래. 정확히 하나다.
-    let category: StoreCategory
-    /// 추천 / 인기 / 신규. 갈래와 섞이지 않는 별도 꼬리표다.
-    let highlights: Set<StoreCategory>
-    let tags: [StoreTag]
+    /// **actual Store economy 이전 임시 가격.**
+    ///
+    /// 예전에는 디자인 갈래에서 값을 끌어냈다(`category.temporaryPrice`).
+    /// 갈래를 없애면서 **각 템플릿이 자기 가격을 직접 들고 있게** 바꿨다 — 값은 그대로다.
+    let price: Int
     let style: MirrorStyle
     /// 손그림 PNG 템플릿이면 여기 들어온다. 단색 기본 템플릿은 nil.
     var artwork: StoreArtworkResource?
@@ -138,18 +111,11 @@ struct MirrorTemplate: Identifiable, Hashable {
     var uploadedAt: Date?
 
     /// 조각 가격. 갈래 하나로 정해진다 — 값이 코드 여기저기 흩어지지 않는다.
-    var price: Int { category.temporaryPrice }
 
     /// 공식 단색 기본 템플릿인지. 받아도 슬롯을 쓰지 않고 항상 무료다.
     var isBasic: Bool { id.hasPrefix(StoreCatalog.basicPrefix) }
     var isFree: Bool { price == 0 }
 
-    func matches(_ filter: StoreCategory) -> Bool {
-        switch filter {
-        case .all: true
-        default: category == filter || highlights.contains(filter)
-        }
-    }
 }
 
 // MARK: - 정렬
@@ -159,6 +125,8 @@ enum StoreSort: String, CaseIterable, Identifiable {
     case latest
     case popular
     case likes
+    /// 싼 것부터. **필터가 아니라 순서다** — `무료` 필터와 섞지 않는다.
+    case price
 
     var id: String { rawValue }
 
@@ -170,6 +138,7 @@ enum StoreSort: String, CaseIterable, Identifiable {
         case .latest: "최신 순"
         case .popular: "인기 순"
         case .likes: "좋아요 순"
+        case .price: "가격 순"
         }
     }
 
@@ -211,6 +180,14 @@ enum StoreSort: String, CaseIterable, Identifiable {
                 if lhs.uploadedAtKey != rhs.uploadedAtKey {
                     return lhs.uploadedAtKey > rhs.uploadedAtKey
                 }
+            case .price:
+                // **오름차순이다** — 싼 것이 먼저다. 나머지 정렬과 방향이 다른 유일한 값.
+                if lhs.priceKey != rhs.priceKey {
+                    return lhs.priceKey < rhs.priceKey
+                }
+                if lhs.uploadedAtKey != rhs.uploadedAtKey {
+                    return lhs.uploadedAtKey > rhs.uploadedAtKey
+                }
             }
             // 마지막 열쇠는 언제나 id다 — 값이 모두 같아도 순서가 흔들리지 않는다.
             return lhs.sortIdentity < rhs.sortIdentity
@@ -243,7 +220,7 @@ enum StoreCatalog {
     static var samples: [MirrorTemplate] { artworkTemplates + basics }
 
     /// 손그림 PNG 템플릿 **24장**. 상점에서 사용자에게 보이는 콘텐츠는 이게 전부다.
-    /// 갈래: 무료 8 / 리본 & 하트 4 / 다이어리 4 / Y2K 4 / 기념일 4.
+    /// 가격: 0 조각 8장 / 18 조각 8장 / 20 조각 4장 / 24 조각 4장.
     ///
     /// `id`와 `assetID`는 둘 다 고정값이다 — 앱을 다시 켜도 같은 값이어야
     /// 이미 받은 거울이 그대로 열리고, 같은 그림이 새 파일로 쌓이지 않는다.
@@ -252,9 +229,7 @@ enum StoreCatalog {
             id: "art-pink-ribbon",
             name: "핑크 리본",
             creator: "꾸미러",
-            category: .free,
-            highlights: [.featured],
-            tags: [.ribbon, .cute],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.980, green: 0.890, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "pink-ribbon",
@@ -266,9 +241,7 @@ enum StoreCatalog {
             id: "art-ink-heart",
             name: "잉크 하트",
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [.minimal, .cute],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.976, blue: 0.972)),
             artwork: StoreArtworkResource(
                 fileName: "ink-heart",
@@ -280,9 +253,7 @@ enum StoreCatalog {
             id: "art-cream-note",
             name: "크림 노트",
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [.diary, .vintage],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.976, green: 0.957, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "cream-note",
@@ -294,9 +265,7 @@ enum StoreCatalog {
             id: "art-lavender-star",
             name: "라벤더 스타",
             creator: "꾸미러",
-            category: .free,
-            highlights: [.new],
-            tags: [.y2k, .cute],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.941, green: 0.929, blue: 0.965)),
             artwork: StoreArtworkResource(
                 fileName: "lavender-star",
@@ -308,9 +277,7 @@ enum StoreCatalog {
             id: "art-sky-cloud",
             name: "스카이 클라우드",
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [.minimal, .cute],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.925, green: 0.949, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "sky-cloud",
@@ -322,9 +289,7 @@ enum StoreCatalog {
             id: "art-mint-flower",
             name: "민트 플라워",
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [.cute, .minimal],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.918, green: 0.961, blue: 0.945)),
             artwork: StoreArtworkResource(
                 fileName: "mint-flower",
@@ -336,9 +301,7 @@ enum StoreCatalog {
             id: "art-gray-check",
             name: "그레이 체크",
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [.minimal],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.949, green: 0.945, blue: 0.937)),
             artwork: StoreArtworkResource(
                 fileName: "gray-check",
@@ -350,9 +313,7 @@ enum StoreCatalog {
             id: "art-red-point",
             name: "레드 포인트",
             creator: "꾸미러",
-            category: .free,
-            highlights: [.new],
-            tags: [.minimal, .vintage],
+            price: 0,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.949, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "red-point",
@@ -364,9 +325,7 @@ enum StoreCatalog {
             id: "art-lovely-bow",
             name: "러블리 보우",
             creator: "꾸미러",
-            category: .ribbonHeart,
-            highlights: [.featured],
-            tags: [.ribbon, .cute],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.910, blue: 0.929)),
             artwork: StoreArtworkResource(
                 fileName: "lovely-bow",
@@ -378,9 +337,7 @@ enum StoreCatalog {
             id: "art-love-letter",
             name: "러브 레터",
             creator: "꾸미러",
-            category: .ribbonHeart,
-            highlights: [],
-            tags: [.ribbon, .vintage],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.980, green: 0.933, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "love-letter",
@@ -392,9 +349,7 @@ enum StoreCatalog {
             id: "art-cherry-love",
             name: "체리 러브",
             creator: "꾸미러",
-            category: .ribbonHeart,
-            highlights: [.popular],
-            tags: [.cute, .vintage],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.925, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "cherry-love",
@@ -406,9 +361,7 @@ enum StoreCatalog {
             id: "art-angel-heart",
             name: "엔젤 하트",
             creator: "꾸미러",
-            category: .ribbonHeart,
-            highlights: [.new],
-            tags: [.cute, .ribbon],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.937, green: 0.953, blue: 0.976)),
             artwork: StoreArtworkResource(
                 fileName: "angel-heart",
@@ -420,9 +373,7 @@ enum StoreCatalog {
             id: "art-my-diary",
             name: "마이 다이어리",
             creator: "꾸미러",
-            category: .diary,
-            highlights: [.featured],
-            tags: [.diary, .vintage],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.969, green: 0.945, blue: 0.890)),
             artwork: StoreArtworkResource(
                 fileName: "my-diary",
@@ -434,9 +385,7 @@ enum StoreCatalog {
             id: "art-checklist",
             name: "체크리스트",
             creator: "꾸미러",
-            category: .diary,
-            highlights: [],
-            tags: [.diary, .minimal],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.961, green: 0.961, blue: 0.957)),
             artwork: StoreArtworkResource(
                 fileName: "checklist",
@@ -448,9 +397,7 @@ enum StoreCatalog {
             id: "art-scrapbook",
             name: "스크랩북",
             creator: "꾸미러",
-            category: .diary,
-            highlights: [.popular],
-            tags: [.diary, .vintage],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.973, green: 0.953, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "scrapbook",
@@ -462,9 +409,7 @@ enum StoreCatalog {
             id: "art-cafe-note",
             name: "카페 노트",
             creator: "꾸미러",
-            category: .diary,
-            highlights: [],
-            tags: [.diary, .vintage],
+            price: 18,
             style: MirrorStyle(frame: Color(red: 0.965, green: 0.945, blue: 0.925)),
             artwork: StoreArtworkResource(
                 fileName: "cafe-note",
@@ -476,9 +421,7 @@ enum StoreCatalog {
             id: "art-y2k-star",
             name: "Y2K 스타",
             creator: "꾸미러",
-            category: .y2k,
-            highlights: [.popular, .new],
-            tags: [.y2k, .character],
+            price: 24,
             style: MirrorStyle(frame: Color(red: 0.878, green: 0.878, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "y2k-star",
@@ -490,9 +433,7 @@ enum StoreCatalog {
             id: "art-cyber-love",
             name: "사이버 러브",
             creator: "꾸미러",
-            category: .y2k,
-            highlights: [],
-            tags: [.y2k, .ribbon],
+            price: 24,
             style: MirrorStyle(frame: Color(red: 0.898, green: 0.914, blue: 0.976)),
             artwork: StoreArtworkResource(
                 fileName: "cyber-love",
@@ -504,9 +445,7 @@ enum StoreCatalog {
             id: "art-flash-girl",
             name: "플래시 걸",
             creator: "꾸미러",
-            category: .y2k,
-            highlights: [.new],
-            tags: [.y2k, .character],
+            price: 24,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.902, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "flash-girl",
@@ -518,9 +457,7 @@ enum StoreCatalog {
             id: "art-retro-pop",
             name: "레트로 팝",
             creator: "꾸미러",
-            category: .y2k,
-            highlights: [],
-            tags: [.y2k, .vintage],
+            price: 24,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.941, blue: 0.898)),
             artwork: StoreArtworkResource(
                 fileName: "retro-pop",
@@ -532,9 +469,7 @@ enum StoreCatalog {
             id: "art-birthday",
             name: "생일",
             creator: "꾸미러",
-            category: .moments,
-            highlights: [.featured],
-            tags: [.cute, .character],
+            price: 20,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.961, blue: 0.902)),
             artwork: StoreArtworkResource(
                 fileName: "birthday",
@@ -546,9 +481,7 @@ enum StoreCatalog {
             id: "art-summer-trip",
             name: "여름 여행",
             creator: "꾸미러",
-            category: .moments,
-            highlights: [],
-            tags: [.cute, .minimal],
+            price: 20,
             style: MirrorStyle(frame: Color(red: 0.910, green: 0.957, blue: 0.969)),
             artwork: StoreArtworkResource(
                 fileName: "summer-trip",
@@ -560,9 +493,7 @@ enum StoreCatalog {
             id: "art-spring-bloom",
             name: "봄 꽃",
             creator: "꾸미러",
-            category: .moments,
-            highlights: [.new],
-            tags: [.cute],
+            price: 20,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.945, blue: 0.937)),
             artwork: StoreArtworkResource(
                 fileName: "spring-bloom",
@@ -574,9 +505,7 @@ enum StoreCatalog {
             id: "art-winter-letter",
             name: "겨울 편지",
             creator: "꾸미러",
-            category: .moments,
-            highlights: [],
-            tags: [.minimal, .vintage],
+            price: 20,
             style: MirrorStyle(frame: Color(red: 0.933, green: 0.953, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "winter-letter",
@@ -592,9 +521,7 @@ enum StoreCatalog {
             id: basicPrefix + basic.id,
             name: basic.name,
             creator: "꾸미러",
-            category: .basic,
-            highlights: [],
-            tags: [.minimal],
+            price: 0,
             style: basic.style
         )
     }

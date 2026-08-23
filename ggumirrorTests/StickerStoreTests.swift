@@ -89,8 +89,8 @@ struct StickerStoreTests {
         #expect(StoreCatalog.artworkTemplates.count == 24)
         #expect(StoreCatalog.samples.count == 24 + BasicMirror.allCases.count)
         // 갈래 · 태그 필터 · 가격 규칙 모두 유지.
-        #expect(StoreCategory.allCases.count > 1)
-        #expect(TagFilter.allCases.count > 1)
+        // 디자인 갈래는 없앴다. 남은 필터는 가격 하나다.
+        #expect(StorePriceFilter.allCases.count == 2)
         #expect(StoreCatalog.samples.contains { $0.price == 0 })
     }
 

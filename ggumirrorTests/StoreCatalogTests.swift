@@ -60,31 +60,31 @@ struct StoreCatalogTests {
     // MARK: - 목록
 
     /// 상점에 보이는 최종 목록. 순서와 갈래까지 여기 한 곳에 적어 둔다.
-    static let expected: [(id: String, file: String, category: StoreCategory)] = [
-        ("art-pink-ribbon", "pink-ribbon", .free),
-        ("art-ink-heart", "ink-heart", .free),
-        ("art-cream-note", "cream-note", .free),
-        ("art-lavender-star", "lavender-star", .free),
-        ("art-sky-cloud", "sky-cloud", .free),
-        ("art-mint-flower", "mint-flower", .free),
-        ("art-gray-check", "gray-check", .free),
-        ("art-red-point", "red-point", .free),
-        ("art-lovely-bow", "lovely-bow", .ribbonHeart),
-        ("art-love-letter", "love-letter", .ribbonHeart),
-        ("art-cherry-love", "cherry-love", .ribbonHeart),
-        ("art-angel-heart", "angel-heart", .ribbonHeart),
-        ("art-my-diary", "my-diary", .diary),
-        ("art-checklist", "checklist", .diary),
-        ("art-scrapbook", "scrapbook", .diary),
-        ("art-cafe-note", "cafe-note", .diary),
-        ("art-y2k-star", "y2k-star", .y2k),
-        ("art-cyber-love", "cyber-love", .y2k),
-        ("art-flash-girl", "flash-girl", .y2k),
-        ("art-retro-pop", "retro-pop", .y2k),
-        ("art-birthday", "birthday", .moments),
-        ("art-summer-trip", "summer-trip", .moments),
-        ("art-spring-bloom", "spring-bloom", .moments),
-        ("art-winter-letter", "winter-letter", .moments),
+    static let expected: [(id: String, file: String, price: Int)] = [
+        ("art-pink-ribbon", "pink-ribbon", 0),
+        ("art-ink-heart", "ink-heart", 0),
+        ("art-cream-note", "cream-note", 0),
+        ("art-lavender-star", "lavender-star", 0),
+        ("art-sky-cloud", "sky-cloud", 0),
+        ("art-mint-flower", "mint-flower", 0),
+        ("art-gray-check", "gray-check", 0),
+        ("art-red-point", "red-point", 0),
+        ("art-lovely-bow", "lovely-bow", 18),
+        ("art-love-letter", "love-letter", 18),
+        ("art-cherry-love", "cherry-love", 18),
+        ("art-angel-heart", "angel-heart", 18),
+        ("art-my-diary", "my-diary", 18),
+        ("art-checklist", "checklist", 18),
+        ("art-scrapbook", "scrapbook", 18),
+        ("art-cafe-note", "cafe-note", 18),
+        ("art-y2k-star", "y2k-star", 24),
+        ("art-cyber-love", "cyber-love", 24),
+        ("art-flash-girl", "flash-girl", 24),
+        ("art-retro-pop", "retro-pop", 24),
+        ("art-birthday", "birthday", 20),
+        ("art-summer-trip", "summer-trip", 20),
+        ("art-spring-bloom", "spring-bloom", 20),
+        ("art-winter-letter", "winter-letter", 20),
     ]
 
     @Test("손그림 템플릿이 정확히 24장이고 고정 id를 갖는다")
@@ -122,28 +122,25 @@ struct StoreCatalogTests {
         }
     }
 
-    @Test("갈래별 개수가 8 / 4 / 4 / 4 / 4다")
-    func categoryCountsMatch() {
-        func count(_ category: StoreCategory) -> Int {
-            StoreCatalog.artworkTemplates.filter { $0.category == category }.count
+    @Test("가격 분포가 그대로다 — 갈래를 없애도 값은 잃지 않았다")
+    func priceDistributionMatches() {
+        func count(_ price: Int) -> Int {
+            StoreCatalog.artworkTemplates.filter { $0.price == price }.count
         }
-        #expect(count(.free) == 8)
-        #expect(count(.ribbonHeart) == 4)
-        #expect(count(.diary) == 4)
-        #expect(count(.y2k) == 4)
-        #expect(count(.moments) == 4)
-        // 갈래는 정확히 하나씩만 갖는다 — 합이 곧 전체다.
-        #expect(count(.free) + count(.ribbonHeart) + count(.diary) + count(.y2k) + count(.moments) == 24)
+        // 예전 갈래별 값: free 0 · 리본/다이어리 18 · 기념일 20 · Y2K 24
+        #expect(count(0) == 8)
+        #expect(count(18) == 8)
+        #expect(count(20) == 4)
+        #expect(count(24) == 4)
+        #expect(count(0) + count(18) + count(20) + count(24) == 24)
     }
 
-    @Test("각 템플릿이 이름 / 카테고리 / 그림 / 가격을 갖는다")
+    @Test("각 템플릿이 이름 / 그림 / 가격을 갖는다")
     func templatesCarryRequiredInfo() throws {
         for template in StoreCatalog.artworkTemplates {
             #expect(!template.name.isEmpty)
             #expect(!template.creator.isEmpty)
-            #expect(StoreCategory.contentGroups.contains(template.category))
             #expect(template.price >= 0)
-            #expect(template.price == template.category.temporaryPrice)
             let artwork = try #require(template.artwork)
             #expect(!artwork.fileName.isEmpty)
             #expect(artwork.subdirectory.hasPrefix("StoreTemplates/"))
@@ -223,35 +220,39 @@ struct StoreCatalogTests {
 
     // MARK: - 카테고리 / 가격
 
-    @Test("다섯 갈래가 상점 필터에서 실제로 갈라진다")
-    func categoriesSplitTheCatalog() throws {
-        func ids(_ category: StoreCategory) -> [String] {
-            StoreCatalog.samples.filter { $0.matches(category) }.map(\.id)
-        }
-        for (id, _, category) in Self.expected {
-            #expect(ids(category).contains(id), "\(id)가 \(category.rawValue)에 없다")
-            // 다른 갈래에는 들어가지 않는다.
-            for other in StoreCategory.contentGroups where other != category {
-                #expect(!ids(other).contains(id), "\(id)가 \(other.rawValue)에도 들어갔다")
-            }
-        }
-        #expect(ids(.all).count == StoreCatalog.samples.count)
-        for category in StoreCategory.contentGroups {
-            #expect(StoreCategory.allCases.contains(category))
-            #expect(!ids(category).isEmpty)
-        }
+    @Test("상점 필터는 가격 하나뿐이다 — 디자인 갈래가 없다")
+    func onlyPriceFilterRemains() {
+        #expect(StorePriceFilter.allCases.map(\.rawValue) == ["전체", "무료"])
+        #expect(StorePriceFilter.default == .all)
+
+        let all = StoreCatalog.samples.filter { StorePriceFilter.all.includes(price: $0.price) }
+        #expect(all.count == StoreCatalog.samples.count)
+
+        let free = StoreCatalog.samples.filter { StorePriceFilter.free.includes(price: $0.price) }
+        #expect(free.allSatisfy { $0.price == 0 })
+        #expect(!free.isEmpty)
+        #expect(free.count < all.count)
     }
 
-    @Test("추천 / 인기 / 신규는 갈래와 섞이지 않는 별도 꼬리표다")
-    func highlightsAreSeparateFromCategories() {
-        for template in StoreCatalog.samples {
-            // 꼬리표 자리에 갈래가 들어가지 않는다.
-            #expect(template.highlights.allSatisfy(StoreCategory.highlightTags.contains))
-        }
-        for tag in StoreCategory.highlightTags {
-            let tagged = StoreCatalog.samples.filter { $0.matches(tag) }
-            #expect(!tagged.isEmpty)
-            #expect(tagged.allSatisfy { $0.highlights.contains(tag) })
+    @Test("디자인 갈래 이름이 코드에 남아 있지 않다")
+    func designCategoriesAreGone() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().appending(path: "ggumirror")
+        for path in ["Store/StoreCatalog.swift", "Store/StoreView.swift",
+                     "Store/StickerStoreView.swift", "Store/TemplateDetailView.swift",
+                     "Store/PublishMirrorView.swift", "Store/PublishStickerView.swift"] {
+            // **주석은 걷어낸다.** "예전에는 갈래를 골랐다"는 설명 자체가 걸리면
+            // 왜 없앴는지 적어 둘 수 없다.
+            let source = codeWithoutComments(
+                try String(contentsOf: root.appending(path: path), encoding: .utf8)
+            )
+            // **분류 장치**가 사라졌는지 본다. 그림 이름("Y2K 스타")과 에셋 폴더
+            // 경로("StoreTemplates/Y2K")는 사용자가 고르는 분류가 아니라 그대로 둔다.
+            for gone in ["StoreCategory", "StoreTag", "TagFilter",
+                         "ribbonHeart", "highlightTags", "contentGroups", "temporaryPrice",
+                         ".matches(", "리본 & 하트"] {
+                #expect(!source.contains(gone), "\(path)에 \(gone)이 남아 있다")
+            }
         }
     }
 
@@ -267,10 +268,11 @@ struct StoreCatalogTests {
             let paid = try template(id)
             #expect(!paid.isFree)
             #expect(paid.price > 0)
-            #expect(paid.matches(.free) == false)
+            #expect(!StorePriceFilter.free.includes(price: paid.price))
         }
-        // 무료 갈래는 모두 0 조각이다.
-        #expect(StoreCatalog.samples.filter { $0.matches(.free) }.allSatisfy { $0.price == 0 })
+        // 무료 필터에 걸리는 것은 모두 0 조각이다.
+        #expect(StoreCatalog.samples.filter { StorePriceFilter.free.includes(price: $0.price) }
+            .allSatisfy { $0.price == 0 })
         // 기존 두 장의 값은 그대로 유지된다.
         #expect(try template("art-my-diary").price == 18)
         #expect(try template("art-y2k-star").price == 24)

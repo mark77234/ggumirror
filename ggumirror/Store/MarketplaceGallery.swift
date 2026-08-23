@@ -166,6 +166,12 @@ struct MarketplaceSection: View {
         sort.ordered(store.listings.filter { $0.contentType == contentType })
     }
 
+    // **목록을 받아오는 일은 여기 없다.** 화면이 한다.
+    //
+    // 예전에는 이 view가 `.task`로 직접 받아왔는데, 목록이 비면 `EmptyView()`를 그리고
+    // 그 위의 `.task`가 **한 번도 실행되지 않았다** — 그래서 상품이 하나도 없는 상태에서
+    // 영원히 비어 있었다. 등록한 거울이 상점에 안 보이던 이유이고, 카드가 없으니
+    // 하트도 없었다. 받아오는 책임은 언제나 그려지는 쪽에 있어야 한다.
     var body: some View {
         Group {
             if listings.isEmpty {
@@ -206,9 +212,6 @@ struct MarketplaceSection: View {
                 }
                 .padding(.bottom, 20)
             }
-        }
-        .task(id: "\(contentType)-\(sort.rawValue)") {
-            await store.refresh(contentType: contentType, sort: sort, session: session)
         }
     }
 }

@@ -165,11 +165,11 @@ struct StoreActionsTests {
 
     // MARK: - 정렬
 
-    @Test("정렬은 세 가지이고 기본은 최신 순이다")
-    func sortHasThreeCasesAndLatestDefault() {
-        #expect(StoreSort.allCases.count == 3)
+    @Test("정렬은 네 가지이고 기본은 최신 순이다")
+    func sortHasFourCasesAndLatestDefault() {
+        #expect(StoreSort.allCases.count == 4)
         #expect(StoreSort.default == .latest)
-        #expect(StoreSort.allCases.map(\.label) == ["최신 순", "인기 순", "좋아요 순"])
+        #expect(StoreSort.allCases.map(\.label) == ["최신 순", "인기 순", "좋아요 순", "가격 순"])
     }
 
     /// **"인기"의 기준은 다운로드 수 하나다.** 좋아요를 섞은 가중 점수를 만들지 않는다.
@@ -327,6 +327,7 @@ struct StoreActionsTests {
 
     static func template(
         id: String,
+        price: Int = 0,
         downloads: Int = 0,
         likes: Int = 0,
         uploadedAt: Date? = nil
@@ -335,9 +336,7 @@ struct StoreActionsTests {
             id: id,
             name: id,
             creator: "꾸미러",
-            category: .free,
-            highlights: [],
-            tags: [],
+            price: price,
             style: MirrorStyle(frame: .white),
             downloadCount: downloads,
             likeCount: likes,

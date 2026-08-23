@@ -34,8 +34,8 @@ struct StoreView: View {
     @State private var section: StoreSection = .mirror
     /// 조각 충전. Home · AI와 **같은 시트**다.
     @State private var isShowingShardStore = false
-    @State private var category: StoreCategory = .all
-    @State private var tag: TagFilter = .all
+    /// 공개 상점의 유일한 필터. 디자인 갈래는 없앴다.
+    @State private var priceFilter: StorePriceFilter = .default
     /// 상점에 들어오면 언제나 최신 순이다. 선택은 저장하지 않는다.
     @State private var sort: StoreSort = .default
     /// 사용자 상품 카드는 `NavigationLink(value:)`가 아니라 Button이라(카드 안에서
@@ -45,11 +45,8 @@ struct StoreView: View {
 
     private var templates: [MirrorTemplate] {
         // 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
-        sort.sorted(
-            StoreCatalog.samples.filter { template in
-                template.matches(category) && (tag.tag.map(template.tags.contains) ?? true)
-            }
-        )
+        // 필터와 정렬은 독립이다 — `무료 + 인기 순`이 그대로 성립한다.
+        sort.sorted(StoreCatalog.samples.filter { priceFilter.includes(price: $0.price) })
     }
 
     var body: some View {
@@ -196,11 +193,14 @@ struct StoreView: View {
         .padding(.bottom, 16)
     }
 
+    /// 상단 제어부. **두 줄뿐이다** — 무엇을 보여 줄지(가격)와 어떤 순서인지.
+    ///
+    /// 예전에는 디자인 갈래와 꼬리표까지 네 줄이었다. 고를수록 상품이 사라졌고,
+    /// 사용자 상품에는 그 값이 아예 없어서 갈래를 고르면 통째로 안 보였다.
     private var filters: some View {
         VStack(spacing: 8) {
-            InkFilterBar(items: StoreCategory.allCases, selection: $category) { $0.rawValue }
-            InkFilterBar(items: TagFilter.allCases, selection: $tag) { $0.label }
-            // 정렬도 같은 칩 줄을 쓴다 — 세 가지가 한눈에 보이고 새 UI 언어를 만들지 않는다.
+            InkFilterBar(items: StorePriceFilter.allCases, selection: $priceFilter) { $0.rawValue }
+            // 정렬도 같은 칩 줄을 쓴다 — 새 UI 언어를 만들지 않는다.
             InkFilterBar(items: StoreSort.allCases, selection: $sort) { $0.label }
         }
         .padding(.bottom, 14)
@@ -245,6 +245,13 @@ struct StoreView: View {
                 }
                 .padding(.horizontal, 20)
             }
+        }
+        // **공개 목록은 여기서 받아온다.** 상품 구획 안에 두면 목록이 비었을 때
+        // 그 view가 그려지지 않아 영원히 요청이 나가지 않는다.
+        .task(id: "mirror-\(sort.rawValue)-\(marketplace.publicFeedVersion)") {
+            await marketplace.refresh(
+                contentType: "mirror", sort: sort, session: session.server
+            )
         }
     }
 }
@@ -312,30 +319,6 @@ private struct StoreGalleryItem: View {
         .lineLimit(1)
         // 작은 화면에서 줄이 깨지기보다 줄어들게 한다.
         .minimumScaleFactor(0.8)
-    }
-}
-
-/// 두 번째 필터 줄. "전체"를 포함하기 위해 StoreTag를 감싼다.
-enum TagFilter: Identifiable, Equatable, CaseIterable {
-    case all
-    case tagged(StoreTag)
-
-    static var allCases: [TagFilter] { [.all] + StoreTag.allCases.map(TagFilter.tagged) }
-
-    var id: String { label }
-
-    var label: String {
-        switch self {
-        case .all: "전체"
-        case .tagged(let tag): tag.rawValue
-        }
-    }
-
-    var tag: StoreTag? {
-        switch self {
-        case .all: nil
-        case .tagged(let tag): tag
-        }
     }
 }
 

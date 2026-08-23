@@ -115,6 +115,16 @@ final class MarketplaceStore {
     /// **내가 올린 상품을 서버에서 다시 받는다.** 자기 상품 관리의 authority다.
     ///
     /// 로그인하지 않았으면 비운다 — 이전 사용자의 목록이 남으면 안 된다.
+    /// 공개 목록이 낡았다는 표시. **등록에 성공하면 올라간다.**
+    ///
+    /// 화면의 `.task(id:)`가 이 값을 함께 보므로, 등록 직후 상점으로 돌아오면
+    /// 새 상품이 이미 들어와 있다. 앱을 껐다 켜야 보이는 구조를 만들지 않는다.
+    private(set) var publicFeedVersion = 0
+
+    /// 공개 목록을 다시 받아오게 한다. 목록 자체를 여기서 고치지 않는다 —
+    /// 서버가 authority이고, 화면이 다시 물어본다.
+    func invalidatePublicFeed() { publicFeedVersion &+= 1 }
+
     func refreshMyListings(session: ServerSession?) async {
         guard let token = session?.accessToken else {
             myListings = []
@@ -168,6 +178,7 @@ final class MarketplaceStore {
             // 공개 목록에서 사라진다.
             listings.removeAll { $0.id == listingID }
             failure = nil
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return listing
         } catch let error as MarketplaceFailure {
@@ -284,16 +295,19 @@ final class MarketplaceStore {
             wallet?.apply(balance: result.balance)
             failure = nil
             // 방금 올린 것이 판매자 목록에 보여야 한다. 서버가 authority다.
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return result
         } catch let error as MarketplaceFailure {
             failure = error
             // publish가 실패했어도 **목록은 새로 받는다** — 서버에 draft가 남아 있고,
             // 그것이 "등록 미완료"로 보여야 사용자가 이어서 올릴 수 있다.
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return nil
         } catch {
             failure = .network
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return nil
         }
@@ -366,6 +380,7 @@ final class MarketplaceStore {
             listings.removeAll { $0.id == listingID }
             failure = nil
             // 상태가 `unlisted`로 바뀐 것을 서버에서 다시 받는다 — 앱이 추측하지 않는다.
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return listing
         } catch let error as MarketplaceFailure {
@@ -394,6 +409,7 @@ final class MarketplaceStore {
             let result = try await backend.publish(listingID: listingID, accessToken: token)
             wallet?.apply(balance: result.balance)
             failure = nil
+            invalidatePublicFeed()
             await refreshMyListings(session: session)
             return result
         } catch let error as MarketplaceFailure {
@@ -511,6 +527,7 @@ nonisolated extension StoreSort {
         case .latest: "latest"
         case .popular: "popular"
         case .likes: "likes"
+        case .price: "price"
         }
     }
 }
@@ -528,10 +545,13 @@ nonisolated protocol StoreSortable {
     var uploadedAtKey: Date { get }
     /// 마지막 tie-breaker. 값이 모두 같아도 순서가 흔들리지 않게 한다.
     var sortIdentity: String { get }
+    /// 가격 순에 쓰는 값. 내장 목록과 사용자 상품이 같은 이름을 쓴다.
+    var priceKey: Int { get }
 }
 
 extension MirrorTemplate: StoreSortable {
     var sortIdentity: String { id }
+    var priceKey: Int { price }
 }
 
 extension MarketplaceListing: StoreSortable {
@@ -539,4 +559,5 @@ extension MarketplaceListing: StoreSortable {
     /// `uploadedAt`은 화면 쪽 이름일 뿐이고 값은 처음 올라온 시각이다.
     var uploadedAtKey: Date { publishedAt }
     var sortIdentity: String { id }
+    var priceKey: Int { priceShards }
 }

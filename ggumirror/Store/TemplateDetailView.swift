@@ -33,7 +33,6 @@ struct TemplateDetailView: View {
                         .foregroundStyle(PaperTheme.secondaryInk)
                 }
 
-                tags
 
                 HStack(spacing: 6) {
                     ShardIcon(size: 18)
@@ -91,21 +90,6 @@ struct TemplateDetailView: View {
         template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드"
     }
 
-    private var tags: some View {
-        HStack(spacing: 7) {
-            ForEach(template.tags) { tag in
-                Text(tag.rawValue)
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background {
-                        UnevenRoundedRectangle.ink(14, 12, 15, 13)
-                            .stroke(PaperTheme.separator, lineWidth: 1.4)
-                    }
-            }
-        }
-    }
 
     private var actions: some View {
         VStack(spacing: 10) {

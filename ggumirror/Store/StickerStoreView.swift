@@ -39,6 +39,17 @@ struct StickerStoreView: View {
     /// 여기서 또 감싸면 세로 scroll이 중첩되고, 상단 제어부가 함께 밀려 올라가지 않는다.
     /// scroll · scrollIndicators · contentMargins는 `StoreView`가 한 곳에서 소유한다.
     var body: some View {
+        content
+            // **공개 목록은 여기서 받아온다.** 상품 구획 안에 두면 목록이 비었을 때
+            // 그 view가 그려지지 않아 영원히 요청이 나가지 않는다.
+            .task(id: "sticker-\(sort.rawValue)-\(store.publicFeedVersion)") {
+                await store.refresh(
+                    contentType: "sticker", sort: sort, session: session.server
+                )
+            }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
                 createButton
                     .padding(.horizontal, 20)
@@ -244,10 +255,6 @@ struct StickerStoreView: View {
                     shape.stroke(PaperTheme.separator, style: StrokeStyle(lineWidth: 1.4, dash: [6, 5]))
                 }
                 .padding(.horizontal, 20)
-                // 비어 있어도 서버에 한 번은 물어본다.
-                .task(id: sort.rawValue) {
-                    await store.refresh(contentType: "sticker", sort: sort, session: session.server)
-                }
             }
         }
     }

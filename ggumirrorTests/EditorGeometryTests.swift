@@ -1314,10 +1314,9 @@ struct EditorGeometryTests {
         for template in StoreCatalog.basics {
             #expect(template.price == 0)
             #expect(template.isBasic)
-            #expect(template.matches(.basic))
-            // 값은 0이지만 갈래는 "기본"이다 — "무료" 갈래는 손그림 8장을 가리킨다.
             #expect(template.isFree)
-            #expect(template.category == .basic)
+            // 디자인 갈래는 없앴다. "기본"인지는 **id 접두사**가 정한다.
+            #expect(StorePriceFilter.free.includes(price: template.price))
             #expect(template.style.insets == .standard)
         }
     }
