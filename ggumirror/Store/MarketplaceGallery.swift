@@ -21,10 +21,17 @@ struct MarketplaceGalleryItem: View {
     /// 서버에서 받은 대표 이미지. 아직 없으면 자리표시자를 둔다.
     let preview: Data?
     var isLiked = false
+    /// 내가 올린 상품인가. 자기 상품에는 좋아요를 누를 수 없다(서버 정책).
+    var isMine = false
+    /// 좋아요 요청이 떠 있는가. 연타를 막는다.
+    var isLiking = false
+    /// 하트를 눌렀을 때. `nil`이면 하트를 그리지 않는다(상세 화면 등).
+    var onToggleLike: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             previewImage
+                .overlay(alignment: .topTrailing) { heart }
                 .padding(.bottom, 6)
 
             Text(listing.title)
@@ -70,6 +77,49 @@ struct MarketplaceGalleryItem: View {
         }
         .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
+    }
+
+    /// 카드 위 하트. **여기가 좋아요를 누르는 자리다** — 상세로 들어가야만
+    /// 누를 수 있으면 어디서 누르는지 알 수 없다는 것이 실기기에서 확인됐다.
+    ///
+    /// 자기 상품에서는 **숫자만 보이고 누를 수 없다.** 실패할 CTA를 일부러
+    /// 보여 주지 않는다(서버가 self-like를 거절한다).
+    @ViewBuilder
+    private var heart: some View {
+        if let onToggleLike {
+            let label = HStack(spacing: 4) {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                Text("\(listing.likeCount)")
+            }
+            .font(InkFont.caption)
+            .foregroundStyle(PaperTheme.ink)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background {
+                let shape = UnevenRoundedRectangle.ink(12, 10, 13, 11)
+                shape.fill(PaperTheme.paper)
+                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.4))
+            }
+
+            if isMine {
+                label
+                    .opacity(0.55)
+                    .padding(8)
+                    .accessibilityLabel("좋아요 \(listing.likeCount). 내 상품이라 누를 수 없어요")
+            } else {
+                Button(action: onToggleLike) {
+                    label
+                        // 칩이 작아도 손가락이 닿는 자리는 44pt 이상이어야 한다.
+                        .frame(minWidth: 44, minHeight: 44, alignment: .center)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(InkPressStyle())
+                .disabled(isLiking)
+                .padding(4)
+                .accessibilityLabel(isLiked ? "좋아요 취소" : "좋아요")
+                .accessibilityValue("\(listing.likeCount)")
+            }
+        }
     }
 
     private var metadata: some View {
@@ -133,7 +183,16 @@ struct MarketplaceSection: View {
                                 MarketplaceGalleryItem(
                                     listing: listing,
                                     preview: store.previews[listing.id],
-                                    isLiked: store.likedListingIDs.contains(listing.id)
+                                    isLiked: store.likedListingIDs.contains(listing.id),
+                                    isMine: store.myListing(id: listing.id) != nil,
+                                    isLiking: store.isBusy(.like(listing.id)),
+                                    onToggleLike: {
+                                        Task {
+                                            await store.toggleLike(
+                                                listingID: listing.id, session: session
+                                            )
+                                        }
+                                    }
                                 )
                             }
                             .buttonStyle(InkPressStyle())

@@ -62,11 +62,15 @@ struct TemplateDetailView: View {
     }
 
     /// 카드보다 조금 더 또렷하게. 값의 출처는 카드와 **같은 model field**다.
+    /// **서버가 세지 않는 값은 보여 주지 않는다**(카드와 같은 규칙).
+    @ViewBuilder
     private var metadata: some View {
         VStack(spacing: 4) {
-            HStack(spacing: 14) {
-                Label("다운로드 \(template.downloadCount)", systemImage: "arrow.down")
-                Label("좋아요 \(template.likeCount)", systemImage: "heart")
+            if template.hasServerStats {
+                HStack(spacing: 14) {
+                    Label("다운로드 \(template.downloadCount)", systemImage: "arrow.down")
+                    Label("좋아요 \(template.likeCount)", systemImage: "heart")
+                }
             }
             Text(uploadedLine)
         }
@@ -75,7 +79,9 @@ struct TemplateDetailView: View {
         .imageScale(.small)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \(uploadedLine)"
+            template.hasServerStats
+                ? "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \(uploadedLine)"
+                : uploadedLine
         )
     }
 

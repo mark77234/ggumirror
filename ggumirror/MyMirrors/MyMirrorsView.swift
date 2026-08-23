@@ -25,10 +25,27 @@ struct MyMirrorsView: View {
     /// 상점 등록 준비 중인 거울. 실제 등록이 아니라 판매 정보 작성이다.
     @State private var publishTarget: MyMirror?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// 판매 상태의 authority. RootView가 소유한 하나를 쓴다.
+    @Environment(MarketplaceStore.self) private var marketplace
+    @Environment(AuthSession.self) private var session
 
     private var mirrors: [MyMirror] {
+        // **판매 중은 서버가 정한다.** `MirrorOrigin.listed`를 설정하는 코드가 없어서
+        // 이 필터는 늘 비어 있었다 — 실제로 팔고 있어도 안 보였다.
+        //
+        // 이제 서버 판매 목록(`published`)과 `sourceContentId`로 맞춘다.
+        // **제목으로 맞추지 않는다** — 같은 제목이 여럿일 수 있다.
+        if filter == .listed {
+            let ids = Set(marketplace.selling(contentType: "mirror").map(\.sourceContentId))
+            return library.mirrors.filter { ids.contains($0.id) }
+        }
         guard let origin = filter.origin else { return library.mirrors }
         return library.mirrors.filter { $0.origin == origin }
+    }
+
+    /// 이 거울이 지금 상점에서 팔리고 있는가. 카드의 배지가 쓴다.
+    private func isSelling(_ mirror: MyMirror) -> Bool {
+        marketplace.sellingListing(forContentID: mirror.id, contentType: "mirror") != nil
     }
 
     var body: some View {
@@ -57,6 +74,10 @@ struct MyMirrorsView: View {
                 .padding(.bottom, 14)
 
             gallery
+        }
+        // 판매 상태는 서버가 authority다. 화면에 들어올 때와 로그인이 바뀔 때 받는다.
+        .task(id: session.server?.userID) {
+            await marketplace.refreshMyListings(session: session.server)
         }
         .inkDialog(isPresented: Binding(
             get: { actionTarget != nil },
@@ -233,7 +254,11 @@ struct MyMirrorsView: View {
                             Button {
                                 actionTarget = mirror
                             } label: {
-                                MyMirrorItem(mirror: mirror, isCurrent: mirror.id == library.currentID)
+                                MyMirrorItem(
+                                    mirror: mirror,
+                                    isCurrent: mirror.id == library.currentID,
+                                    isSelling: isSelling(mirror)
+                                )
                             }
                             .buttonStyle(InkPressStyle())
 
@@ -297,6 +322,8 @@ struct MyMirrorsView: View {
 private struct MyMirrorItem: View {
     let mirror: MyMirror
     let isCurrent: Bool
+    /// 지금 상점에서 팔리고 있는가. **서버 판매 목록이 authority다.**
+    var isSelling = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -309,6 +336,19 @@ private struct MyMirrorItem: View {
                     .foregroundStyle(PaperTheme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
+
+                if isSelling {
+                    // 사용 중 배지와 같은 모양. 새 디자인을 만들지 않는다.
+                    Text("판매 중")
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.ink)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background {
+                            UnevenRoundedRectangle.ink(10, 8, 11, 9)
+                                .stroke(PaperTheme.ink, lineWidth: 1.4)
+                        }
+                }
 
                 if isCurrent {
                     Text("사용 중")

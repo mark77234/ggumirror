@@ -109,6 +109,24 @@ private final class FakeMarketplaceBackend: MarketplaceBackend, @unchecked Senda
         return []
     }
     var myListingsResult: [MarketplaceOwnedListing] = []
+    var deleteResult: MarketplaceOwnedListing?
+    /// 켜면 응답이 잠깐 늦는다. **연타를 시험하려면 실제로 멈춰야** 한다 —
+    /// 즉시 반환하면 첫 호출이 끝난 뒤에 둘째가 시작해서 겹치지 않는다.
+    var slowDelete = false
+    func deleteListing(
+        listingID: String, accessToken: String
+    ) async throws -> MarketplaceOwnedListing {
+        calls.append("deleteListing(\(listingID))")
+        if slowDelete { try? await Task.sleep(for: .milliseconds(80)) }
+        sawToken = !accessToken.isEmpty
+        try check()
+        return deleteResult ?? MarketplaceOwnedListing(
+            id: listingID, contentType: "mirror", title: "t", description: "",
+            priceShards: 0, status: "deleted", downloadCount: 0, likeCount: 0,
+            publishedAt: nil
+        )
+    }
+
     var myPreviewResult = Data()
     func myListingPreview(listingID: String, accessToken: String) async throws -> Data {
         calls.append("myListingPreview(\(listingID))")
@@ -1033,11 +1051,14 @@ struct MyListingsDTOTests {
 
     @Test("상태 이름이 한국어로 나온다")
     func statusLabels() {
-        #expect(owned(id: "a", status: "published").statusLabel == "공개 중")
+        // "공개 중" → "판매 중"으로 바꿨다. 상점 IA가 `판매 중` / `등록 미완료`로
+        // 나뉘므로 카드 문구도 같은 말을 써야 한다.
+        #expect(owned(id: "a", status: "published").statusLabel == "판매 중")
         #expect(owned(id: "a", status: "unlisted").statusLabel == "판매 중지")
-        // B-7H hotfix — "등록 준비"는 등록 도중 실패해 남은 draft에도 붙어서
-        // 사용자가 자기가 안 올린 줄 알았다. 두 경우 모두 맞는 문구로 바꿨다.
+        // "등록 준비"는 등록 도중 실패해 남은 draft에도 붙어서 사용자가 자기가
+        // 안 올린 줄 알았다. 두 경우 모두 맞는 문구로 바꿨다.
         #expect(owned(id: "a", status: "draft").statusLabel == "등록 미완료")
+        #expect(owned(id: "a", status: "deleted", publishedAt: nil).statusLabel == "삭제됨")
     }
 }
 
@@ -1522,17 +1543,18 @@ struct StoreScrollHierarchyTests {
         #expect(code.components(separatedBy: "contentMargins(.bottom").count - 1 == 1)
     }
 
-    @Test("내 상점 상품이 일반 상품보다 먼저 온다")
-    func myListingsComeFirst() throws {
+    @Test("공개 거울 탭은 사용자 상품 → 내장 목록 순서다")
+    func publicMirrorOrder() throws {
+        // **판매자 관리는 여기 없다** — `내 판매` 탭으로 갔다(Marketplace UX hardening).
+        // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는지 알 수 없었다.
         let code = codeOnly(try source("Store/StoreView.swift"))
         let start = try #require(code.range(of: "private var mirrorContent: some View {"))
         let body = String(code[start.upperBound...])
 
-        let mine = try #require(body.range(of: "MyListingsSection"))
+        #expect(!body.contains("MyListingsSection"), "공개 목록에 판매자 관리가 섞였다")
+
         let others = try #require(body.range(of: "MarketplaceSection"))
         let builtIn = try #require(body.range(of: "LazyVGrid"))
-
-        #expect(mine.lowerBound < others.lowerBound, "내 상품이 사용자 상품보다 뒤에 있다")
         #expect(others.lowerBound < builtIn.lowerBound, "사용자 상품이 내장 목록보다 뒤에 있다")
     }
 
@@ -1937,7 +1959,7 @@ struct SellerPreviewUITests {
     @Test("draft 문구가 '등록 미완료'다")
     func draftWording() throws {
         #expect(owned(id: "a", status: "draft").statusLabel == "등록 미완료")
-        #expect(owned(id: "a", status: "published").statusLabel == "공개 중")
+        #expect(owned(id: "a", status: "published").statusLabel == "판매 중")
         #expect(owned(id: "a", status: "unlisted").statusLabel == "판매 중지")
         // 오해를 부르던 옛 문구가 남아 있지 않다.
         #expect(owned(id: "a", status: "draft").statusLabel != "등록 준비")
@@ -1979,5 +2001,334 @@ struct SellerPreviewUITests {
                 #expect(!code.contains(banned), "\(path): \(banned)")
             }
         }
+    }
+}
+
+
+// MARK: - 삭제 · 판매 중 연결 · 좋아요 (Marketplace UX hardening)
+
+@MainActor
+@Suite("상점 삭제")
+struct MarketplaceDeleteTests {
+
+    private func store(_ backend: FakeMarketplaceBackend) -> MarketplaceStore {
+        MarketplaceStore(backend: backend)
+    }
+
+    @Test("삭제하면 공개 목록에서 사라지고 판매자 목록을 다시 받는다")
+    func deleteRemovesAndRefreshes() async {
+        let backend = FakeMarketplaceBackend()
+        backend.listingsResult = [listing(id: "a")]
+        backend.myListingsResult = [owned(id: "a", status: "published")]
+        let subject = store(backend)
+        await subject.refresh(contentType: "mirror", sort: .latest, session: session())
+
+        backend.myListingsResult = [owned(id: "a", status: "deleted", publishedAt: nil)]
+        let result = await subject.delete(listingID: "a", session: session())
+
+        #expect(result?.isDeleted == true)
+        #expect(subject.listings.isEmpty)
+        #expect(backend.calls.contains("myListings"))
+    }
+
+    @Test("삭제는 조각을 건드리지 않는다 — 환불이 없다")
+    func deleteTouchesNoShards() async {
+        let backend = FakeMarketplaceBackend()
+        let subject = store(backend)
+        let wallet = ShardWallet(backend: FakeShardBackendForMarketplace())
+        wallet.apply(balance: 142)
+
+        _ = await subject.delete(listingID: "a", session: session())
+
+        #expect(wallet.balance == 142)
+    }
+
+    @Test("로그인 없이 삭제하면 서버를 부르지 않는다")
+    func deleteNeedsSignIn() async {
+        let backend = FakeMarketplaceBackend()
+        let subject = store(backend)
+
+        let result = await subject.delete(listingID: "a", session: nil)
+
+        #expect(result == nil)
+        #expect(subject.failure == .notSignedIn)
+        #expect(backend.calls.isEmpty)
+    }
+
+    @Test("연타해도 요청은 한 번이다")
+    func deleteIsGuardedAgainstDoubleTap() async {
+        let backend = FakeMarketplaceBackend()
+        backend.slowDelete = true
+        let subject = store(backend)
+
+        async let first = subject.delete(listingID: "a", session: session())
+        async let second = subject.delete(listingID: "a", session: session())
+        _ = await (first, second)
+
+        #expect(backend.calls.filter { $0 == "deleteListing(a)" }.count == 1)
+    }
+
+    @Test("deleted는 판매 중 목록에 없다")
+    func deletedIsNotSelling() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [
+            owned(id: "live", status: "published"),
+            owned(id: "gone", status: "deleted", publishedAt: nil),
+            owned(id: "wip", status: "draft", publishedAt: nil),
+        ]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.selling(contentType: "mirror").map(\.id) == ["live"])
+    }
+
+    @Test("삭제 문구가 되살릴 수 있는 것처럼 말하지 않는다")
+    func deleteCopyIsFinal() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().appending(path: "ggumirror")
+        let code = try String(
+            contentsOf: root.appending(path: "Store/MySalesSection.swift"), encoding: .utf8
+        )
+        // 새 UI는 "내리기"를 쓰지 않는다.
+        #expect(!code.contains("상점에서 내리기"))
+        #expect(code.contains("\"삭제\""))
+        // 확인 문구에 환불 없음과 기존 구매자 보존이 들어 있다.
+        #expect(code.contains("환불되지 않아요"))
+        #expect(code.contains("이미 받은 사용자는 계속 사용할 수 있어요"))
+        // 등록비 숫자를 화면에 적지 않는다 — 정책 상수를 읽는다.
+        #expect(code.contains("publishFeeShards"))
+        #expect(!code.contains("10조각은 환불"))
+    }
+
+    @Test("등록비 안내가 종류별 정책 상수에서 온다")
+    func feeCopyComesFromPolicy() {
+        #expect(owned(id: "a", contentType: "mirror", status: "published").publishFeeShards
+            == MirrorPublishPolicy.feeInShards)
+        #expect(owned(id: "a", contentType: "sticker", status: "published").publishFeeShards
+            == StickerPublishPolicy.feeInShards)
+    }
+
+    @Test("삭제된 상태 문구")
+    func deletedLabel() {
+        #expect(owned(id: "a", status: "deleted", publishedAt: nil).statusLabel == "삭제됨")
+        #expect(owned(id: "a", status: "published").statusLabel == "판매 중")
+    }
+}
+
+@MainActor
+@Suite("판매 중 연결")
+struct SellingMappingTests {
+
+    private func store(_ backend: FakeMarketplaceBackend) -> MarketplaceStore {
+        MarketplaceStore(backend: backend)
+    }
+
+    private func owned(
+        id: String, source: String, status: String = "published"
+    ) -> MarketplaceOwnedListing {
+        MarketplaceOwnedListing(
+            id: id, contentType: "mirror", title: "제목", description: "",
+            priceShards: 1, status: status, downloadCount: 0, likeCount: 0,
+            publishedAt: status == "draft" ? nil : Date(), sourceContentId: source
+        )
+    }
+
+    @Test("sourceContentId로 local 거울과 잇는다")
+    func mapsBySourceContentID() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "listing-1", source: "art-mint-flower")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        let found = subject.sellingListing(
+            forContentID: "art-mint-flower", contentType: "mirror"
+        )
+
+        #expect(found?.id == "listing-1")
+    }
+
+    @Test("제목으로 맞추지 않는다")
+    func neverMatchesByTitle() async {
+        let backend = FakeMarketplaceBackend()
+        // 제목이 같고 출처가 다른 두 상품.
+        backend.myListingsResult = [
+            owned(id: "l1", source: "mirror-a"),
+            owned(id: "l2", source: "mirror-b"),
+        ]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.sellingListing(forContentID: "mirror-a", contentType: "mirror")?.id == "l1")
+        #expect(subject.sellingListing(forContentID: "mirror-b", contentType: "mirror")?.id == "l2")
+        #expect(subject.sellingListing(forContentID: "제목", contentType: "mirror") == nil)
+    }
+
+    @Test("draft는 판매 중이 아니다")
+    func draftIsNotSelling() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "l1", source: "mirror-a", status: "draft")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.sellingListing(forContentID: "mirror-a", contentType: "mirror") == nil)
+    }
+
+    @Test("deleted도 판매 중이 아니다")
+    func deletedIsNotSelling() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "l1", source: "mirror-a", status: "deleted")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.sellingListing(forContentID: "mirror-a", contentType: "mirror") == nil)
+    }
+
+    @Test("종류가 다르면 잇지 않는다")
+    func contentTypeMustMatch() async {
+        let backend = FakeMarketplaceBackend()
+        backend.myListingsResult = [owned(id: "l1", source: "same-id")]
+        let subject = store(backend)
+        await subject.refreshMyListings(session: session())
+
+        #expect(subject.sellingListing(forContentID: "same-id", contentType: "sticker") == nil)
+    }
+
+    @Test("옛 서버 응답에 sourceContentId가 없어도 목록이 깨지지 않는다")
+    func decodesWithoutSourceContentID() throws {
+        let json = """
+        [{"id":"a","contentType":"mirror","title":"t","description":"","priceShards":0,
+          "status":"published","downloadCount":0,"likeCount":0,
+          "publishedAt":"2026-08-19T10:00:12Z"}]
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder.backend.decode([MarketplaceOwnedListing].self, from: json)
+
+        #expect(decoded.count == 1)
+        #expect(decoded[0].sourceContentId == "")
+    }
+
+    @Test("서버가 준 sourceContentId를 읽는다")
+    func decodesSourceContentID() throws {
+        let json = """
+        {"id":"a","contentType":"mirror","title":"t","description":"","priceShards":0,
+         "status":"published","downloadCount":0,"likeCount":0,
+         "publishedAt":"2026-08-19T10:00:12Z","sourceContentId":"art-mint-flower"}
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder.backend.decode(MarketplaceOwnedListing.self, from: json)
+
+        #expect(decoded.sourceContentId == "art-mint-flower")
+    }
+}
+
+@Suite("상점 IA · 통계 표시")
+struct StoreIAHardeningTests {
+
+    private func source(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().appending(path: "ggumirror")
+        return try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    }
+
+    @Test("상점에 내 판매 탭이 있다")
+    func mySalesTabExists() {
+        #expect(StoreSection.allCases.map(\.rawValue) == ["거울", "스티커", "내 판매"])
+    }
+
+    @Test("공개 거울 탭에 판매자 관리 UI가 없다")
+    func publicMirrorHasNoSellerUI() throws {
+        let code = try source("Store/StoreView.swift")
+        let start = try #require(code.range(of: "private var mirrorContent: some View {"))
+        let body = String(code[start.upperBound...].prefix(1400))
+        #expect(!body.contains("MyListingsSection"), "공개 목록에 판매자 관리가 섞였다")
+        #expect(!body.contains("MySalesSection"))
+    }
+
+    @Test("공개 스티커 탭에도 판매자 관리 UI가 없다")
+    func publicStickerHasNoSellerUI() throws {
+        let code = try source("Store/StickerStoreView.swift")
+        #expect(!code.contains("MyListingsSection"))
+    }
+
+    @Test("내 판매는 판매 중과 등록 미완료를 나눈다")
+    func mySalesSeparatesStates() throws {
+        let code = try source("Store/MySalesSection.swift")
+        #expect(code.contains("\"판매 중\""))
+        #expect(code.contains("\"등록 미완료\""))
+        #expect(code.contains("filter(\\.isPublished)"))
+        #expect(code.contains("filter(\\.isDraft)"))
+        // 서버가 authority다.
+        #expect(code.contains("refreshMyListings"))
+    }
+
+    @Test("scroll 계층이 유지된다")
+    func scrollHierarchyIntact() throws {
+        let code = try source("Store/StoreView.swift")
+        let stripped = code.split(separator: "\n").map { line -> String in
+            guard let c = line.range(of: "//") else { return String(line) }
+            return String(line[..<c.lowerBound])
+        }.joined(separator: "\n")
+        #expect(stripped.components(separatedBy: "ScrollView {").count - 1 == 1)
+        #expect(code.contains("InkTabBar.reservedHeight"))
+        // 내 판매도 같은 scroll 안에 있다.
+        #expect(!(try source("Store/MySalesSection.swift")).contains("ScrollView"))
+    }
+
+    @Test("서버가 세지 않는 통계를 숫자로 보여 주지 않는다")
+    func noFakeCounts() throws {
+        // 내장 템플릿은 서버 기록이 없다 — 0을 보여 주면 거짓말이다.
+        #expect(StoreCatalog.samples.allSatisfy { !$0.hasServerStats })
+
+        let store = try source("Store/StoreView.swift")
+        #expect(store.contains("template.hasServerStats"))
+        let detail = try source("Store/TemplateDetailView.swift")
+        #expect(detail.contains("template.hasServerStats"))
+    }
+
+    @Test("Marketplace 상품은 서버 값을 그대로 보여 준다")
+    func marketplaceCountsAreServerValues() throws {
+        let code = try source("Store/MarketplaceGallery.swift")
+        #expect(code.contains("listing.downloadCount"))
+        #expect(code.contains("listing.likeCount"))
+        // 앱이 세지 않는다.
+        for banned in ["downloadCount +", "likeCount +", "downloadCount +=", "likeCount +="] {
+            #expect(!code.contains(banned), "앱이 counter를 올린다")
+        }
+    }
+
+    @Test("공개 카드에 좋아요 하트가 있다")
+    func publicCardHasHeart() throws {
+        let code = try source("Store/MarketplaceGallery.swift")
+        #expect(code.contains("onToggleLike"))
+        #expect(code.contains("heart.fill"))
+        // 손가락이 닿는 자리를 확보한다.
+        #expect(code.contains("minWidth: 44, minHeight: 44"))
+    }
+
+    @Test("자기 상품에는 하트를 누를 수 없다")
+    func ownListingHeartIsNotTappable() throws {
+        let code = try source("Store/MarketplaceGallery.swift")
+        #expect(code.contains("isMine"))
+        // 실패할 CTA를 보여 주지 않는다.
+        #expect(code.contains("내 상품이라 누를 수 없어요"))
+    }
+
+    @Test("좋아요 상태는 서버 목록에서 온다")
+    func likedStateIsServerAuthoritative() throws {
+        let gallery = try source("Store/MarketplaceGallery.swift")
+        #expect(gallery.contains("store.likedListingIDs.contains"))
+        let store = try source("Store/MarketplaceStore.swift")
+        // 서버에서 받아 채운다 — 로컬에서만 만들지 않는다.
+        #expect(store.contains("backend.likedListingIDs(accessToken:"))
+    }
+
+    @Test("내 거울 판매 중이 서버 목록을 쓴다")
+    func sellingFilterUsesServer() throws {
+        let code = try source("MyMirrors/MyMirrorsView.swift")
+        #expect(code.contains("marketplace.selling(contentType:"))
+        #expect(code.contains("sourceContentId"))
+        // 제목 매칭이 없다.
+        #expect(!code.contains("$0.name == "))
+        #expect(!code.contains("title =="))
     }
 }

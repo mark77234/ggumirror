@@ -45,6 +45,43 @@ nonisolated struct MarketplaceOwnedListing: Decodable, Hashable, Identifiable, S
     let likeCount: Int
     /// 아직 올린 적이 없으면 `nil`이다. **`Date.now`로 채우지 않는다.**
     let publishedAt: Date?
+    /// 이 상품이 어느 **내 콘텐츠**에서 나왔는지 — `MyMirror.id` / `StickerProject.id`.
+    ///
+    /// "내 거울 → 판매 중"에서 자기 상품을 찾는 데 쓴다. 제목으로 맞추지 않는다.
+    /// 옛 snapshot이라 서버가 알 수 없으면 빈 문자열이다.
+    let sourceContentId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, contentType, title, description, priceShards, status
+        case downloadCount, likeCount, publishedAt, sourceContentId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        contentType = try c.decode(String.self, forKey: .contentType)
+        title = try c.decode(String.self, forKey: .title)
+        description = try c.decode(String.self, forKey: .description)
+        priceShards = try c.decode(Int.self, forKey: .priceShards)
+        status = try c.decode(String.self, forKey: .status)
+        downloadCount = try c.decode(Int.self, forKey: .downloadCount)
+        likeCount = try c.decode(Int.self, forKey: .likeCount)
+        publishedAt = try c.decodeIfPresent(Date.self, forKey: .publishedAt)
+        // 옛 서버 응답에는 없다. 없다고 목록 전체가 깨지면 안 된다.
+        sourceContentId = try c.decodeIfPresent(String.self, forKey: .sourceContentId) ?? ""
+    }
+
+    init(
+        id: String, contentType: String, title: String, description: String,
+        priceShards: Int, status: String, downloadCount: Int, likeCount: Int,
+        publishedAt: Date?, sourceContentId: String = ""
+    ) {
+        self.id = id; self.contentType = contentType; self.title = title
+        self.description = description; self.priceShards = priceShards
+        self.status = status; self.downloadCount = downloadCount
+        self.likeCount = likeCount; self.publishedAt = publishedAt
+        self.sourceContentId = sourceContentId
+    }
 }
 
 nonisolated extension MarketplaceOwnedListing {
@@ -55,6 +92,8 @@ nonisolated extension MarketplaceOwnedListing {
     var isPublished: Bool { status == "published" }
     var isUnlisted: Bool { status == "unlisted" }
     var isDraft: Bool { status == "draft" }
+    /// **끝 상태.** 판매자가 삭제했고 되살아나지 않는다.
+    var isDeleted: Bool { status == "deleted" }
 
     /// 판매자에게 보일 상태 문구.
     ///
@@ -64,9 +103,10 @@ nonisolated extension MarketplaceOwnedListing {
     /// "등록 미완료"는 두 경우 모두 맞고, 이어서 올려야 한다는 것도 전한다.
     var statusLabel: String {
         switch status {
-        case "published": "공개 중"
+        case "published": "판매 중"
         case "unlisted": "판매 중지"
         case "draft": "등록 미완료"
+        case "deleted": "삭제됨"
         default: "알 수 없음"
         }
     }
@@ -262,6 +302,11 @@ nonisolated protocol MarketplaceBackend: Sendable {
     /// 공개 미리보기(`preview`)는 `published`만이다 — 판매자 관리 화면에서만
     /// 아직 올리지 않은 것과 내린 것의 생김새가 필요하다.
     func myListingPreview(listingID: String, accessToken: String) async throws -> Data
+    /// 상품을 **삭제한다.** 끝 상태이고 되살릴 수 없다.
+    ///
+    /// 서버는 실제로 지우지 않는다 — 이미 산 사람은 계속 받는다.
+    /// 등록비도 돌아오지 않는다.
+    func deleteListing(listingID: String, accessToken: String) async throws -> MarketplaceOwnedListing
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func unlike(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult
     func likedListingIDs(accessToken: String) async throws -> [String]

@@ -65,6 +65,7 @@ final class MarketplaceStore {
     enum InFlight: Hashable {
         case publish(String)
         case unpublish(String)
+        case delete(String)
         case purchase(String)
         case like(String)
         case snapshot
@@ -126,6 +127,55 @@ final class MarketplaceStore {
             failure = error
         } catch {
             failure = .network
+        }
+    }
+
+    /// 지금 **판매 중**인 것만. `내 거울` 화면이 쓴다.
+    ///
+    /// `draft` · `deleted`는 빠진다 — 판매 중이 아니다.
+    func selling(contentType: String) -> [MarketplaceOwnedListing] {
+        myListings.filter { $0.contentType == contentType && $0.isPublished }
+    }
+
+    /// 이 local 콘텐츠(`MyMirror.id` / `StickerProject.id`)로 판매 중인 상품.
+    ///
+    /// **서버가 준 `sourceContentId`로만 맞춘다.** 제목으로 맞추지 않는다 —
+    /// 같은 제목이 여러 개일 수 있다.
+    func sellingListing(forContentID contentID: String, contentType: String)
+        -> MarketplaceOwnedListing?
+    {
+        selling(contentType: contentType).first { $0.sourceContentId == contentID }
+    }
+
+    /// **삭제한다.** 되살릴 수 없다 — 화면이 먼저 확인을 받아야 한다.
+    ///
+    /// 서버는 실제로 지우지 않는다(이미 산 사람은 계속 받는다). 등록비도 돌아오지
+    /// 않으므로 **앱이 잔액을 건드리지 않는다** — 서버 상태만 다시 받는다.
+    @discardableResult
+    func delete(listingID: String, session: ServerSession?) async -> MarketplaceOwnedListing? {
+        guard let token = session?.accessToken else {
+            failure = .notSignedIn
+            return nil
+        }
+        guard !isBusy(.delete(listingID)) else { return nil }
+        inFlight.insert(.delete(listingID))
+        defer { inFlight.remove(.delete(listingID)) }
+
+        do {
+            let listing = try await backend.deleteListing(
+                listingID: listingID, accessToken: token
+            )
+            // 공개 목록에서 사라진다.
+            listings.removeAll { $0.id == listingID }
+            failure = nil
+            await refreshMyListings(session: session)
+            return listing
+        } catch let error as MarketplaceFailure {
+            failure = error
+            return nil
+        } catch {
+            failure = .network
+            return nil
         }
     }
 

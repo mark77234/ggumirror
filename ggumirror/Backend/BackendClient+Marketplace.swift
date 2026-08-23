@@ -167,6 +167,21 @@ extension BackendClient: MarketplaceBackend {
         )
     }
 
+    /// 상품 삭제. **되살릴 수 없다** — 화면이 먼저 확인을 받는다.
+    func deleteListing(
+        listingID: String, accessToken: String
+    ) async throws -> MarketplaceOwnedListing {
+        let data = try await marketplaceRequest(
+            "users/me/marketplace/listings/\(try pathComponent(listingID))",
+            method: "DELETE",
+            accessToken: accessToken
+        )
+        return try decodeMarketplace(
+            MarketplaceOwnedListing.self, from: data,
+            path: "DELETE /users/me/marketplace/listings/{id}"
+        )
+    }
+
     // MARK: 좋아요
 
     func like(listingID: String, accessToken: String) async throws -> MarketplaceLikeResult {

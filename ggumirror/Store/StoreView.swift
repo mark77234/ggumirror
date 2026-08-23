@@ -12,6 +12,9 @@ import SwiftUI
 enum StoreSection: String, CaseIterable, Identifiable, Hashable {
     case mirror = "거울"
     case sticker = "스티커"
+    /// 내가 올린 상품 관리. **공개 목록과 섞지 않는다** —
+    /// 섞여 있으면 아직 안 올린 것과 실제 판매 중인 것을 구분할 수 없다.
+    case mySales = "내 판매"
 
     var id: String { rawValue }
 }
@@ -68,6 +71,12 @@ struct StoreView: View {
                         mirrorContent
                     case .sticker:
                         StickerStoreView(library: stickers, mirrors: library)
+                    case .mySales:
+                        MySalesSection(
+                            store: marketplace,
+                            session: session.server,
+                            wallet: shards
+                        )
                     }
                 }
             }
@@ -192,15 +201,8 @@ struct StoreView: View {
     /// 판매자가 자기 것을 먼저 찾을 수 있어야 한다.
     private var mirrorContent: some View {
         VStack(spacing: 0) {
-            // 내가 올린 상품 관리가 먼저다 — **서버 목록이 authority다.**
-            MyListingsSection(
-                contentType: "mirror",
-                store: marketplace,
-                session: session.server,
-                wallet: shards
-            )
-
-            // 사용자가 올린 상품. 없으면 아무것도 그리지 않는다.
+            // **판매자 관리는 여기 없다.** `내 판매` 탭으로 갔다 —
+            // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는 중인지 알 수 없다.
             MarketplaceSection(
                 contentType: "mirror",
                 store: marketplace,
@@ -261,17 +263,25 @@ private struct StoreGalleryItem: View {
             """
             \(template.name), \(template.creator), \
             \(template.price == 0 ? "무료" : "\(template.price) 조각"), \
-            다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \
+            \(template.hasServerStats
+                ? "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), " : "")\
             \(template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드")
             """
         )
     }
 
-    /// 한 줄짜리 작은 metadata. 아이콘 + 숫자만 — 카드를 어지럽히지 않는다.
+    /// 한 줄짜리 작은 metadata.
+    ///
+    /// **서버가 세지 않는 값은 숫자로 말하지 않는다.** 내장 템플릿은 다운로드가
+    /// 순수 로컬 동작이라 서버 기록이 없다 — `0`을 보여 주면 "아무도 안 받았다"는
+    /// 거짓말이 된다. 그래서 통계 자리를 아예 비운다(빈 자리도 정직한 표현이다).
+    @ViewBuilder
     private var metadata: some View {
         HStack(spacing: 8) {
-            Label("\(template.downloadCount)", systemImage: "arrow.down")
-            Label("\(template.likeCount)", systemImage: "heart")
+            if template.hasServerStats {
+                Label("\(template.downloadCount)", systemImage: "arrow.down")
+                Label("\(template.likeCount)", systemImage: "heart")
+            }
             Spacer(minLength: 2)
             Text(template.uploadedAtLabel)
         }

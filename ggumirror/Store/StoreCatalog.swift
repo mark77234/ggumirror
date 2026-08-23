@@ -114,6 +114,15 @@ struct MirrorTemplate: Identifiable, Hashable {
     /// 손그림 PNG 템플릿이면 여기 들어온다. 단색 기본 템플릿은 nil.
     var artwork: StoreArtworkResource?
 
+    /// 이 상품의 획득 수를 **서버가 세고 있는가.**
+    ///
+    /// 내장 템플릿은 아직 아니다 — 다운로드가 순수 로컬 동작이라 서버에 기록되는
+    /// 곳도 세는 곳도 없다(감사로 확인했다). 그래서 `0`을 보여 주면 "아무도 안
+    /// 받았다"는 **거짓말**이 된다. 세지 않는 값은 숫자로 말하지 않는다.
+    ///
+    /// 서버가 세는 Marketplace 상품은 `MarketplaceListing`이 따로 표시한다.
+    var hasServerStats: Bool = false
+
     /// 받아 간 횟수. **서버가 세는 값이고 앱이 올리지 않는다.**
     ///
     /// 의미는 "최초 소유권 획득 성공"이다 — 유료는 결제+소유권 생성, 무료는 소유권 생성.
