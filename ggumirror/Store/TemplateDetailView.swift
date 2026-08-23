@@ -111,46 +111,60 @@ struct TemplateDetailView: View {
             }
             .buttonStyle(InkPressStyle())
 
-            // 무료 템플릿은 지금 바로 받을 수 있다. 조각 결제는 아직 없다.
-            //
-            // **이미 있으면 누를 수 없다.** `acquire`는 같은 id를 두 번 넣지 않으므로
-            // 눌러도 아무 일이 없는데 "담았어요"라고 말해서, 사용자가 몇 개를 받았는지
-            // 알 수 없었다. 제목이 아니라 **id**로 판단한다 — 이름은 바뀔 수 있다.
+            // 사용자 상품과 **같은 상태 모델**을 쓴다(`MirrorAcquireCTA`).
+            // 출처가 내장인지 남이 올린 것인지 몰라도 같은 문구·같은 흐름이다.
             Button {
-                guard template.price == 0, let library else {
-                    notice = "조각으로 받기는 다음 업데이트에서 열려요."
-                    return
-                }
-                guard library.acquire(template) != nil else {
-                    showsStorageFull = true
-                    return
-                }
-                notice = "\(template.name)을(를) 내 거울에 담았어요."
-                // **로컬 저장이 끝난 뒤에** 서버에 남긴다 — 저장이 실패했는데 수만
-                // 오르면 안 된다. 이 요청이 실패해도 로컬 획득을 되돌리지 않는다
-                // (다음 맞춰 보기가 되찾는다).
-                Task {
-                    await catalogStats.recordAcquisition(template.id, session: session.server)
-                }
+                acquire()
             } label: {
-                Text(acquireTitle)
+                Text(cta.title)
                     .font(InkFont.body)
-                    .foregroundStyle(isOwned ? PaperTheme.secondaryInk : PaperTheme.ink)
+                    .foregroundStyle(cta.isEnabled ? PaperTheme.ink : PaperTheme.secondaryInk)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .frame(minHeight: 44)
                     .background {
                         let shape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
                         shape.stroke(
-                            isOwned ? PaperTheme.separator : PaperTheme.ink, lineWidth: 1.8
+                            cta.isEnabled ? PaperTheme.ink : PaperTheme.separator, lineWidth: 1.8
                         )
                     }
                     .contentShape(.rect)
             }
             .buttonStyle(InkPressStyle())
-            .disabled(isOwned)
+            .disabled(!cta.isEnabled)
         }
         .padding(.top, 4)
+    }
+
+    /// 사용자 상품과 공유하는 상태 모델. 내장에는 서버 소유권 개념이 없다.
+    private var cta: MirrorAcquireCTA {
+        MirrorAcquireCTA.state(
+            price: template.price,
+            isSignedIn: session.server != nil,
+            existsLocally: isOwned
+        )
+    }
+
+    /// 상태에 맞는 동작 하나. 화면에 분기를 흩뿌리지 않는다.
+    private func acquire() {
+        switch cta {
+        case .needsSignIn:
+            _ = session.requireSignIn(for: .shardTransaction)
+        case .acquireFree:
+            guard let library else { return }
+            guard library.acquire(template) != nil else {
+                showsStorageFull = true
+                return
+            }
+            notice = "\(template.name)을(를) 내 거울에 담았어요."
+            // **로컬 저장이 끝난 뒤에** 서버에 남긴다.
+            Task { await catalogStats.recordAcquisition(template.id, session: session.server) }
+        case .purchase:
+            // 내장 유료 템플릿의 조각 결제는 아직 서버 경로가 없다.
+            notice = "조각으로 받기는 다음 업데이트에서 열려요."
+        case .addToLibrary, .alreadyInLibrary, .ownListing:
+            break
+        }
     }
 
     /// 이 템플릿이 이미 내 거울에 있는가. `acquire`가 `MyMirror.id = template.id`로
@@ -159,10 +173,6 @@ struct TemplateDetailView: View {
         library?.mirrors.contains { $0.id == template.id } ?? false
     }
 
-    private var acquireTitle: String {
-        if isOwned { return "이미 내 거울에 있어요" }
-        return template.price == 0 ? "무료로 받기" : "조각으로 받기"
-    }
 }
 
 #Preview {

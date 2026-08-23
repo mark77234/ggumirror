@@ -126,8 +126,12 @@ struct OwnedTemplateCTATests {
         // id로 판단한다. 제목으로 맞추지 않는다.
         #expect(code.contains("library?.mirrors.contains { $0.id == template.id }"))
         #expect(!code.contains("$0.name == template.name"))
-        #expect(code.contains("\"이미 내 거울에 있어요\""))
-        #expect(code.contains(".disabled(isOwned)"))
+        // 문구와 잠금은 이제 사용자 상품과 공유하는 상태 모델이 정한다.
+        #expect(code.contains("MirrorAcquireCTA.state("))
+        #expect(code.contains("existsLocally: isOwned"))
+        #expect(code.contains(".disabled(!cta.isEnabled)"))
+        #expect(MirrorAcquireCTA.state(price: 0, isSignedIn: true, existsLocally: true)
+                .title == "이미 내 거울에 있어요")
     }
 
     @Test("같은 템플릿을 두 번 받아도 하나다")

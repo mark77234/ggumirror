@@ -127,12 +127,12 @@ struct StoreCatalogTests {
         func count(_ price: Int) -> Int {
             StoreCatalog.artworkTemplates.filter { $0.price == price }.count
         }
-        // 예전 갈래별 값: free 0 · 리본/다이어리 18 · 기념일 20 · Y2K 24
+        // **모든 내장 가격을 5조각 미만으로 낮췄다.** 무료였던 것은 그대로 무료다.
+        // 예전 값(18 · 20 · 24)은 전부 상한 4로 모였다.
         #expect(count(0) == 8)
-        #expect(count(18) == 8)
-        #expect(count(20) == 4)
-        #expect(count(24) == 4)
-        #expect(count(0) + count(18) + count(20) + count(24) == 24)
+        #expect(count(4) == 16)
+        #expect(count(0) + count(4) == 24)
+        #expect(StoreCatalog.artworkTemplates.allSatisfy { $0.price < 5 })
     }
 
     @Test("각 템플릿이 이름 / 그림 / 가격을 갖는다")
@@ -274,8 +274,9 @@ struct StoreCatalogTests {
         #expect(StoreCatalog.samples.filter { StorePriceFilter.free.includes(price: $0.price) }
             .allSatisfy { $0.price == 0 })
         // 기존 두 장의 값은 그대로 유지된다.
-        #expect(try template("art-my-diary").price == 18)
-        #expect(try template("art-y2k-star").price == 24)
+        // 상한 4로 낮췄다. 무료였던 것은 건드리지 않았다.
+        #expect(try template("art-my-diary").price == 4)
+        #expect(try template("art-y2k-star").price == 4)
     }
 
     // MARK: - 미리보기

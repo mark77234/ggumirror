@@ -55,8 +55,14 @@ struct MirrorViewTransform: Equatable {
 }
 
 enum MirrorRenderer {
-    /// 거울 면. 그라디언트 없이 평평한 톤으로만 표현한다.
-    static let glass = Color(red: 0.129, green: 0.125, blue: 0.145)
+    /// 거울 면 — **정지 그림에서만** 쓰는 카메라 자리.
+    ///
+    /// 실제 Mirror / Capture는 `mirrorAreaFill: nil`을 줘서 이 색을 아예 쓰지 않는다.
+    /// 그쪽은 진짜 카메라가 비치는 자리이고, 저장되는 사진에도 이 색이 들어가지 않는다.
+    ///
+    /// 예전에는 어두운 유리색이었는데, 목록 썸네일에서 **검은 글씨와 검은 그림이
+    /// 그 위에서 보이지 않았다.** 종이 팔레트의 밝은 중간톤으로 바꿨다.
+    static let glass = PaperTheme.thumbnailGlass
 
     /// 레이어 순서 (실제 Mirror 기준):
     ///   카메라 → 프레임 배경 → 그림 → 템플릿 장식 → 스티커 / 텍스트(zIndex 순)

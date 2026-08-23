@@ -272,7 +272,9 @@ struct ShardWalletTests {
 
         // 무료 갈래 · 무료로 받기 문구도 그대로 있다.
         #expect(try repoFile("ggumirror/Store/StoreCatalog.swift").contains(#"case free = "무료""#))
-        #expect(try repoFile("ggumirror/Store/TemplateDetailView.swift").contains(#""무료로 받기""#))
+        // 문구는 이제 내장·사용자 상품이 공유하는 상태 모델에 있다.
+        #expect(MirrorAcquireCTA.state(price: 0, isSignedIn: true, existsLocally: false)
+                .title == "무료로 받기")
 
         // 무료 템플릿은 여전히 0 조각이고 8종이다.
         #expect(StoreCatalog.samples.contains { $0.price == 0 })

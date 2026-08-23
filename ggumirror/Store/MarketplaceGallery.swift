@@ -29,6 +29,67 @@ struct MarketplaceGalleryItem: View {
     var onToggleLike: (() -> Void)?
 
     var body: some View {
+        card
+            .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            """
+            \(listing.title), \
+            \(listing.priceShards == 0 ? "무료" : "\(listing.priceShards) 조각"), \
+            다운로드 \(listing.downloadCount), 좋아요 \(listing.likeCount), \
+            \(listing.publishedAtLabel) 업로드\(isLiked ? ", 좋아요 누름" : "")
+            """
+        )
+    }
+
+    /// 거울은 **정사각 카드 안에 왼쪽 그림 · 오른쪽 정보**로 놓는다.
+    ///
+    /// 거울 자체가 9:19.5라 카드까지 세로로 길게 두면 한 화면에 몇 개 안 들어오고,
+    /// 그림이 카드 높이를 거의 다 먹어 제목·가격이 밀렸다. 스티커는 그대로
+    /// 정사각 한 덩어리다 — 거울과 같은 문제가 없다.
+    @ViewBuilder
+    private var card: some View {
+        if ListingPreviewStyle.isSticker(listing.contentType) {
+            stickerCard
+        } else {
+            mirrorCard
+        }
+    }
+
+    /// 바깥은 1:1. 안에서 그림과 정보가 가로로 나뉜다.
+    /// 폭은 **비율로만** 나눈다 — 기기 폭을 숫자로 적지 않는다.
+    private var mirrorCard: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 10) {
+                previewImage
+                    // 거울은 언제나 칸 **가운데**에 온다. 상품마다 왼쪽으로 붙지 않는다.
+                    .frame(width: geometry.size.width * Self.previewShare)
+                    .frame(maxHeight: .infinity, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(listing.title)
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+
+                    ShardAmount(amount: listing.priceShards)
+
+                    verticalMetadata
+
+                    Spacer(minLength: 0)
+
+                    heart
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    /// 그림이 차지하는 가로 비율. 나머지가 정보 자리다.
+    private static let previewShare: CGFloat = 0.4
+
+    private var stickerCard: some View {
         VStack(alignment: .leading, spacing: 3) {
             previewImage
                 .overlay(alignment: .topTrailing) { heart }
@@ -47,15 +108,20 @@ struct MarketplaceGalleryItem: View {
 
             metadata
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            """
-            \(listing.title), \
-            \(listing.priceShards == 0 ? "무료" : "\(listing.priceShards) 조각"), \
-            다운로드 \(listing.downloadCount), 좋아요 \(listing.likeCount), \
-            \(listing.publishedAtLabel) 업로드\(isLiked ? ", 좋아요 누름" : "")
-            """
-        )
+    }
+
+    /// 좁은 정보 칸에서는 가로로 늘어놓을 수 없다. 한 줄에 하나씩 쌓는다.
+    private var verticalMetadata: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("\(listing.downloadCount)", systemImage: "arrow.down")
+            Label("\(listing.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+        }
+        .font(InkFont.caption)
+        .foregroundStyle(PaperTheme.secondaryInk)
+        .labelStyle(.titleAndIcon)
+        .imageScale(.small)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 
     /// 내장 카드의 `MirrorPreview`와 같은 비율 · 같은 테두리를 쓴다.
@@ -303,19 +369,30 @@ struct MarketplaceListingDetailView: View {
         }
     }
 
+    /// 내장 템플릿과 **같은 상태 모델**을 쓴다. 화면마다 다른 문구를 만들지 않는다.
+    private var cta: MirrorAcquireCTA {
+        MirrorAcquireCTA.state(
+            price: listing.priceShards,
+            isSignedIn: session != nil,
+            isMine: store.myListing(id: listing.id) != nil,
+            ownsOnServer: isOwned,
+            existsLocally: existsLocally
+        )
+    }
+
+    /// 이 상품이 이미 이 기기에 있는가. **listing id로 맞춘다** — 제목으로 찾지 않는다.
+    /// 상점에서 받은 거울은 `MyMirror.id == listingID`로 저장된다.
+    private var existsLocally: Bool {
+        if ListingPreviewStyle.isSticker(listing.contentType) {
+            return stickers?.projects.contains { $0.id == listing.id } ?? false
+        }
+        return library?.mirrors.contains { $0.id == listing.id } ?? false
+    }
+
     private var actions: some View {
         VStack(spacing: 10) {
-            if isOwned {
-                primaryButton(didImport ? "내 목록에 담았어요" : "내 것으로 받기") {
-                    await runImport()
-                }
-                .disabled(isImporting || didImport)
-            } else {
-                primaryButton(listing.priceShards == 0 ? "무료로 받기" : "\(listing.priceShards) 조각으로 구매") {
-                    await runPurchase()
-                }
-                .disabled(isPurchasing)
-            }
+            primaryButton(cta.title) { await runAcquire() }
+                .disabled(!cta.isEnabled || isPurchasing || isImporting)
 
             secondaryButton(isLiked ? "좋아요 취소" : "좋아요") {
                 guard session != nil else { onNeedsSignIn(); return }
@@ -325,6 +402,21 @@ struct MarketplaceListingDetailView: View {
             .disabled(isLiking)
         }
         .padding(.top, 4)
+    }
+
+    /// 버튼 하나가 상태에 따라 다른 일을 한다. 화면에 분기를 흩뿌리지 않는다.
+    private func runAcquire() async {
+        switch cta {
+        case .needsSignIn:
+            // **서버에 먼저 보내 401을 받지 않는다.** 로그인 전인 것은 이미 안다.
+            onNeedsSignIn()
+        case .acquireFree, .purchase:
+            await runPurchase()
+        case .addToLibrary:
+            await runImport()
+        case .alreadyInLibrary, .ownListing:
+            break
+        }
     }
 
     /// 구매. **조각은 서버가 옮긴다** — 성공 응답 전에 잔액을 바꾸지 않는다.
