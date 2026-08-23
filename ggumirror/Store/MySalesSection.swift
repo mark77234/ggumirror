@@ -32,6 +32,14 @@ struct MySalesSection: View {
         store.myListings.filter(\.isPublished)
     }
 
+    /// 예전 UI에서 "상점에서 내리기"로 내려둔 것. `unlisted`만.
+    ///
+    /// 새 UI는 unpublish를 만들지 않으므로 **앞으로 새로 생기지 않는다.**
+    /// 기존 데이터를 자동으로 지우거나 상태를 바꾸지 않으므로, 관리할 자리가 필요하다.
+    private var retired: [MarketplaceOwnedListing] {
+        store.myListings.filter(\.isUnlisted)
+    }
+
     /// 등록을 마치지 못한 것. `draft`만.
     ///
     /// 등록 도중 실패해 남은 것도 여기로 온다 — 사용자가 이어서 올릴 수 있어야 한다.
@@ -43,7 +51,7 @@ struct MySalesSection: View {
         VStack(alignment: .leading, spacing: 0) {
             if session == nil {
                 signInNotice
-            } else if selling.isEmpty && incomplete.isEmpty {
+            } else if selling.isEmpty && incomplete.isEmpty && retired.isEmpty {
                 empty
             } else {
                 if !selling.isEmpty {
@@ -52,6 +60,10 @@ struct MySalesSection: View {
                 if !incomplete.isEmpty {
                     group("등록 미완료", listings: incomplete)
                         .padding(.top, selling.isEmpty ? 0 : 22)
+                }
+                if !retired.isEmpty {
+                    group("이전 판매 중지", listings: retired)
+                        .padding(.top, selling.isEmpty && incomplete.isEmpty ? 0 : 22)
                 }
             }
         }
@@ -188,6 +200,11 @@ struct MySalesSection: View {
                 if listing.isDraft {
                     // 이 draft가 이미 가리키는 불변 snapshot을 그대로 올린다.
                     action("상점에 올리기") { Task { await resume(listing) } }
+                }
+                if listing.isUnlisted {
+                    // **삭제만 준다.** 사용자가 원한 것은 되돌릴 수 있는 숨김이 아니라
+                    // 끝내는 것이다. 새 UI는 "다시 판매"를 만들지 않는다.
+                    action("삭제") { pendingDelete = listing }
                 }
                 Spacer(minLength: 0)
             }

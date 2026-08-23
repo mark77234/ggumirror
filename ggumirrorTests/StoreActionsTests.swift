@@ -276,8 +276,15 @@ struct StoreActionsTests {
     func cardAndDetailShowMetadata(file: String) throws {
         let source = try Self.source(file)
         #expect(source.contains("downloadCount"), "\(file): 다운로드 수가 없다")
-        #expect(source.contains("likeCount"), "\(file): 좋아요 수가 없다")
         #expect(source.contains("uploadedAt"), "\(file): 업로드 날짜가 없다")
+
+        // **좋아요 수는 내장 카드에서 뺐다**(Marketplace UX Hardening.1).
+        //
+        // 내장 템플릿에는 좋아요를 세는 서버 domain이 **없다.** 다운로드 수는
+        // catalog 통계를 붙여 실제 값을 보여 주지만, 좋아요는 그럴 것이 없어서
+        // `0`을 보여 주면 방금 고친 그 거짓말을 다시 하는 셈이다.
+        //
+        // 사용자가 올린 Marketplace 상품에는 좋아요가 있고 카드에 하트로 보인다.
     }
 
     /// 가짜 like/download mutation을 만들지 않는다 — 서버가 authority다.

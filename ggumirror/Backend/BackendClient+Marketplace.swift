@@ -295,12 +295,7 @@ extension BackendClient: MarketplaceBackend {
     /// 그 둘만 막는다. listing id · assetId는 서버가 만든 UUID라 정상 경로에서는 없는
     /// 문자이고, 있으면 우리가 아는 id가 아니라 요청을 만들지 않는다.
     private func pathComponent(_ component: String) throws -> String {
-        guard !component.isEmpty,
-              !component.contains("/"),
-              !component.contains("\\"),
-              component != ".",
-              component != ".."
-        else { throw MarketplaceFailure.notFound }
+        guard isSafePathComponent(component) else { throw MarketplaceFailure.notFound }
         return component
     }
 }

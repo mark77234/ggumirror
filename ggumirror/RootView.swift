@@ -32,6 +32,8 @@ struct RootView: View {
     /// 상점 서버 상태. **하나만 둔다** — 화면마다 목록을 따로 받아오면
     /// 같은 상품의 좋아요 수가 화면마다 달라 보인다.
     @State private var marketplace = MarketplaceStore.live
+    /// 내장 템플릿 다운로드 수. **서버가 센다.**
+    @State private var catalogStats = CatalogStats.live
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -56,6 +58,7 @@ struct RootView: View {
             .environment(aiStickers)
             .environment(shardStore)
             .environment(marketplace)
+            .environment(catalogStats)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in

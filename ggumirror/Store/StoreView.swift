@@ -26,6 +26,7 @@ struct StoreView: View {
     @Environment(AuthSession.self) private var session
     // 상점 서버 상태는 RootView가 소유한 하나를 쓴다.
     @Environment(MarketplaceStore.self) private var marketplace
+    @Environment(CatalogStats.self) private var catalogStats
     var library: MirrorLibrary?
     /// 내가 만든 스티커. 저장하면 이 화면이 바로 갱신된다(@Observable).
     var stickers: StickerLibrary = .live
@@ -83,6 +84,17 @@ struct StoreView: View {
             .scrollIndicators(.hidden)
             // UI-P2 그대로 — tab bar가 마지막 상품을 덮지 않게 한다.
             .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+            // 내장 템플릿 다운로드 수는 **한 번에** 받는다(카드마다 부르지 않는다).
+            .task {
+                await catalogStats.refresh()
+                // 예전 버전 · 로그아웃 상태에서 받은 것을 한 번 따라잡는다.
+                await catalogStats.reconcile(
+                    ownedTemplateIDs: StoreCatalog.ownedTemplateIDs(
+                        in: library?.mirrors ?? []
+                    ),
+                    session: session.server
+                )
+            }
             .animation(InkMotion.modal, value: section)
             .navigationDestination(for: MirrorTemplate.self) { template in
                 TemplateDetailView(template: template, library: library)
@@ -221,7 +233,12 @@ struct StoreView: View {
                 LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
                     ForEach(templates) { template in
                         NavigationLink(value: template) {
-                            StoreGalleryItem(template: template)
+                            // **서버가 센 값**을 넘긴다. 모르면 nil이고 카드가 숫자를
+                            // 만들어내지 않는다.
+                            StoreGalleryItem(
+                                template: template,
+                                downloadCount: catalogStats.downloadCount(template.id)
+                            )
                         }
                         .buttonStyle(InkPressStyle())
                     }
@@ -235,6 +252,9 @@ struct StoreView: View {
 /// Preview가 텍스트보다 훨씬 크게 보이도록, 카드 장식 없이 미리보기 + 최소 정보만 둔다.
 private struct StoreGalleryItem: View {
     let template: MirrorTemplate
+    /// 서버가 센 다운로드 수. **`nil`이면 아직 모르는 것이고 `0`이 아니다** —
+    /// 받아오기 전에 0을 보여 주면 "아무도 안 받았다"는 거짓말이 된다.
+    var downloadCount: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -263,8 +283,7 @@ private struct StoreGalleryItem: View {
             """
             \(template.name), \(template.creator), \
             \(template.price == 0 ? "무료" : "\(template.price) 조각"), \
-            \(template.hasServerStats
-                ? "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), " : "")\
+            \(downloadCount.map { "다운로드 \($0), " } ?? "")\
             \(template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드")
             """
         )
@@ -278,10 +297,11 @@ private struct StoreGalleryItem: View {
     @ViewBuilder
     private var metadata: some View {
         HStack(spacing: 8) {
-            if template.hasServerStats {
-                Label("\(template.downloadCount)", systemImage: "arrow.down")
-                Label("\(template.likeCount)", systemImage: "heart")
+            // 서버 값을 받은 뒤에만 보여 준다. 실제 0이면 `0`을 보여 주는 것이 맞다.
+            if let downloadCount {
+                Label("\(downloadCount)", systemImage: "arrow.down")
             }
+            // 좋아요는 내장 템플릿에 서버 domain이 없다 — 숫자를 만들지 않는다.
             Spacer(minLength: 2)
             Text(template.uploadedAtLabel)
         }

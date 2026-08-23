@@ -422,6 +422,18 @@ nonisolated extension BackendClient {
     }
 }
 
+/// URL 경로 조각으로 써도 되는가.
+///
+/// 경로를 벗어나게 만드는 문자를 거른다. **오류 타입은 호출부가 정한다** —
+/// 상점과 catalog가 사용자에게 다른 말을 해야 하기 때문에 여기서 던지지 않는다.
+nonisolated func isSafePathComponent(_ component: String) -> Bool {
+    !component.isEmpty
+        && !component.contains("/")
+        && !component.contains("\\")
+        && component != "."
+        && component != ".."
+}
+
 // MARK: - 로그
 
 /// **분류와 status만** 남긴다. 요청/응답 본문 · token · nonce · 식별자 · 이메일은 절대 찍지 않는다.

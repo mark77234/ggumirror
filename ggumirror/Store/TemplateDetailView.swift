@@ -12,6 +12,8 @@ struct TemplateDetailView: View {
     var library: MirrorLibrary?
 
     @State private var notice: String?
+    @Environment(CatalogStats.self) private var catalogStats
+    @Environment(AuthSession.self) private var session
 
     var body: some View {
         ScrollView {
@@ -66,11 +68,8 @@ struct TemplateDetailView: View {
     @ViewBuilder
     private var metadata: some View {
         VStack(spacing: 4) {
-            if template.hasServerStats {
-                HStack(spacing: 14) {
-                    Label("다운로드 \(template.downloadCount)", systemImage: "arrow.down")
-                    Label("좋아요 \(template.likeCount)", systemImage: "heart")
-                }
+            if let count = catalogStats.downloadCount(template.id) {
+                Label("다운로드 \(count)", systemImage: "arrow.down")
             }
             Text(uploadedLine)
         }
@@ -79,9 +78,8 @@ struct TemplateDetailView: View {
         .imageScale(.small)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            template.hasServerStats
-                ? "다운로드 \(template.downloadCount), 좋아요 \(template.likeCount), \(uploadedLine)"
-                : uploadedLine
+            catalogStats.downloadCount(template.id)
+                .map { "다운로드 \($0), \(uploadedLine)" } ?? uploadedLine
         )
     }
 
@@ -133,6 +131,12 @@ struct TemplateDetailView: View {
                 }
                 library.acquire(template)
                 notice = "\(template.name)을(를) 내 거울에 담았어요."
+                // **로컬 저장이 끝난 뒤에** 서버에 남긴다 — 저장이 실패했는데 수만
+                // 오르면 안 된다. 이 요청이 실패해도 로컬 획득을 되돌리지 않는다
+                // (다음 맞춰 보기가 되찾는다).
+                Task {
+                    await catalogStats.recordAcquisition(template.id, session: session.server)
+                }
             } label: {
                 Text(template.price == 0 ? "무료로 받기" : "조각으로 받기")
                     .font(InkFont.body)

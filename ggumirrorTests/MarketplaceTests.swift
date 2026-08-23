@@ -2086,9 +2086,9 @@ struct MarketplaceDeleteTests {
     func deleteCopyIsFinal() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().appending(path: "ggumirror")
-        let code = try String(
+        let code = codeWithoutComments(try String(
             contentsOf: root.appending(path: "Store/MySalesSection.swift"), encoding: .utf8
-        )
+        ))
         // 새 UI는 "내리기"를 쓰지 않는다.
         #expect(!code.contains("상점에서 내리기"))
         #expect(code.contains("\"삭제\""))
@@ -2274,15 +2274,21 @@ struct StoreIAHardeningTests {
         #expect(!(try source("Store/MySalesSection.swift")).contains("ScrollView"))
     }
 
-    @Test("서버가 세지 않는 통계를 숫자로 보여 주지 않는다")
-    func noFakeCounts() throws {
-        // 내장 템플릿은 서버 기록이 없다 — 0을 보여 주면 거짓말이다.
-        #expect(StoreCatalog.samples.allSatisfy { !$0.hasServerStats })
-
+    @Test("내장 카드는 서버가 센 값만 보여 준다")
+    func builtInCountsComeFromTheServer() throws {
+        // 이제 서버가 센다(catalog domain). 받기 전에는 숫자를 보여 주지 않고,
+        // 하드코딩 값을 쓰지 않는다.
         let store = try source("Store/StoreView.swift")
-        #expect(store.contains("template.hasServerStats"))
+        #expect(store.contains("catalogStats.downloadCount(template.id)"))
+        #expect(store.contains("if let downloadCount"))
+
         let detail = try source("Store/TemplateDetailView.swift")
-        #expect(detail.contains("template.hasServerStats"))
+        #expect(detail.contains("catalogStats.downloadCount(template.id)"))
+
+        // 옛 하드코딩 경로가 남아 있지 않다.
+        for code in [store, detail] {
+            #expect(!code.contains("Label(\"\\(template.downloadCount)\""))
+        }
     }
 
     @Test("Marketplace 상품은 서버 값을 그대로 보여 준다")
