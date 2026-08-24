@@ -378,6 +378,34 @@ public raw object 권한을 추가하지도 않는다. 새 endpoint도 없다 �
 - 기존 GCS object를 다시 쓰지 않으므로 **예전에 등록된 상품도 그대로 동작한다.**
   re-publish도 일괄 rewrite도 없다
 
+#### 미리보기에서도 넓게 / 채우기를 고른다
+
+실제 거울과 **같은 authority**를 쓴다 — `MirrorCamera.Framing`(`wide` · `fill`)과
+그 `previewGravity` 매핑, 그리고 같은 칩 component(`MirrorFramingSelector`)다.
+미리보기 전용 비율 계산은 **없다**(`resizeAspect` · `videoGravity` · `4:3`이
+`MirrorLivePreview.swift`에 없다는 것을 테스트가 고정한다).
+
+칩은 예전에 `MirrorControls` 안 private이었다. 미리보기에도 필요해져서 **꺼냈다** —
+사본을 만들면 두 화면의 생김새와 44pt tap 규칙이 반드시 갈라진다.
+
+- 기본값은 `Framing.initial`(= `넓게`)이다. 미리보기가 자기 기본값을 따로 적지 않는다
+- **`setFrontFraming(_:)`을 부르지 않는다.** 그것은 실제 거울 화면의 사용자 설정이고,
+  상점에서 `채우기`를 골랐다고 홈 거울까지 따라 바뀌면 안 된다.
+  미리보기의 선택은 그 화면 하나 동안만 살고 `UserDefaults`에 저장하지 않는다
+  (`MirrorLivePreviewView`는 자기 `MirrorCamera` 인스턴스를 갖는다 —
+  `frontFraming`을 공유하는 구조가 애초에 아니다)
+- 자르는 방법은 **카메라 layer 하나**에만 걸린다. 프레임 · 글씨 · 그림 · 스티커 ·
+  사진 · Marketplace 납작 overlay의 자리와 크기는 움직이지 않는다 —
+  장식을 그리는 자리에 `framing`이 들어가지 않는다
+- 바꾸면 `AVCaptureVideoPreviewLayer.videoGravity` 하나만 바뀐다.
+  세션을 다시 시작하지도, 다시 붙이지도 않는다. 같은 값이면 아무 일도 하지 않아
+  연속으로 눌러도 깜빡이지 않는다
+- **도려내기를 다시 돌리지 않는다.** `cameraOpeningRemoved`는 상세 화면이 미리보기를
+  열기 전에 한 번 부르고, 미리보기 화면 안에는 부르는 자리가 없다.
+  납작 overlay도 `UIImage`로 **한 번만** 풀어 둔다 — 칩을 누를 때마다 1.66MB PNG를
+  다시 해독하지 않는다
+- 카메라 조작은 늘지 않았다 — 전환 · 플래시 · 촬영 · 배율 · pinch가 여전히 없다
+
 #### 미리보기 화면에는 촬영이 없다
 
 `MirrorCamera()` 기본 role은 `.viewfinder`다 — photo output · 전환 · 배율 · 플래시가

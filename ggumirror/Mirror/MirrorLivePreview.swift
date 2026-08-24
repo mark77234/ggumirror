@@ -57,13 +57,28 @@ struct MirrorLivePreviewView: View {
     @State private var camera = MirrorCamera()
     @Environment(\.scenePhase) private var scenePhase
 
+    /// 자르는 방법. **이 미리보기 하나 동안만 산다.**
+    ///
+    /// `camera.setFrontFraming(_:)`을 부르지 않는다 — 그것은 실제 거울 화면의
+    /// 사용자 설정이다. 상점에서 `채우기`를 골랐다고 홈 거울까지 따라 바뀌면 안 된다.
+    /// authority는 그대로 `MirrorCamera.Framing`이고, 여기서는 어느 값을 쓸지만 고른다.
+    @State private var framing = MirrorCamera.Framing.initial
+
+    /// 납작한 overlay를 **한 번만** 풀어 둔다.
+    ///
+    /// 자르는 방법을 바꿀 때마다 1.66MB PNG를 다시 해독하면 칩이 무거워진다.
+    /// 도려내기(`cameraOpeningRemoved`)는 이미 이 화면에 오기 전에 끝났고,
+    /// 여기서 다시 돌아가는 일은 없다.
+    @State private var overlayImage: UIImage?
+
     var body: some View {
         ZStack {
             Color.black
 
             switch camera.status {
             case .ready:
-                CameraPreviewView(camera: camera, framing: camera.framing)
+                // 자르는 방법은 **여기 한 layer에만** 걸린다.
+                CameraPreviewView(camera: camera, framing: framing)
                     .accessibilityLabel("거울")
             case .denied:
                 message("카메라 권한이 필요해요", detail: "설정에서 카메라를 켜면 미리보기를 볼 수 있어요.")
@@ -76,10 +91,13 @@ struct MirrorLivePreviewView: View {
             decoration
 
             closeButton
+
+            framingSelector
         }
         .ignoresSafeArea()
         .statusBarHidden()
         .task { await camera.start() }
+        .task { decodeOverlay() }
         .onChange(of: scenePhase) { _, phase in
             // 미리보기를 열어 둔 채 앱을 떠나면 카메라를 놓는다.
             if phase == .active { Task { await camera.start() } }
@@ -94,8 +112,9 @@ struct MirrorLivePreviewView: View {
             switch subject {
             case .design(let design):
                 MirrorDecorationView(design: design)
-            case .overlay(let png):
-                if let image = UIImage(data: png) {
+            case .overlay:
+                // 자르는 방법을 바꿔도 이 그림은 **다시 만들지 않는다.**
+                if let image = overlayImage {
                     Image(uiImage: image)
                         .resizable()
                         // 실제 거울 장식(`.aspectFilled`)과 같은 규칙으로 놓는다.
@@ -106,6 +125,27 @@ struct MirrorLivePreviewView: View {
                 }
             }
         }
+    }
+
+    /// 거울 가운데를 가리지 않게 아래 safe area 안에 둔다 —
+    /// 실제 거울에서 칩이 앉는 자리와 같은 규칙이다.
+    @ViewBuilder
+    private var framingSelector: some View {
+        if case .ready = camera.status {
+            VStack {
+                Spacer()
+                MirrorFramingSelector(
+                    options: MirrorCamera.Framing.allCases, selected: framing
+                ) { framing = $0 }
+            }
+            .padding(.bottom, 44)
+        }
+    }
+
+    /// 얹을 그림이 있으면 한 번 풀어 둔다. 없으면 할 일이 없다(내장 템플릿).
+    private func decodeOverlay() {
+        guard case .overlay(let png) = subject, overlayImage == nil else { return }
+        overlayImage = UIImage(data: png)
     }
 
     private var closeButton: some View {
