@@ -205,7 +205,7 @@ final class MarketplaceStore {
         defer { previewTasks.remove(listingID) }
         // 실패는 조용히 둔다 — 카드에 자리표시자가 남는다. 목록을 깨뜨릴 이유가 아니다.
         if let data = try? await backend.preview(listingID: listingID) {
-            previews[listingID] = data
+            previews[listingID] = lightenedIfMirror(data, listingID: listingID)
         }
     }
 
@@ -218,9 +218,10 @@ final class MarketplaceStore {
         myPreviewTasks.insert(listingID)
         defer { myPreviewTasks.remove(listingID) }
         do {
-            myPreviews[listingID] = try await backend.myListingPreview(
+            let data = try await backend.myListingPreview(
                 listingID: listingID, accessToken: token
             )
+            myPreviews[listingID] = lightenedIfMirror(data, listingID: listingID)
             myPreviewFailures.remove(listingID)
         } catch {
             myPreviewFailures.insert(listingID)
@@ -489,6 +490,21 @@ final class MarketplaceStore {
     }
 
     // MARK: - 내부
+
+    /// 예전에 어두운 카메라 자리로 구워진 거울 미리보기를 지금 정책 색으로 되돌린다.
+    ///
+    /// 내장 템플릿은 카드가 모델을 직접 그려 지금 색을 쓰는데, 사용자 상품은 등록
+    /// 시점의 PNG를 그대로 보여 준다 — 그래서 예전 상품만 카드에서 검게 보였다.
+    /// **스티커에는 부르지 않는다**(카메라 자리가 없다). 바꿀 것이 없으면 원본이다.
+    private func lightenedIfMirror(_ data: Data, listingID: String) -> Data {
+        let isMirror = listings.first { $0.id == listingID }.map {
+            !ListingPreviewStyle.isSticker($0.contentType)
+        } ?? myListings.first { $0.id == listingID }.map {
+            !ListingPreviewStyle.isSticker($0.contentType)
+        }
+        guard isMirror != false else { return data }
+        return MirrorThumbnailNormalizer.normalized(png: data) ?? data
+    }
 
     private func apply(downloadCount: Int, to listingID: String) {
         guard let index = listings.firstIndex(where: { $0.id == listingID }) else { return }
