@@ -17,11 +17,13 @@ extension BackendClient: CatalogBackend {
         guard !ids.isEmpty else { return [] }
         // id는 우리 상수 목록이지만 그대로 붙이지 않는다.
         let joined = ids.joined(separator: ",")
-        let escaped = joined.addingPercentEncoding(
-            withAllowedCharacters: .urlQueryAllowed
-        ) ?? joined
+        // **`?`를 path 문자열에 붙이지 않는다.** `send`가 `appending(path:)`로 URL을
+        // 만들기 때문에 `?`가 `%3F`로 인코딩되어 query가 경로의 일부가 된다 —
+        // 그러면 이 요청은 **언제나 404**이고 내장 템플릿 다운로드 수가 영영 뜨지 않는다.
+        // 인코딩은 우리가 하지 않고 query builder에게 맡긴다.
         let data = try await request(
-            "catalog/templates/stats?ids=\(escaped)", method: "GET"
+            "catalog/templates/stats", method: "GET",
+            query: [URLQueryItem(name: "ids", value: joined)]
         )
         return try decodeCatalog(
             [CatalogTemplateStat].self, from: data, path: "GET /catalog/templates/stats"
