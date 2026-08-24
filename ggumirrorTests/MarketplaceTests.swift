@@ -11,9 +11,12 @@
 //    4. 조각을 앱이 직접 바꾸지 않는가
 //
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @testable import ggumirror
 
 // MARK: - fake backend
@@ -2338,5 +2341,228 @@ struct StoreIAHardeningTests {
         // 제목 매칭이 없다.
         #expect(!code.contains("$0.name == "))
         #expect(!code.contains("title =="))
+    }
+}
+
+// MARK: - 스티커 가져오기 (B-7H)
+
+/// **스티커 획득의 경제 경로는 거울과 같다.** 서버는 `POST /listings/{id}/purchase`
+/// 하나뿐이고, `contentType`은 원장 reason 문자열을 고를 때만 쓰인다 —
+/// 소유권 생성 · 지갑 이동 · `downloadCount` · 멱등 열쇠가 모두 같은 transaction이다.
+///
+/// 다른 것은 **받은 뒤 기기에 담는 부분**뿐이라 여기서 그것만 시험한다.
+/// 예전에는 이 자리에 아무 test도 없었고, production에도 무료 스티커 후보가 없어
+/// 실기기로도 확인할 수 없었다 — 5조각을 쓰지 않고 이 구멍을 닫는다.
+@Suite("스티커 가져오기")
+@MainActor
+struct MarketplaceStickerImportTests {
+
+    private func withStores(
+        _ body: (StickerProjectStore, StickerLibrary, MirrorStore) async throws -> Void
+    ) async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ggumirror-b7h-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let stickerStore = StickerProjectStore(root: root)
+        let mirrorStore = MirrorStore(root: root)
+        defer {
+            stickerStore.flush()
+            mirrorStore.flush()
+            try? FileManager().removeItem(at: root)
+        }
+        try await body(stickerStore, StickerLibrary(store: stickerStore), mirrorStore)
+    }
+
+    /// 판매자 기기에서 올라간 것과 같은 모양의 manifest.
+    private func manifest(
+        id: String = "seller-side-id", name: String = "판매자가 붙인 이름",
+        finalAsset: UUID? = nil, origin: StickerProjectOrigin = .made
+    ) throws -> Data {
+        var project = StickerProject(id: id, name: name, origin: origin)
+        project.finalAssetID = finalAsset
+        return try JSONEncoder.marketplace.encode(project)
+    }
+
+    /// 1×1 투명 PNG. `readAsset`이 CGImage로 되읽으므로 진짜 그림이어야 한다.
+    private static func onePixelPNG() -> Data {
+        let context = CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        let image = context.makeImage()!
+        let out = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(
+            out, UTType.png.identifier as CFString, 1, nil
+        )!
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return out as Data
+    }
+
+    private func session() -> ServerSession {
+        ServerSession(accessToken: "token", expiresAt: .distantFuture, userID: "user-1")
+    }
+
+    @Test("받으면 내 스티커에 담긴다")
+    func importAddsToLibrary() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "내가 받은 스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+
+            // **지역 id는 listingID다.** manifest의 id는 판매자 기기의 것이라
+            // 그대로 쓰면 내가 이미 가진 것과 부딪힌다.
+            #expect(project.id == "listing-9")
+            #expect(project.name == "내가 받은 스티커")
+            #expect(library.projects.contains { $0.id == "listing-9" })
+        }
+    }
+
+    @Test("제목이 비어 있으면 manifest의 이름을 쓴다")
+    func emptyTitleFallsBack() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(name: "원래 이름")
+            let importer = MarketplaceImporter(backend: backend)
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            #expect(project.name == "원래 이름")
+        }
+    }
+
+    @Test("완성 그림을 그 assetID로 내려놓는다")
+    func finalAssetIsStored() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let assetID = UUID()
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(finalAsset: assetID)
+            backend.assetResults = [assetID: Self.onePixelPNG()]
+            let importer = MarketplaceImporter(backend: backend)
+
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // manifest가 가리키는 그 id로 내려가야 참조가 맞는다.
+            #expect(project.finalAssetID == assetID)
+            stickerStore.flush()
+            #expect(stickerStore.readAsset(assetID) != nil)
+            #expect(backend.calls.contains("templateAsset(\(assetID.uuidString))"))
+        }
+    }
+
+    @Test("이미 있는 그림을 덮어쓰지 않는다")
+    func existingAssetIsNotOverwritten() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let assetID = UUID()
+            stickerStore.writeAsset(Self.onePixelPNG(), id: assetID)
+            stickerStore.flush()
+
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(finalAsset: assetID)
+            backend.assetResults = [assetID: Self.onePixelPNG()]
+            let importer = MarketplaceImporter(backend: backend)
+            _ = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+
+            // UUID가 겹쳤을 때 남의 바이트로 내 그림을 갈아치우는 것이 최악이다.
+            // **받으러 가지도 않는다** — 이미 있는 것을 확인하고 건너뛴다.
+            #expect(!backend.calls.contains { $0.hasPrefix("templateAsset") })
+            #expect(stickerStore.readAsset(assetID) != nil)
+        }
+    }
+
+    @Test("로그인 없이 받지 않는다")
+    func requiresSignIn() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+
+            await #expect(throws: MarketplaceImportFailure.remote(.notSignedIn)) {
+                try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: nil,
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            // **서버에 보내 401을 받고 나서 알리지 않는다.** 요청 자체가 없다.
+            #expect(backend.calls.isEmpty)
+            #expect(library.projects.isEmpty)
+        }
+    }
+
+    @Test("읽을 수 없는 manifest는 반쪽으로 담지 않는다")
+    func unreadableManifestSavesNothing() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = Data("맞지 않는 JSON".utf8)
+            let importer = MarketplaceImporter(backend: backend)
+
+            await #expect(throws: MarketplaceImportFailure.unreadableManifest) {
+                try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: session(),
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            #expect(library.projects.isEmpty)
+        }
+    }
+
+    @Test("두 번 받아도 하나다")
+    func importIsIdempotentLocally() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+            for _ in 0..<2 {
+                _ = try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: session(),
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            #expect(library.projects.filter { $0.id == "listing-9" }.count == 1)
+        }
+    }
+
+    @Test("AI 출처는 지우지 않고 생성 기록은 옮기지 않는다")
+    func originIsPreservedAndGenerationsAreNot() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(origin: .aiGenerated)
+            let importer = MarketplaceImporter(backend: backend)
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // 여기서 `.made`로 덮으면 출처 표시가 조용히 사라진다.
+            #expect(project.origin == .aiGenerated)
+            // 생성 기록 id는 판매자 기기의 것이다 — 내 기록으로 옮기지 않는다.
+            #expect(project.generationIDs.isEmpty)
+        }
+    }
+
+    @Test("경제 상태를 건드리지 않는다")
+    func importIsNotAnEconomicAction() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+            _ = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // 담기는 **이미 산 것을 기기로 옮기는 일**이다. 사는 요청이 아니다.
+            #expect(!backend.calls.contains { $0.hasPrefix("purchase") })
+            #expect(!backend.calls.contains { $0.hasPrefix("like") })
+        }
     }
 }
