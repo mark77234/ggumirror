@@ -291,6 +291,9 @@ struct MarketplaceListingDetailView: View {
 
     @State private var importer = MarketplaceImporter()
     @State private var notice: String?
+    /// 열려 있으면 미리보기 화면이 떠 있다. **경제 동작이 아니다** —
+    /// 소유권 · 다운로드 수 · 조각 · 내 거울 저장 어느 것도 건드리지 않는다.
+    @State private var preview: MirrorPreviewSubject?
     @State private var isImporting = false
     @State private var didImport = false
 
@@ -339,6 +342,7 @@ struct MarketplaceListingDetailView: View {
         .navigationTitle(listing.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.loadPreview(listing.id) }
+        .mirrorLivePreview($preview, title: listing.title)
         .inkDialog(
             "알림",
             message: notice,
@@ -370,8 +374,17 @@ struct MarketplaceListingDetailView: View {
 
     private var actions: some View {
         VStack(spacing: 10) {
-            primaryButton(cta.title) { await runAcquire() }
-                .disabled(!cta.isEnabled || isPurchasing || isImporting)
+            // 1순위 CTA. **받기보다 먼저다** — 내장 템플릿 상세와 같은 순서·같은 문구다.
+            // 로그인하지 않아도 누를 수 있다.
+            if canPreview {
+                primaryButton("내 거울로 미리보기") { openPreview() }
+                // 미리보기가 위로 가면 받기는 두 번째 버튼이 된다.
+                secondaryButton(cta.title) { await runAcquire() }
+                    .disabled(!cta.isEnabled || isPurchasing || isImporting)
+            } else {
+                primaryButton(cta.title) { await runAcquire() }
+                    .disabled(!cta.isEnabled || isPurchasing || isImporting)
+            }
 
             secondaryButton(isLiked ? "좋아요 취소" : "좋아요") {
                 guard session != nil else { onNeedsSignIn(); return }
@@ -381,6 +394,24 @@ struct MarketplaceListingDetailView: View {
             .disabled(isLiking)
         }
         .padding(.top, 4)
+    }
+
+    /// 스티커에는 카메라 자리가 없다 — 얹어 볼 것이 아니라 붙여 쓰는 것이다.
+    /// 그림을 아직 못 받았으면 도려낼 것도 없으므로 버튼을 그리지 않는다.
+    private var canPreview: Bool {
+        !ListingPreviewStyle.isSticker(listing.contentType) && store.previews[listing.id] != nil
+    }
+
+    /// **공개 미리보기 그림 하나로 끝낸다.** 상품 manifest도 원본 asset도 받지 않는다 —
+    /// 사기 전에 볼 수 있어야 하지만, 보는 것으로 상품을 손에 넣게 두지는 않는다.
+    private func openPreview() {
+        guard let png = store.previews[listing.id] else { return }
+        guard let subject = MirrorPreviewSubject.overlay(fromListingPreview: png) else {
+            // 카메라 자리를 못 찾으면 얼굴이 가려진 화면이 된다. 그건 미리보기가 아니다.
+            notice = "이 상품은 미리보기를 만들 수 없어요."
+            return
+        }
+        preview = subject
     }
 
     /// 버튼 하나가 상태에 따라 다른 일을 한다. 화면에 분기를 흩뿌리지 않는다.

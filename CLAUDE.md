@@ -333,6 +333,62 @@ Mirror Decoration Text는 별도 multi-font library를 사용한다.
 
 좋아요도 같다 — 실제 multi-user like backend가 없으므로 **표시와 정렬 계약까지만** 있다.
 
+### 내 거울로 미리보기 (Marketplace Mirror Preview)
+
+**받기 전에 · 로그인 없이 · 아무것도 사지 않고** 실제 카메라 위에 얹어 본다.
+내장 템플릿과 사용자 상품이 **같은 버튼 · 같은 문구 · 같은 화면**을 쓴다.
+
+`내 거울로 미리보기`는 상세의 **1순위 CTA**이고 받기보다 위에 있다.
+
+| 출처 | 얹는 것 |
+|---|---|
+| 내장 템플릿 | `MirrorDesign(template:)` → 실제 거울과 **같은 renderer** |
+| 사용자 상품 | 이미 받아 둔 **공개 미리보기 PNG**에서 카메라 자리를 도려낸 것 |
+
+#### 미리보기는 경제 동작이 아니다
+
+소유권 생성 ❌ `downloadCount` 증가 ❌ buyer debit ❌ seller credit ❌
+`내 거울` 저장 ❌. `MirrorLivePreview.swift`에는 그런 것을 부르는 코드가 **없고**
+`PreviewIsNotAnEconomicActionTests`가 소스 레벨로 고정한다.
+
+로그아웃 상태에서도 열린다 — `openPreview()`에 로그인 관문이 없다.
+`받기`를 누를 때만 기존 안내 창이 뜨고, **로그인 성공 직후 자동 구매/획득은 없다.**
+
+#### 사기 전에 원본을 주지 않는다
+
+미리보기가 읽는 것은 **`store.previews[listing.id]` 하나**다 — 카드가 이미 보여 주는
+그 공개 그림이다. manifest · 원본 asset · 판매자 전용 경로를 새로 부르지 않고,
+public raw object 권한을 추가하지도 않는다. 새 endpoint도 없다 —
+**backend 변경 없음.**
+
+#### 카메라 자리를 도려낸다
+
+`preview.png`는 카메라 자리까지 **불투명하게 구워져** 있어 그대로 얹으면
+자기 얼굴이 안 보인다. `MirrorThumbnailNormalizer.cameraOpeningRemoved(png:)`가
+`MirrorFrameInsets.standard.mirrorArea` 안에서 **바탕색 픽셀만** 알파 0으로 바꾼다.
+
+- 바탕색은 **카메라 자리의 최빈 불투명 색**이다. 구운 시점마다 값이 다르므로
+  (예전 어두운 유리색 · 지금 `PaperTheme.thumbnailGlass`) 하나로 적어 두지 않는다.
+  장식이 카메라 자리를 전부 덮는 일은 없어 최빈색이 곧 바탕이다
+- 밝게 되돌리기(`normalized`)와 **같은 pass를 공유한다.** 새 hex를 하드코딩하지 않는다
+- 프레임 밴드와 카메라 자리 위 장식은 **한 픽셀도** 바뀌지 않는다
+- 반투명 경계는 손대지 않으므로 장식이 카메라 자리에 닿는 곳에 아주 옅은 테가 남는다.
+  얼굴을 가리는 것보다 낫다는 판단이다
+- 도려낼 수 없으면 **열지 않는다**(안내만 띄운다). 얼굴이 가려진 화면은 미리보기가 아니다
+- 기존 GCS object를 다시 쓰지 않으므로 **예전에 등록된 상품도 그대로 동작한다.**
+  re-publish도 일괄 rewrite도 없다
+
+#### 미리보기 화면에는 촬영이 없다
+
+`MirrorCamera()` 기본 role은 `.viewfinder`다 — photo output · 전환 · 배율 · 플래시가
+**구조적으로 없다.** 사진이 나가거나 저장될 길이 아예 아니다.
+`fullScreenCover`인 이유는 거울이 화면 전체 좌표(1080 × 2340)로 그려지기 때문이다 —
+시트에 넣으면 장식과 카메라가 실제 거울과 다른 자리에 놓인다.
+
+스티커에는 미리보기가 없다 — 카메라 자리가 없고, 얹어 보는 것이 아니라 붙여 쓰는 것이다.
+
+`ggumirrorTests/MirrorPreviewFlowTests.swift`가 위 전부를 고정한다.
+
 ### 사용자 action (UI-P3)
 
 거울과 스티커의 action 구성은 **같다**. 다른 것은 등록 비용뿐이다.

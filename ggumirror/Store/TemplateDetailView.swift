@@ -12,6 +12,8 @@ struct TemplateDetailView: View {
     var library: MirrorLibrary?
 
     @State private var notice: String?
+    /// 열려 있으면 미리보기 화면이 떠 있다. **받기와 무관하다** — 여기서는 아무것도 사지 않는다.
+    @State private var preview: MirrorPreviewSubject?
     @State private var showsStorageFull = false
     @Environment(CatalogStats.self) private var catalogStats
     @Environment(AuthSession.self) private var session
@@ -64,6 +66,7 @@ struct TemplateDetailView: View {
         .inkMirrorStorageFullDialog(
             "받으려면", isPresented: $showsStorageFull, library: library
         )
+        .mirrorLivePreview($preview, title: template.name)
     }
 
     /// 카드보다 조금 더 또렷하게. 값의 출처는 카드와 **같은 model field**다.
@@ -95,7 +98,8 @@ struct TemplateDetailView: View {
         VStack(spacing: 10) {
             // 1순위 CTA. 구매보다 먼저 보여야 한다(PRODUCT.md).
             Button {
-                notice = "내 거울로 미리보기는 다음 업데이트에서 열려요."
+                // 내장 템플릿은 모델을 그대로 갖고 있다 — 받을 필요가 없다.
+                preview = .design(MirrorDesign(template: template))
             } label: {
                 Text("내 거울로 미리보기")
                     .font(InkFont.cardTitle)
