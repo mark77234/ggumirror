@@ -377,8 +377,9 @@ struct CatalogDisplayRuleTests {
     func cardUsesServerValue() throws {
         let code = try source("Store/StoreView.swift")
         #expect(code.contains("catalogStats.downloadCount(template.id)"))
-        // 모르면 안 보여 준다.
-        #expect(code.contains("if let downloadCount"))
+        // 모르면 안 보여 준다 — 판단은 공통 카드가 한다.
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("if let downloadCount = model.downloadCount"))
         // 옛 하드코딩 경로가 남아 있지 않다.
         #expect(!code.contains("Label(\"\\(template.downloadCount)\""))
     }

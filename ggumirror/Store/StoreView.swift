@@ -270,62 +270,23 @@ private struct StoreGalleryItem: View {
     /// 받아오기 전에 0을 보여 주면 "아무도 안 받았다"는 거짓말이 된다.
     var downloadCount: Int?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            MirrorPreview(template: template)
-                .padding(.bottom, 6)
-
-            Text(template.name)
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            HStack(spacing: 6) {
-                Text(template.creator)
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                ShardAmount(amount: template.price)
-            }
-
-            metadata
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            """
-            \(template.name), \(template.creator), \
-            \(template.price == 0 ? "무료" : "\(template.price) 조각"), \
-            \(downloadCount.map { "다운로드 \($0), " } ?? "")\
-            \(template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드")
-            """
-        )
-    }
-
-    /// 한 줄짜리 작은 metadata.
+    /// 사용자 상품과 **같은 카드**를 쓴다(`StoreMirrorCard`). 이 카드가 기준이었고,
+    /// 사용자 상품을 여기에 맞췄다 — 모양이 다시 갈라지지 않게 컴포넌트를 공유한다.
     ///
-    /// **서버가 세지 않는 값은 숫자로 말하지 않는다.** 내장 템플릿은 다운로드가
-    /// 순수 로컬 동작이라 서버 기록이 없다 — `0`을 보여 주면 "아무도 안 받았다"는
-    /// 거짓말이 된다. 그래서 통계 자리를 아예 비운다(빈 자리도 정직한 표현이다).
-    @ViewBuilder
-    private var metadata: some View {
-        HStack(spacing: 8) {
-            // 서버 값을 받은 뒤에만 보여 준다. 실제 0이면 `0`을 보여 주는 것이 맞다.
-            if let downloadCount {
-                Label("\(downloadCount)", systemImage: "arrow.down")
-            }
-            // 좋아요는 내장 템플릿에 서버 domain이 없다 — 숫자를 만들지 않는다.
-            Spacer(minLength: 2)
-            Text(template.uploadedAtLabel)
+    /// 하트를 넘기지 않는다: 내장 템플릿에는 좋아요를 세는 서버 domain이 없다.
+    /// 똑같아 보이게 하려고 `♡ 0`을 지어내지 않는다.
+    var body: some View {
+        StoreMirrorCard(
+            model: StoreMirrorCardModel(
+                title: template.name,
+                subtitle: template.creator,
+                price: template.price,
+                downloadCount: downloadCount,
+                footnote: template.uploadedAtLabel
+            )
+        ) {
+            MirrorPreview(template: template)
         }
-        .font(InkFont.caption)
-        .foregroundStyle(PaperTheme.secondaryInk)
-        .labelStyle(.titleAndIcon)
-        .imageScale(.small)
-        .lineLimit(1)
-        // 작은 화면에서 줄이 깨지기보다 줄어들게 한다.
-        .minimumScaleFactor(0.8)
     }
 }
 

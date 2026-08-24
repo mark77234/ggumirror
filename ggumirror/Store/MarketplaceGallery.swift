@@ -41,90 +41,41 @@ struct MarketplaceGalleryItem: View {
         )
     }
 
-    /// 거울은 **정사각 카드 안에 왼쪽 그림 · 오른쪽 정보**로 놓는다.
+    /// 거울은 **내장 템플릿과 같은 카드**를 쓴다.
     ///
-    /// 거울 자체가 9:19.5라 카드까지 세로로 길게 두면 한 화면에 몇 개 안 들어오고,
-    /// 그림이 카드 높이를 거의 다 먹어 제목·가격이 밀렸다. 스티커는 그대로
-    /// 정사각 한 덩어리다 — 거울과 같은 문제가 없다.
+    /// 예전에는 사용자 상품만 작은 거울을 왼쪽에 붙이고 정보를 오른쪽에 세웠다 —
+    /// 같은 상점의 같은 물건인데 다른 물건처럼 보였다. 기준은 원래 있던 내장 카드다.
+    /// 스티커는 정사각 표현이 맞으므로 그대로 둔다.
     @ViewBuilder
     private var card: some View {
         if ListingPreviewStyle.isSticker(listing.contentType) {
             stickerCard
         } else {
-            mirrorCard
+            StoreMirrorCard(model: cardModel, like: cardLike) { previewImage }
         }
     }
 
-    /// 바깥은 1:1. 안에서 그림과 정보가 가로로 나뉜다.
-    /// 폭은 **비율로만** 나눈다 — 기기 폭을 숫자로 적지 않는다.
-    private var mirrorCard: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 10) {
-                previewImage
-                    // 거울은 언제나 칸 **가운데**에 온다. 상품마다 왼쪽으로 붙지 않는다.
-                    .frame(width: geometry.size.width * Self.previewShare)
-                    .frame(maxHeight: .infinity, alignment: .center)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(listing.title)
-                        .font(InkFont.body)
-                        .foregroundStyle(PaperTheme.ink)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-
-                    ShardAmount(amount: listing.priceShards)
-
-                    verticalMetadata
-
-                    Spacer(minLength: 0)
-
-                    heart
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
+    private var cardModel: StoreMirrorCardModel {
+        StoreMirrorCardModel(
+            title: listing.title,
+            // **판매자 이름을 지어내지 않는다.** 공개 응답에 그런 값이 없다
+            // (seller profile이 아직 없고, 내부 id를 화면에 쓰지 않는다).
+            subtitle: nil,
+            price: listing.priceShards,
+            downloadCount: listing.downloadCount,
+            footnote: listing.publishedAtLabel
+        )
     }
 
-    /// 그림이 차지하는 가로 비율. 나머지가 정보 자리다.
-    private static let previewShare: CGFloat = 0.4
-
-    private var stickerCard: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            previewImage
-                .overlay(alignment: .topTrailing) { heart }
-                .padding(.bottom, 6)
-
-            Text(listing.title)
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            HStack(spacing: 6) {
-                Spacer(minLength: 4)
-                ShardAmount(amount: listing.priceShards)
-            }
-
-            metadata
-        }
+    /// 하트를 넘길지. 상세 화면처럼 `onToggleLike`가 없으면 그리지 않는다.
+    private var cardLike: StoreMirrorCardLike? {
+        guard let onToggleLike else { return nil }
+        return StoreMirrorCardLike(
+            count: listing.likeCount, isLiked: isLiked,
+            isMine: isMine, isBusy: isLiking, toggle: onToggleLike
+        )
     }
 
-    /// 좁은 정보 칸에서는 가로로 늘어놓을 수 없다. 한 줄에 하나씩 쌓는다.
-    private var verticalMetadata: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Label("\(listing.downloadCount)", systemImage: "arrow.down")
-            Label("\(listing.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
-        }
-        .font(InkFont.caption)
-        .foregroundStyle(PaperTheme.secondaryInk)
-        .labelStyle(.titleAndIcon)
-        .imageScale(.small)
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-    }
-
-    /// 내장 카드의 `MirrorPreview`와 같은 비율 · 같은 테두리를 쓴다.
     /// **칸 크기는 종류가 정하고 그림은 그 안에 들어간다.**
     /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
     private var previewImage: some View {
@@ -154,7 +105,35 @@ struct MarketplaceGalleryItem: View {
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
     }
 
-    /// 카드 위 하트. **여기가 좋아요를 누르는 자리다** — 상세로 들어가야만
+    /// 스티커는 정사각 그림 한 덩어리가 곧 상품이라 예전 표현을 그대로 쓴다.
+    /// 거울처럼 세로로 긴 그림이 아니어서 카드가 밀리는 문제가 없었다.
+    private var stickerCard: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            previewImage
+                .overlay(alignment: .topTrailing) { heart }
+                .padding(.bottom, 6)
+
+            Text(listing.title)
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            HStack(spacing: 6) {
+                Spacer(minLength: 4)
+                ShardAmount(amount: listing.priceShards)
+            }
+
+            metadata
+        }
+    }
+
+    /// 스티커 카드 위 하트. 거울은 통계 줄 안에서 누른다(공통 카드).
+    ///
+    /// 자기 상품에서는 **숫자만 보이고 누를 수 없다.** 실패할 CTA를 일부러
+    /// 보여 주지 않는다(서버가 self-like를 거절한다).
+    ///
+    /// 원래 주석: 상세로 들어가야만
     /// 누를 수 있으면 어디서 누르는지 알 수 없다는 것이 실기기에서 확인됐다.
     ///
     /// 자기 상품에서는 **숫자만 보이고 누를 수 없다.** 실패할 CTA를 일부러

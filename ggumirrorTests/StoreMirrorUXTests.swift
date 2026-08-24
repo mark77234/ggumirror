@@ -149,31 +149,34 @@ struct BuiltInPriceTests {
 @Suite("거울 카드")
 struct MirrorCardLayoutTests {
 
-    @Test("거울 카드는 정사각이고 스티커는 그대로다")
-    func mirrorIsSquareStickerIsNot() throws {
+    @Test("거울은 내장 템플릿과 **같은 카드**를 쓴다")
+    func mirrorSharesTheBuiltInCard() throws {
+        // 예전에는 사용자 상품만 정사각 카드 + 왼쪽 그림 · 오른쪽 정보였다.
+        // 기준은 원래 있던 내장 카드이고, 사용자 상품을 그쪽에 맞췄다.
         let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains(".aspectRatio(1, contentMode: .fit)"))
-        #expect(gallery.contains("private var mirrorCard"))
+        #expect(gallery.contains("StoreMirrorCard(model: cardModel"))
+        #expect(!gallery.contains("private var mirrorCard"))
+        #expect(!gallery.contains(".aspectRatio(1, contentMode: .fit)"))
         #expect(gallery.contains("private var stickerCard"))
-        // 스티커는 예전 정사각 표현을 그대로 쓴다.
         #expect(gallery.contains("if ListingPreviewStyle.isSticker(listing.contentType)"))
     }
 
-    @Test("그림 폭은 비율로 나눈다 — 기기 폭을 적지 않는다")
-    func widthComesFromTheContainer() throws {
+    @Test("칸 폭을 손으로 재지 않는다")
+    func widthComesFromTheGrid() throws {
         let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("geometry.size.width * Self.previewShare"))
-        for guessed in ["UIScreen", "width: 160", "width: 180", "393", "430"] {
+        #expect(gallery.contains("GalleryLayout.columns(for: dynamicTypeSize)"))
+        for guessed in ["UIScreen", "width: 160", "width: 180", "393", "430", "previewShare"] {
             #expect(!gallery.contains(guessed), "폭을 손으로 쟀다: \(guessed)")
         }
     }
 
     @Test("거울은 카드 가운데에 온다")
     func thumbnailIsCentered() throws {
+        // `aspectRatio(_:contentMode: .fit)`이 칸 안에서 가운데로 놓는다.
+        // 상품마다 왼쪽으로 붙던 구조(고정 폭 + topLeading)가 사라졌다.
         let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("alignment: .center"))
-        // 상품마다 왼쪽으로 붙지 않는다.
-        #expect(!gallery.contains("alignment: .topLeading)\n                    .frame(width: geometry"))
+        #expect(gallery.contains("aspectRatio(ListingPreviewStyle.aspectRatio(for: type)"))
+        #expect(!gallery.contains("alignment: .topLeading)"))
     }
 
     @Test("거울 비율은 그대로 9:19.5다")
@@ -184,8 +187,10 @@ struct MirrorCardLayoutTests {
 
     @Test("긴 제목이 카드를 밀어내지 않는다")
     func longTitleIsClipped() throws {
-        let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains(".lineLimit(2)"))
+        // 제목 처리도 공통 카드에 있다 — 화면마다 다르게 자르지 않는다.
+        let card = try uxSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains(".lineLimit(1)"))
+        #expect(card.contains(".truncationMode(.tail)"))
     }
 }
 

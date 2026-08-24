@@ -267,7 +267,9 @@ struct ShardWalletTests {
         #expect(components.contains(#"amount) 조각"#))
 
         let store = codeOnly(try repoFile("ggumirror/Store/StoreView.swift"))
-        #expect(store.contains("ShardAmount(amount: template.price)"))
+        // 가격 표시는 공통 카드가 한다 — 두 출처가 같은 자리에서 같게 보인다.
+        #expect(try repoFile("ggumirror/Store/StoreMirrorCard.swift")
+            .contains("ShardAmount(amount: model.price)"))
         #expect(!store.contains("template.price, treatsZeroAsFree"))
 
         // 무료 갈래 · 무료로 받기 문구도 그대로 있다.

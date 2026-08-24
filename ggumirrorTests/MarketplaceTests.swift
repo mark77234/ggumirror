@@ -2279,7 +2279,10 @@ struct StoreIAHardeningTests {
         // 하드코딩 값을 쓰지 않는다.
         let store = try source("Store/StoreView.swift")
         #expect(store.contains("catalogStats.downloadCount(template.id)"))
-        #expect(store.contains("if let downloadCount"))
+        // "모르면 안 보여 준다"는 판단은 공통 카드가 한다 —
+        // 사용자 상품과 내장 템플릿이 한 컴포넌트를 쓰기 때문이다.
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("if let downloadCount = model.downloadCount"))
 
         let detail = try source("Store/TemplateDetailView.swift")
         #expect(detail.contains("catalogStats.downloadCount(template.id)"))
