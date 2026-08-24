@@ -37,6 +37,12 @@ struct MyMirrorsView: View {
     /// 확장 확인 창.
     @State private var isConfirmingExpand = false
 
+    /// 이름을 바꾸는 중인 거울. 열려 있는 동안 입력값을 들고 있다.
+    @State private var renameTarget: MyMirror?
+    @State private var renameText = ""
+    /// 이름을 바꿀 수 없는 이유. 알려 주고 끝난다.
+    @State private var renameNotice: String?
+
     private var mirrors: [MyMirror] {
         // **판매 중은 서버가 정한다.** `MirrorOrigin.listed`를 설정하는 코드가 없어서
         // 이 필터는 늘 비어 있었다 — 실제로 팔고 있어도 안 보였다.
@@ -117,6 +123,19 @@ struct MyMirrorsView: View {
                 InkDialogAction("취소"),
             ]
         }
+        .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { mirror in
+            // 저장 때 쓰는 이름 시트를 그대로 쓴다 — 입력 규칙과 버튼 규칙이 같다.
+            MirrorNameSheet(name: $renameText, isNewMirror: false) { commitRename(mirror) }
+        }
+        .inkDialog(
+            "이름 변경",
+            message: renameNotice,
+            isPresented: Binding(
+                get: { renameNotice != nil }, set: { if !$0 { renameNotice = nil } }
+            )
+        ) {
+            [InkDialogAction("확인", role: .primary)]
+        }
         .inkBottomSheet(item: $publishTarget, size: .fraction(0.92)) { mirror in
             PublishMirrorView(mirror: mirror, library: library)
         }
@@ -190,11 +209,56 @@ struct MyMirrorsView: View {
         if OwnContentExportPolicy.canExport(mirror) {
             actions.append(InkDialogAction("사진에 저장") { save(mirror) })
         }
+        // 기본 제공 거울은 카탈로그의 것이라 이름을 바꾸지 않는다.
         if mirror.origin != .basic {
+            actions.append(InkDialogAction("이름 변경") { beginRename(mirror) })
             actions.append(InkDialogAction("삭제", role: .destructive) { library.delete(mirror) })
         }
         actions.append(InkDialogAction("닫기"))
         return actions
+    }
+
+    // MARK: - 이름 변경
+
+    /// 지금 이 거울의 이름을 바꿀 수 있는가. **판매 중인 원본만 잠근다.**
+    ///
+    /// 판단은 서버가 준 `sourceContentId`로 한다 — 제목이 닮았다고 잠그지 않는다.
+    private func renameAvailability(_ mirror: MyMirror) -> MirrorRenameAvailability {
+        MirrorRenamePolicy.availability(
+            isSignedIn: session.server != nil,
+            hasSellerLinkHint: library.publishDraft(for: mirror.id) != nil,
+            sellerListingsAreKnown: marketplace.myListingsAreKnown,
+            isPublishedOriginal: marketplace.sellingListing(
+                forContentID: mirror.id, contentType: "mirror"
+            ) != nil
+        )
+    }
+
+    private func beginRename(_ mirror: MyMirror) {
+        let availability = renameAvailability(mirror)
+        guard availability.isAllowed else {
+            renameNotice = availability.message
+            return
+        }
+        renameText = mirror.name
+        renameTarget = mirror
+    }
+
+    /// **저장 직전에 다시 확인한다.** 창을 열어 둔 사이에 등록이 끝났을 수 있다.
+    private func commitRename(_ mirror: MyMirror) {
+        let availability = renameAvailability(mirror)
+        guard availability.isAllowed else {
+            renameTarget = nil
+            renameNotice = availability.message
+            return
+        }
+        if case .invalidName = library.rename(mirror.id, to: renameText) {
+            renameTarget = nil
+            renameNotice = "이름을 입력해 주세요."
+            return
+        }
+        // 성공은 목록이 바로 바뀌는 것으로 충분하다 — 창을 하나 더 띄우지 않는다.
+        renameTarget = nil
     }
 
     // MARK: - 내보내기

@@ -258,7 +258,11 @@ extension MyMirror: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             id: try container.decode(String.self, forKey: .id),
-            name: try container.decode(String.self, forKey: .name),
+            // **없어도 읽는다.** 이름은 표시용 값이라 그것 하나 때문에 거울을
+            // 통째로 잃는 것이 훨씬 나쁘다. 읽기만 관대하게 하고 파일을 강제로
+            // 다시 쓰지 않는다 — 저장은 사용자가 무언가 바꿀 때 일어난다.
+            name: try container.decodeIfPresent(String.self, forKey: .name)
+                ?? MirrorStoragePolicy.fallbackName,
             origin: try container.decodeOrDefault(MirrorOrigin.self, forKey: .origin, default: .made),
             style: try container.decode(MirrorStyle.self, forKey: .style),
             strokes: try container.decodeIfPresent([DrawingStroke].self, forKey: .strokes) ?? [],

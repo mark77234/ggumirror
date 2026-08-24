@@ -105,6 +105,10 @@ enum MirrorStoragePolicy {
     /// 이름 입력 제한.
     static let maxNameLength = 24
 
+    /// 이름이 없는 예전 파일을 읽을 때 쓰는 표시용 이름.
+    /// **지어낸 정보가 아니라 빈자리를 메우는 라벨이다.**
+    static let fallbackName = "내 거울"
+
     /// 홈에서 저장할 때 쓰는 자동 이름. 사용자에게 이름을 묻지 않는다.
     /// "나의 거울" → 이미 있으면 "나의 거울 2", "나의 거울 3" ...
     static func automaticName(existing names: [String]) -> String {
@@ -459,6 +463,22 @@ final class MirrorLibrary {
         currentID = copy.id
         persist()
         return .created(id: copy.id, name: copy.name)
+    }
+
+    /// 거울 이름을 바꾼다. **표시용 값 하나만 바뀐다.**
+    ///
+    /// id는 그대로다 — 이름은 identity가 아니라 metadata라서 같은 이름이 여럿
+    /// 있어도 된다. 서버(지갑 · 소유권 · 원장 · listing · snapshot)를 부르지 않는다.
+    ///
+    /// 판매 중인지 확인하는 일은 화면이 한다(`MirrorRenamePolicy`) — 여기서
+    /// 네트워크 상태를 알 수 없다.
+    @discardableResult
+    func rename(_ mirrorID: String, to raw: String) -> MirrorRenameOutcome {
+        guard let name = MirrorStoragePolicy.normalizedName(raw) else { return .invalidName }
+        guard let index = mirrors.firstIndex(where: { $0.id == mirrorID }) else { return .notFound }
+        mirrors[index].name = name
+        persist()
+        return .renamed(name)
     }
 
     /// 이 저장이 새 거울을 만들지.

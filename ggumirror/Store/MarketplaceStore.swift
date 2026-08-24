@@ -125,13 +125,22 @@ final class MarketplaceStore {
     /// 서버가 authority이고, 화면이 다시 물어본다.
     func invalidatePublicFeed() { publicFeedVersion &+= 1 }
 
+    /// 판매 목록을 **실제로 받아 왔는가.**
+    ///
+    /// 빈 목록과 "아직 못 받았다"는 다르다. 둘을 같은 것으로 보면 서버에 닿지
+    /// 못한 순간에 판매 중인 거울을 "판매 중이 아니다"라고 판단하게 된다.
+    private(set) var myListingsAreKnown = false
+
     func refreshMyListings(session: ServerSession?) async {
         guard let token = session?.accessToken else {
             myListings = []
+            // 로그아웃 서랍에는 판매자 상품이 없다 — 이것도 아는 것이다.
+            myListingsAreKnown = true
             return
         }
         do {
             myListings = try await backend.myListings(accessToken: token)
+            myListingsAreKnown = true
             failure = nil
         } catch let error as MarketplaceFailure {
             failure = error
