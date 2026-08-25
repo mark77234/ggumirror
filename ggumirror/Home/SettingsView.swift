@@ -14,11 +14,19 @@ struct SettingsView: View {
     /// 이름의 authority는 **서버**다. `UserDefaults`에 두지 않는다 —
     /// 계정을 바꿔도 남아서 A의 이름이 B에게 보였다.
     @Environment(ProfileSession.self) private var profile: ProfileSession?
+    // 복원은 **서버가 authority인 값들을 다시 읽기만 한다.** optional로 받는다 —
+    // 이 화면을 따로 그리는 미리보기·테스트에 환경값이 없을 수 있다.
+    @Environment(ShardWallet.self) private var shards: ShardWallet?
+    @Environment(ShardPurchaseController.self) private var shardStore: ShardPurchaseController?
+    @Environment(MarketplaceStore.self) private var marketplace: MarketplaceStore?
+    @Environment(MirrorCapacityStore.self) private var capacity: MirrorCapacityStore?
 
     private var profileDisplayName: String? { profile?.displayName }
     @AppStorage("notificationsOn") private var notificationsOn = true
 
     @State private var notice: String?
+    @State private var restoreState = PurchaseRestoreState.idle
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollView {
@@ -35,11 +43,16 @@ struct SettingsView: View {
                 InkSeparator()
 
                 Button {
-                    notice = "구매 복원은 상점 기능과 함께 열려요."
+                    Task { await restore() }
                 } label: {
-                    InkListRow(title: "구매 복원", showsChevron: true)
+                    InkListRow(
+                        title: restoreState == .restoring ? "구매 정보를 확인하고 있어요…" : "구매 복원",
+                        showsChevron: restoreState != .restoring
+                    )
                 }
                 .buttonStyle(InkPressStyle())
+                // 연타로 여러 번 동기화하지 않는다.
+                .disabled(restoreState == .restoring)
 
                 InkSeparator()
 
@@ -66,17 +79,11 @@ struct SettingsView: View {
                     InkSeparator()
                 }
 
-                NavigationLink(value: SettingsRoute.privacy) {
-                    InkListRow(title: "개인정보 처리방침", showsChevron: true)
-                }
-                .buttonStyle(InkPressStyle())
+                legalRow("개인정보 처리방침", url: LegalLinks.privacyPolicy)
 
                 InkSeparator()
 
-                NavigationLink(value: SettingsRoute.terms) {
-                    InkListRow(title: "이용약관", showsChevron: true)
-                }
-                .buttonStyle(InkPressStyle())
+                legalRow("이용약관", url: LegalLinks.termsOfService)
 
                 InkSeparator()
             }
@@ -94,6 +101,37 @@ struct SettingsView: View {
         ) {
             [InkDialogAction("확인", role: .primary)]
         }
+    }
+
+    /// 법적 문서 한 줄. 주소가 아직 없으면 **열지 않고** 준비 중이라고 말한다.
+    private func legalRow(_ title: String, url: URL?) -> some View {
+        Button {
+            guard let url else {
+                notice = LegalLinks.notReadyMessage
+                return
+            }
+            // 앱 안에 WebView를 새로 만들지 않는다 — 시스템 브라우저로 보낸다.
+            openURL(url)
+        } label: {
+            InkListRow(title: title, showsChevron: true)
+        }
+        .buttonStyle(InkPressStyle())
+    }
+
+    /// 구매 복원. **조각을 다시 지급하는 기능이 아니다** —
+    /// 소모품은 이미 서버 원장이 authority다. 여기서 하는 일은 Apple/서버가 가진
+    /// 지금 상태를 다시 맞춰 보는 것뿐이다.
+    private func restore() async {
+        guard session.server != nil else {
+            _ = session.requireSignIn(for: .shardTransaction)
+            return
+        }
+        restoreState = .restoring
+        restoreState = await PurchaseRestore.run(
+            session: session.server, wallet: shards, purchases: shardStore,
+            marketplace: marketplace, capacity: capacity, profile: profile
+        )
+        notice = restoreState.message
     }
 
     private var profileRow: some View {
