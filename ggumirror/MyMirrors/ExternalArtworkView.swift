@@ -84,7 +84,7 @@ struct ExternalArtworkView: View {
                     step(1, "작업 가이드 저장", "1080 × 2340 크기의 투명 PNG예요.")
                     guideShare
                     step(2, "외부 그림 앱에서 작업", "프로크리에이트, 아이비스페인트, 포토샵 등 어떤 앱이든 좋아요.")
-                    step(3, "투명 PNG로 내보내기", "프레임 부분만 그리고 배경은 비운 채로 내보내 주세요.")
+                    step(3, "PNG로 내보내기", "카메라 자리를 \(ExternalMirrorImportContract.chromaHex) 초록색으로 채우거나 투명하게 비워 주세요.")
                     step(4, "완성 파일 가져오기", "아래에서 완성한 PNG를 골라주세요.")
                 }
 
@@ -92,7 +92,7 @@ struct ExternalArtworkView: View {
                     Text("점선 바깥 프레임만 사용해요")
                         .font(InkFont.secondary)
                         .foregroundStyle(PaperTheme.ink)
-                    Text("점선 안쪽은 실제 거울에서 카메라가 보이는 자리예요. 그 안쪽을 그려도 가져올 때 자동으로 지워지니, 프레임 부분을 꾸며주세요.")
+                    Text("점선 안쪽은 실제 거울에서 카메라가 보이는 자리예요. 그 자리를 \(ExternalMirrorImportContract.chromaHex) 초록색으로 채우면 가져올 때 자동으로 투명해져요 — 배경을 직접 지우지 않아도 돼요. 점선 **바깥**의 초록색 장식은 그대로 남아요.")
                         .font(InkFont.caption)
                         .foregroundStyle(PaperTheme.secondaryInk)
                 }
@@ -324,20 +324,29 @@ struct ExternalArtworkView: View {
     }
 
     /// 비율이 다르면 늘려서 왜곡시키지 않고 되묻는다.
-    /// 카메라 영역은 `normalize`가 이미 지워서 온다 — 여기서 따로 검사하지 않는다.
+    ///
+    /// 카메라 자리는 `MirrorImportNormalizer`가 **확인한 뒤에** 비운다 —
+    /// 확신이 없으면 지우지 않고 무엇이 잘못됐는지 알려 준다. 예전에는 확인 없이
+    /// 지워서, 규격을 모르고 만든 그림에서 사용자가 그린 것이 조용히 사라졌다.
     private func accept(_ data: Data) {
         do {
-            let image = try MirrorArtworkImporter.normalize(data)
+            let image = try MirrorImportNormalizer.normalize(data)
             candidate = ImportedArtworkObject(
                 assetID: ImportedArtworkAssetStore.shared.register(image)
             )
-        } catch ArtworkImportError.wrongAspectRatio(let width, let height) {
-            problem = ImportProblem(
-                title: "작업 가이드와 비율이 달라요",
-                message: "가져온 이미지는 \(width) × \(height)예요. 1080 × 2340과 같은 비율(9 : 19.5)로 다시 내보내 주세요."
-            )
+        } catch let failure as MirrorImportFailure {
+            problem = ImportProblem(title: Self.title(for: failure), message: failure.message)
         } catch {
             problem = Self.unreadable
+        }
+    }
+
+    private static func title(for failure: MirrorImportFailure) -> String {
+        switch failure {
+        case .wrongAspectRatio: "작업 가이드와 비율이 달라요"
+        case .cameraOpeningNotMarked: "카메라 자리를 찾지 못했어요"
+        case .nothingLeftAfterRemoval: "거울 테두리가 없어요"
+        case .unreadable: "이미지를 읽지 못했어요"
         }
     }
 
