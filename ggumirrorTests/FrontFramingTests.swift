@@ -272,9 +272,11 @@ struct FramingSelectorUITests {
         let view = try framingSource("ggumirror/Mirror/MirrorView.swift")
         #expect(view.contains("framingOptions: camera.canChooseFraming ? MirrorCamera.Framing.allCases : []"))
 
-        let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        // 후면이면 빈 배열이 오고 그리지 않는다.
-        #expect(controls.contains("if framingOptions.count > 1"))
+        // 후면이면 빈 배열이 오고 그리지 않는다. **칩을 그리는 곳이 판단한다** —
+        // 칩은 `MirrorFramingSelector`로 빠졌고(상점 미리보기가 같은 것을 쓴다)
+        // 그래서 이 규칙도 거기 하나에만 있다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        #expect(selector.contains("if options.count > 1"))
     }
 
     @Test("사용자 말로 적는다 — 비율을 보여 주지 않는다")
@@ -295,11 +297,18 @@ struct FramingSelectorUITests {
     @Test("배율과 다른 묶음이다")
     func framingIsNotAZoomChip() throws {
         let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        // 배율 칩 목록 안에 섞어 넣지 않는다.
-        #expect(controls.contains("ForEach(framingOptions, id: \\.self)"))
+        // 배율 칩 목록 안에 섞어 넣지 않는다. 섞으면 "넓게 보기"가 배율처럼 읽힌다.
+        // framing은 자기 view로 그리고, 배율만 여기서 ForEach를 돈다.
         #expect(controls.contains("ForEach(zoomPresets, id: \\.self)"))
-        // 손이 닿는 자리는 배율 칩과 같은 규칙이다.
-        #expect(controls.components(separatedBy: "frame(minHeight: 44)").count - 1 >= 1)
+        #expect(!controls.contains("ForEach(framingOptions"))
+        #expect(controls.contains("framingSelector"))
+
+        // 칩 자체는 자기 ForEach를 갖는다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        #expect(selector.contains("ForEach(options, id: \\.self)"))
+        // 손이 닿는 자리는 배율 칩과 같은 규칙이다. **숫자를 다시 적지 않는다** —
+        // 44를 두 곳에 적으면 한쪽만 바뀐다(`ButtonHitAreaTests`가 값을 고정한다).
+        #expect(selector.contains("frame(minHeight: InkTapTarget.minimum)"))
     }
 
     @Test("배율이 하나뿐인 기기에서도 고를 수 있다")
@@ -310,8 +319,16 @@ struct FramingSelectorUITests {
 
     @Test("배율 버튼과 같은 auto-hide를 쓴다")
     func framingUsesTheSameTimer() throws {
+        // 고르기 **전에** 타이머를 다시 돌린다. 순서가 뒤집히면 고르는 순간
+        // 컨트롤이 사라진다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        let tap = try #require(selector.range(of: "onInteraction()"))
+        #expect(selector[tap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            .hasPrefix("onSelect(option)"))
+
+        // 실제 거울이 그 hook에 auto-hide 타이머를 실제로 연결한다.
         let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        #expect(controls.contains("onInteraction()\n            onSelectFraming(option)"))
+        #expect(controls.contains("onInteraction: onInteraction"))
     }
 }
 

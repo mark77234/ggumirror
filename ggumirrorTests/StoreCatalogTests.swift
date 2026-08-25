@@ -59,32 +59,37 @@ struct StoreCatalogTests {
 
     // MARK: - 목록
 
-    /// 상점에 보이는 최종 목록. 순서와 갈래까지 여기 한 곳에 적어 둔다.
-    static let expected: [(id: String, file: String, price: Int)] = [
-        ("art-pink-ribbon", "pink-ribbon", 0),
-        ("art-ink-heart", "ink-heart", 0),
-        ("art-cream-note", "cream-note", 0),
-        ("art-lavender-star", "lavender-star", 0),
-        ("art-sky-cloud", "sky-cloud", 0),
-        ("art-mint-flower", "mint-flower", 0),
-        ("art-gray-check", "gray-check", 0),
-        ("art-red-point", "red-point", 0),
-        ("art-lovely-bow", "lovely-bow", 18),
-        ("art-love-letter", "love-letter", 18),
-        ("art-cherry-love", "cherry-love", 18),
-        ("art-angel-heart", "angel-heart", 18),
-        ("art-my-diary", "my-diary", 18),
-        ("art-checklist", "checklist", 18),
-        ("art-scrapbook", "scrapbook", 18),
-        ("art-cafe-note", "cafe-note", 18),
-        ("art-y2k-star", "y2k-star", 24),
-        ("art-cyber-love", "cyber-love", 24),
-        ("art-flash-girl", "flash-girl", 24),
-        ("art-retro-pop", "retro-pop", 24),
-        ("art-birthday", "birthday", 20),
-        ("art-summer-trip", "summer-trip", 20),
-        ("art-spring-bloom", "spring-bloom", 20),
-        ("art-winter-letter", "winter-letter", 20),
+    /// 상점에 보이는 최종 목록과 그림 파일. **순서까지** 여기 한 곳에 적어 둔다.
+    ///
+    /// 값은 담지 않는다 — 값의 authority는 backend이고, client와 맞는지는
+    /// `BuiltInEconomyTests.clientAndBackendAgree`가 id 하나하나로 확인한다.
+    /// 여기에 숫자를 또 적어 두면 아무도 읽지 않는 채로 낡아, 나중에 그것을
+    /// 믿고 고치는 사람이 생긴다(실제로 18 · 24가 그대로 남아 있었다).
+    static let expected: [(id: String, file: String)] = [
+        ("art-pink-ribbon", "pink-ribbon"),
+        ("art-ink-heart", "ink-heart"),
+        ("art-cream-note", "cream-note"),
+        ("art-lavender-star", "lavender-star"),
+        ("art-sky-cloud", "sky-cloud"),
+        ("art-mint-flower", "mint-flower"),
+        ("art-gray-check", "gray-check"),
+        ("art-red-point", "red-point"),
+        ("art-lovely-bow", "lovely-bow"),
+        ("art-love-letter", "love-letter"),
+        ("art-cherry-love", "cherry-love"),
+        ("art-angel-heart", "angel-heart"),
+        ("art-my-diary", "my-diary"),
+        ("art-checklist", "checklist"),
+        ("art-scrapbook", "scrapbook"),
+        ("art-cafe-note", "cafe-note"),
+        ("art-y2k-star", "y2k-star"),
+        ("art-cyber-love", "cyber-love"),
+        ("art-flash-girl", "flash-girl"),
+        ("art-retro-pop", "retro-pop"),
+        ("art-birthday", "birthday"),
+        ("art-summer-trip", "summer-trip"),
+        ("art-spring-bloom", "spring-bloom"),
+        ("art-winter-letter", "winter-letter"),
     ]
 
     @Test("손그림 템플릿이 정확히 24장이고 고정 id를 갖는다")
@@ -127,12 +132,14 @@ struct StoreCatalogTests {
         func count(_ price: Int) -> Int {
             StoreCatalog.artworkTemplates.filter { $0.price == price }.count
         }
-        // **모든 내장 가격을 5조각 미만으로 낮췄다.** 무료였던 것은 그대로 무료다.
-        // 예전 값(18 · 20 · 24)은 전부 상한 4로 모였다.
-        #expect(count(0) == 8)
-        #expect(count(4) == 16)
-        #expect(count(0) + count(4) == 24)
-        #expect(StoreCatalog.artworkTemplates.allSatisfy { $0.price < 5 })
+        // Phase B에서 손그림 24종에 값을 매겼다. **예전 등급을 그대로 옮긴 것이다** —
+        // 0원이던 8종이 1조각, 4조각이던 16종이 3조각이 됐다. 어떤 그림이 더
+        // 예뻐 보이는지로 새로 매기지 않았다.
+        #expect(count(1) == 8)
+        #expect(count(3) == 16)
+        #expect(count(1) + count(3) == 24)
+        // **가장 비싼 것이 3조각이다.** 상한이 올라가면 여기서 걸린다.
+        #expect(StoreCatalog.samples.map(\.price).max() == 3)
     }
 
     @Test("각 템플릿이 이름 / 그림 / 가격을 갖는다")
@@ -258,25 +265,26 @@ struct StoreCatalogTests {
 
     @Test("무료는 0, 유료는 값이 있고 표시가 갈린다")
     func freeAndPaidAreDistinguishable() throws {
-        let free = try template("art-pink-ribbon")
-        #expect(free.isFree)
-        #expect(free.price == 0)
-
-        #expect(StoreCatalog.artworkTemplates.filter(\.isFree).count == 8)
+        // **손그림 중에 무료는 하나도 없다.** 예전에 0원이던 것까지 1조각이 됐다 —
+        // 하나라도 0으로 돌아가면 서버는 값을 받고 화면은 공짜라고 말한다.
+        #expect(StoreCatalog.artworkTemplates.allSatisfy { !$0.isFree })
+        let ribbon = try template("art-pink-ribbon")
+        #expect(ribbon.price == 1)
 
         for id in ["art-my-diary", "art-y2k-star"] {
             let paid = try template(id)
             #expect(!paid.isFree)
-            #expect(paid.price > 0)
+            #expect(paid.price == 3)
             #expect(!StorePriceFilter.free.includes(price: paid.price))
         }
         // 무료 필터에 걸리는 것은 모두 0 조각이다.
         #expect(StoreCatalog.samples.filter { StorePriceFilter.free.includes(price: $0.price) }
             .allSatisfy { $0.price == 0 })
-        // 기존 두 장의 값은 그대로 유지된다.
-        // 상한 4로 낮췄다. 무료였던 것은 건드리지 않았다.
-        #expect(try template("art-my-diary").price == 4)
-        #expect(try template("art-y2k-star").price == 4)
+        // 무료로 남는 것은 **단색 기본 거울 8종뿐**이다. 앱이 기본값으로 쓰는
+        // 거울이라 값을 매기면 처음 켠 사람이 거울을 못 쓴다.
+        let free = StoreCatalog.samples.filter { $0.isFree }
+        #expect(free.count == 8)
+        #expect(free.allSatisfy { $0.isBasic })
     }
 
     // MARK: - 미리보기

@@ -121,17 +121,21 @@ struct BuiltInPriceTests {
         }
     }
 
-    @Test("무료였던 것은 그대로 무료다")
-    func freeStaysFree() {
-        // 손그림 8장 + 기본 8종.
-        #expect(StoreCatalog.artworkTemplates.filter { $0.price == 0 }.count == 8)
+    @Test("무료로 남는 것은 단색 기본 거울뿐이다")
+    func onlyBasicsStayFree() {
+        // Phase B에서 손그림 24종 전부에 값이 붙었다. 기본 거울 8종만 0으로 남는다 —
+        // 앱이 기본값으로 쓰는 거울이라 값을 매기면 처음 켠 사람이 거울을 못 쓴다.
+        #expect(StoreCatalog.artworkTemplates.allSatisfy { $0.price > 0 })
         #expect(StoreCatalog.basics.allSatisfy { $0.price == 0 })
+        #expect(StoreCatalog.basics.count == 8)
     }
 
-    @Test("가장 비싼 것이 4조각이다")
-    func maxPriceIsFour() {
+    @Test("가장 비싼 것이 3조각이다")
+    func maxPriceIsThree() {
         let max = StoreCatalog.samples.map(\.price).max()
-        #expect(max == 4)
+        #expect(max == 3)
+        // 전체 32종이 모두 표에 있다(기본 8 + 손그림 24).
+        #expect(StoreCatalog.samples.count == 32)
     }
 
     @Test("가격은 catalog 한 곳에서만 온다")

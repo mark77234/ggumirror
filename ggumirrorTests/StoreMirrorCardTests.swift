@@ -97,11 +97,18 @@ struct StoreMirrorCardModelTests {
     @Test("판매자 이름을 지어내지 않는다")
     func noInventedSellerName() throws {
         let gallery = try cardSource("ggumirror/Store/MarketplaceGallery.swift")
-        // 공개 응답에 판매자 이름이 없다. `익명` 같은 값을 만들지 않는다.
-        #expect(gallery.contains("subtitle: nil"))
+        // 1.1.0(A1)부터 서버가 판매자 **이름**을 준다. 그대로 옮길 뿐이다 —
+        // 내부 id는 여전히 오지 않고, 화면이 만들어 쓰지도 않는다.
+        #expect(gallery.contains("subtitle: listing.sellerDisplayName"))
         for invented in ["\"익명\"", "\"사용자\"", "sellerUserId"] {
             #expect(!gallery.contains(invented), "\(invented)를 화면에 쓴다")
         }
+        // 이름을 아직 정하지 않은 판매자와 1.0.7 시절 상품은 `nil`이다.
+        // **그때 가짜 이름을 채우지 않는다** — 자리만 비운다.
+        #expect(!gallery.contains("?? \""))
+        let card = try cardSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains("Text(model.subtitle ?? \"\")"))
+
         // 내장은 실제 만든이가 있다.
         #expect(try cardSource("ggumirror/Store/StoreView.swift")
             .contains("subtitle: template.creator"))
@@ -133,12 +140,22 @@ struct StoreMirrorCardLikeTests {
     @Test("손이 닿는 자리는 44pt이고 label 안에 있다")
     func heartHasARealTapTarget() throws {
         let card = try cardSource("ggumirror/Store/StoreMirrorCard.swift")
-        #expect(card.contains("frame(minWidth: 44, minHeight: 44"))
+
+        // **Button과 그 스타일 사이만 본다.** 글자 수로 창을 잡으면 코드가 조금만
+        // 길어져도 창 밖으로 밀려나 조용히 통과한다.
+        let start = try #require(card.range(of: "Button(action: like.toggle)")).upperBound
+        let end = try #require(
+            card.range(of: ".buttonStyle(InkPressStyle())", range: start..<card.endIndex)
+        ).lowerBound
+        let label = card[start..<end]
+
         // 겉모습이 Button 밖으로 나가면 글자만 눌린다(hit-area hardening 규칙).
-        let button = try #require(card.range(of: "Button(action: like.toggle)"))
-        let body = card[button.lowerBound...].prefix(400)
-        #expect(body.contains(".contentShape(.rect)"))
-        #expect(body.firstIndex(of: "}") != nil)
+        // 숫자를 다시 적지 않는다 — `ButtonHitAreaTests`가 44를 고정한다.
+        #expect(label.contains("minWidth: InkTapTarget.minimum"))
+        #expect(label.contains(".contentShape(.rect)"))
+        // 높이는 줄이 이미 44pt로 잡아 둔다. 여기서 다시 주면 그 카드만 부푼다.
+        #expect(label.contains("maxHeight: .infinity"))
+        #expect(!label.contains("minHeight:"))
     }
 
     @Test("내 상품은 숫자만 보이고 누를 수 없다")
