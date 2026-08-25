@@ -30,13 +30,44 @@ enum MirrorRenameAvailability: Equatable {
     var isAllowed: Bool { self == .allowed }
 
     /// 막힌 이유. 허용이면 할 말이 없다.
-    var message: String? {
+    ///
+    /// **판단은 거울과 스티커가 같다** — 다른 것은 문구의 명사 하나뿐이라
+    /// 정책을 두 벌로 나누지 않았다.
+    func message(for kind: RenameableAssetKind) -> String? {
         switch self {
         case .allowed: nil
-        case .lockedPublished: "판매 중인 거울은 이름을 바꿀 수 없어요."
+        case .lockedPublished: "판매 중인 \(kind.subject) 이름을 바꿀 수 없어요."
         case .unknownSellerStatus: "판매 상태를 확인한 뒤 다시 시도해 주세요."
         }
     }
+
+    /// 거울 기준 문구. 기존 호출부가 그대로 쓴다.
+    var message: String? { message(for: .mirror) }
+}
+
+/// 이름을 바꿀 수 있는 것. **정책이 아니라 문구와 조회 종류만** 가른다.
+nonisolated enum RenameableAssetKind: String, Equatable {
+    case mirror
+    case sticker
+
+    var noun: String {
+        switch self {
+        case .mirror: "거울"
+        case .sticker: "스티커"
+        }
+    }
+
+    /// 조사까지 붙인 주어. **받침에 따라 은/는이 다르다** —
+    /// 명사만 끼워 넣으면 "스티커은"처럼 어색한 말이 된다.
+    var subject: String {
+        switch self {
+        case .mirror: "거울은"
+        case .sticker: "스티커는"
+        }
+    }
+
+    /// Marketplace 판매 목록을 볼 때 쓰는 값. 서버 계약 그대로다.
+    var contentType: String { rawValue }
 }
 
 enum MirrorRenamePolicy {

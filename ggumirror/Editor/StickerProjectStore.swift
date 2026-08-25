@@ -353,6 +353,20 @@ final class StickerLibrary {
         return project
     }
 
+    /// 스티커 이름을 바꾼다. **표시용 값 하나만 바뀐다.**
+    ///
+    /// 거울과 같은 규칙이다 — id는 그대로이고(이름은 identity가 아니다),
+    /// 같은 이름이 여럿 있어도 되며, 서버를 부르지 않는다.
+    /// 판매 중인지 확인하는 일은 화면이 한다(`MirrorRenamePolicy`).
+    @discardableResult
+    func rename(_ projectID: String, to raw: String) -> MirrorRenameOutcome {
+        guard let name = StickerProjectPolicy.normalizedName(raw) else { return .invalidName }
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return .notFound }
+        projects[index].name = name
+        persist()
+        return .renamed(name)
+    }
+
     /// 복제. **새 id · 새 완성 PNG**를 만든다. 원본은 그대로 둔다.
     @discardableResult
     func duplicate(_ project: StickerProject) -> StickerProject? {
