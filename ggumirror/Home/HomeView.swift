@@ -92,6 +92,7 @@ struct HomeView: View {
                 case .privacy: ComingSoonView(title: "개인정보 처리방침", detail: "곧 내용을 채울게요.")
                 case .terms: ComingSoonView(title: "이용약관", detail: "곧 내용을 채울게요.")
                 case .adminStore: AdminStoreView()
+                case .notificationCenter: NotificationCenterView()
                 }
             }
             .toolbar(.hidden, for: .navigationBar)

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @Environment(AuthSession.self) private var session
@@ -22,7 +23,21 @@ struct SettingsView: View {
     @Environment(MirrorCapacityStore.self) private var capacity: MirrorCapacityStore?
 
     private var profileDisplayName: String? { profile?.displayName }
-    @AppStorage("notificationsOn") private var notificationsOn = true
+    /// 매일 알림. **기기 설정이라 계정별로 두지 않는다.**
+    @Environment(DailyReminderScheduler.self) private var reminder: DailyReminderScheduler?
+
+    /// 토글은 값을 바로 쓰지 않는다 — 켤 때는 권한을 먼저 물어야 하고,
+    /// 끌 때는 예약을 지워야 한다.
+    private var dailyReminderBinding: Binding<Bool> {
+        Binding(
+            get: { reminder?.isOn ?? false },
+            set: { wants in
+                Task {
+                    if wants { await reminder?.enable() } else { await reminder?.disable() }
+                }
+            }
+        )
+    }
 
     @State private var notice: String?
     @State private var restoreState = PurchaseRestoreState.idle
@@ -62,10 +77,35 @@ struct SettingsView: View {
 
                 InkSeparator()
 
-                InkListRow(title: "알림") {
-                    Toggle("알림", isOn: $notificationsOn)
+                NavigationLink(value: SettingsRoute.notificationCenter) {
+                    InkListRow(title: "알림", showsChevron: true)
+                }
+                .buttonStyle(InkPressStyle())
+
+                InkSeparator()
+
+                InkListRow(title: "매일 거울 소식 받기") {
+                    Toggle("매일 거울 소식 받기", isOn: dailyReminderBinding)
                         .labelsHidden()
                         .tint(PaperTheme.ink)
+                }
+
+                // 거부한 사람에게 토글만 보여 주면 켜지지 않는 이유를 알 수 없다.
+                // **다시 조르지 않고** 어디서 켤 수 있는지 알려 준다.
+                if reminder?.permission == .denied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(url)
+                        }
+                    } label: {
+                        InkListRow(
+                            title: "알림이 꺼져 있어요. 설정 앱에서 켜주세요.",
+                            showsChevron: true
+                        )
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .accessibilityIdentifier("openSystemNotificationSettings")
                 }
 
                 InkSeparator()
@@ -129,6 +169,8 @@ struct SettingsView: View {
         // 실패하면 항목이 보이지 않는다. **일반 사용자의 설정을 깨뜨리지 않는다** —
         // 대부분에게 403이 정상 답이고, 그것으로 화면이 흔들리면 안 된다.
         .task(id: session.server?.userID) { await checkAdmin() }
+        // 설정 앱에서 권한을 바꾸고 돌아왔을 수 있다. **여기서 창을 띄우지 않는다.**
+        .task { await reminder?.refreshPermission() }
         .inkDialog(
             "계정 삭제",
             message: isConfirmingAccountDeletion ? accountDeletionMessage : nil,
@@ -270,6 +312,8 @@ enum SettingsRoute: Hashable {
     /// 운영자 전용. 이 경로가 있다고 권한이 생기지 않는다 — 화면 안의 모든
     /// 요청을 서버가 다시 판단한다.
     case adminStore
+    /// 판매 알림 목록. 로그인하지 않아도 열리고, 그때는 안내만 보인다.
+    case notificationCenter
 }
 
 /// 예전 프로필 저장소. **더 이상 읽지 않는다.**

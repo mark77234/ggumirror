@@ -10,6 +10,10 @@ import UIKit
 
 @main
 struct ggumirrorApp: App {
+    /// APNs token과 알림 탭은 SwiftUI로 오지 않는다. 이 delegate 하나가
+    /// **넘겨주는 일만** 한다 — 판단은 `PushRegistration`이 한다.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     init() {
         MirrorFontLibrary.registerIfNeeded()
         Self.applyBrandNavigationBar()

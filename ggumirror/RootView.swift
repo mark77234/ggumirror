@@ -40,6 +40,10 @@ struct RootView: View {
     @State private var catalogStats = CatalogStats.live
     /// 거울 보관 칸. **서버가 authority다** — 산 칸은 이 기기가 아니라 서버에 있다.
     @State private var mirrorCapacity = MirrorCapacityStore.live
+    /// 매일 저녁 알림. **서버가 관여하지 않는다** — 기기가 스스로 띄운다.
+    @State private var dailyReminder = DailyReminderScheduler()
+    /// 판매 알림을 받을 기기 등록. token과 로그인이 둘 다 갖춰졌을 때만 서버에 묶는다.
+    @State private var pushRegistration = PushRegistration()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -68,6 +72,7 @@ struct RootView: View {
             .environment(marketplace)
             .environment(catalogStats)
             .environment(mirrorCapacity)
+            .environment(dailyReminder)
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -124,6 +129,14 @@ struct RootView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await shards.refresh(session: session.server) }
+                // 설정 앱에서 알림을 켜고 돌아왔을 수 있다. **창을 띄우지 않는다** —
+                // 지금 보낼 수 있는지만 다시 보고 다음 며칠치를 채운다.
+                Task { await dailyReminder.refresh() }
+            }
+            // 계정이 바뀌면 기기를 다시 묶는다. **로그아웃도 여기로 온다** —
+            // 떼어 내지 않으면 다음 사람의 판매 알림이 이 기기로 온다.
+            .onChange(of: session.server?.userID) { _, _ in
+                Task { await pushRegistration.accountChanged(to: session.server) }
             }
             // 현재 거울이 바뀌면(다른 거울 선택 · 꾸미기 저장) 잠금화면 프레임도 따라간다.
             // 사용자가 "동기화"를 누를 일은 없다.
@@ -172,6 +185,15 @@ struct RootView: View {
                     await shardStore.recoverUnfinished(session: session.server, wallet: shards)
                     await profile.refresh(session: session.server)
                     await catalogStats.refreshOwned(session: session.server)
+                    // 세션이 확정된 뒤에 기기를 묶는다. **여기서 권한 창을 띄우지
+                    // 않는다** — 이미 허락한 사람만 APNs 등록으로 간다.
+                    await pushRegistration.startIfAllowed()
+                    await pushRegistration.accountChanged(to: session.server)
+                }
+                Task {
+                    // 매일 알림 다시 채우기. 권한이 없으면 아무것도 하지 않는다.
+                    PushAppDelegate.registration = pushRegistration
+                    await dailyReminder.refresh()
                 }
                 Task {
                     // 광고는 가장 무겁고(UMP 양식 · SDK 초기화 · ad load) 가장 덜 급하다.

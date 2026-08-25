@@ -69,6 +69,9 @@ struct EditorView: View {
     @Environment(\.requestReview) private var requestReview
     /// 언제 물어봐도 되는지 아는 값. optional이라 이 화면을 따로 그리는 곳에서도 안전하다.
     @Environment(ReviewPromptTracker.self) private var reviewPrompt: ReviewPromptTracker?
+    /// 매일 알림. 첫 저장 뒤에 권한을 묻는 자리라 여기서 본다.
+    /// **미리보기·테스트에는 없을 수 있어** optional이다.
+    @Environment(DailyReminderScheduler.self) private var reminder: DailyReminderScheduler?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -462,9 +465,30 @@ struct EditorView: View {
     /// 실제로 창이 뜰지는 OS가 정한다. 우리는 물어봐도 되는 상태인지만 판단한다.
     private func recordSuccessfulSave() {
         reviewPrompt?.recordSuccessfulSave()
-        guard reviewPrompt?.shouldRequest() == true else { return }
+        guard reviewPrompt?.shouldRequest() == true else {
+            // 리뷰를 묻지 않는 저장이다. **여기가 알림 권한을 묻기 좋은 자리다** —
+            // 방금 거울 하나를 만들어 본 사람이라 앱이 무엇인지 안다.
+            askForNotificationsOnce()
+            return
+        }
         reviewPrompt?.recordRequestAttempt()
         requestReview()
+    }
+
+    /// 알림 권한을 **딱 한 번** 묻는다.
+    ///
+    /// 앱을 켜자마자 묻지 않는 이유: 앱이 무엇인지 보기도 전에 창이 뜨면 대부분
+    /// 거부하고, 거부는 설정 앱에 들어가야 되돌릴 수 있다.
+    ///
+    /// 리뷰 요청과 같은 저장에서 겹치지 않게 한다 — 시스템 창 두 개가 연달아 뜨면
+    /// 둘 다 무시된다. `canAsk`가 `notAsked`에서만 참이라 두 번 묻지 않는다.
+    private func askForNotificationsOnce() {
+        guard let reminder, reminder.isOn else { return }
+        Task {
+            await reminder.refreshPermission()
+            guard reminder.permission.canAsk else { return }
+            await reminder.enable()
+        }
     }
 
     // MARK: - 사진 스티커
