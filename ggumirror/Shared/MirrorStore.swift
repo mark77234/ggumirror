@@ -107,6 +107,21 @@ final class MirrorStore: Sendable {
         accountsRoot.appending(path: owner.directoryName, directoryHint: .isDirectory)
     }
 
+    /// **계정 삭제 때만** 부른다. 그 계정 서랍 하나를 통째로 지운다.
+    ///
+    /// guest 서랍과 다른 계정 서랍은 건드리지 않는다 — 남의 콘텐츠를 지우는 것이
+    /// 여기서 할 수 있는 가장 나쁜 실수다. 그래서 guest는 아예 거절한다.
+    @discardableResult
+    static func removeAccountNamespace(
+        for owner: MirrorLibraryOwner, fileManager: FileManager = FileManager()
+    ) -> Bool {
+        guard case .user = owner else { return false }
+        let root = root(for: owner)
+        guard fileManager.fileExists(atPath: root.path) else { return false }
+        try? fileManager.removeItem(at: root)
+        return !fileManager.fileExists(atPath: root.path)
+    }
+
     static func store(for owner: MirrorLibraryOwner) -> MirrorStore {
         MirrorStore(root: root(for: owner))
     }

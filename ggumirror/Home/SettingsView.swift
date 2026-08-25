@@ -26,6 +26,9 @@ struct SettingsView: View {
 
     @State private var notice: String?
     @State private var restoreState = PurchaseRestoreState.idle
+    @State private var isConfirmingAccountDeletion = false
+    @State private var isDeletingAccount = false
+    @Environment(MirrorLibrary.self) private var library: MirrorLibrary?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -85,6 +88,20 @@ struct SettingsView: View {
 
                 legalRow("이용약관", url: LegalLinks.termsOfService)
 
+                // 계정을 만들 수 있으면 지울 수도 있어야 한다. 로그인한 사람에게만 보인다.
+                if session.server != nil {
+                    InkSeparator()
+
+                    Button {
+                        isConfirmingAccountDeletion = true
+                    } label: {
+                        InkListRow(title: "계정 삭제", showsChevron: true)
+                            .foregroundStyle(PaperTheme.ink)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .disabled(isDeletingAccount)
+                }
+
                 InkSeparator()
             }
             .padding(.horizontal, 20)
@@ -95,11 +112,63 @@ struct SettingsView: View {
         .navigationTitle("설정")
         .navigationBarTitleDisplayMode(.inline)
         .inkDialog(
+            "계정 삭제",
+            message: isConfirmingAccountDeletion ? accountDeletionMessage : nil,
+            isPresented: $isConfirmingAccountDeletion
+        ) {
+            [
+                InkDialogAction("취소", role: .secondary),
+                InkDialogAction("계정 삭제", role: .destructive) {
+                    Task { await deleteAccount() }
+                },
+            ]
+        }
+        .inkDialog(
             "준비 중",
             message: notice,
             isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
         ) {
             [InkDialogAction("확인", role: .primary)]
+        }
+    }
+
+    /// 계정을 지운다. **되돌릴 수 없다** — 그래서 무엇이 사라지는지 먼저 말한다.
+    ///
+    /// 이미 다른 사람이 산 상품은 그 사람에게 계속 제공된다는 것도 함께 알린다.
+    /// 판 사람이 떠난다고 산 사람의 권리가 사라지지 않기 때문이다.
+    private var accountDeletionMessage: String {
+        """
+        계정을 삭제하면 복구할 수 없어요.
+
+        • 남은 조각은 복구되지 않아요.
+        • 구매해서 보관 중인 콘텐츠에 더 이상 접근할 수 없어요.
+        • 판매 중인 상품은 상점에서 내려가요.
+        • 이미 다른 사람이 구매한 상품은 그 사람에게 계속 제공돼요.
+
+        Apple 계정 연결은 설정 > Apple 계정 > 로그인 관련 항목에서 직접 해제할 수 있어요.
+        """
+    }
+
+    private func deleteAccount() async {
+        guard let library else {
+            notice = "지금은 계정을 삭제할 수 없어요."
+            return
+        }
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+
+        switch await AccountDeletion.run(
+            session: session, library: library, stickers: StickerLibrary.live,
+            profile: profile, marketplace: marketplace
+        ) {
+        case .deleted:
+            // 로그아웃까지 끝났다. 화면은 자연히 로그인 전 상태로 돌아간다.
+            notice = "계정을 삭제했어요."
+        case .notSignedIn:
+            notice = "로그인이 필요해요."
+        case .failed(let message):
+            // **로컬은 하나도 지우지 않았다.** 그대로 다시 시도할 수 있다.
+            notice = message
         }
     }
 
