@@ -229,7 +229,7 @@ enum StoreCatalog {
             id: "art-pink-ribbon",
             name: "핑크 리본",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.980, green: 0.890, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "pink-ribbon",
@@ -241,7 +241,7 @@ enum StoreCatalog {
             id: "art-ink-heart",
             name: "잉크 하트",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.976, blue: 0.972)),
             artwork: StoreArtworkResource(
                 fileName: "ink-heart",
@@ -253,7 +253,7 @@ enum StoreCatalog {
             id: "art-cream-note",
             name: "크림 노트",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.976, green: 0.957, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "cream-note",
@@ -265,7 +265,7 @@ enum StoreCatalog {
             id: "art-lavender-star",
             name: "라벤더 스타",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.941, green: 0.929, blue: 0.965)),
             artwork: StoreArtworkResource(
                 fileName: "lavender-star",
@@ -277,7 +277,7 @@ enum StoreCatalog {
             id: "art-sky-cloud",
             name: "스카이 클라우드",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.925, green: 0.949, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "sky-cloud",
@@ -289,7 +289,7 @@ enum StoreCatalog {
             id: "art-mint-flower",
             name: "민트 플라워",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.918, green: 0.961, blue: 0.945)),
             artwork: StoreArtworkResource(
                 fileName: "mint-flower",
@@ -301,7 +301,7 @@ enum StoreCatalog {
             id: "art-gray-check",
             name: "그레이 체크",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.949, green: 0.945, blue: 0.937)),
             artwork: StoreArtworkResource(
                 fileName: "gray-check",
@@ -313,7 +313,7 @@ enum StoreCatalog {
             id: "art-red-point",
             name: "레드 포인트",
             creator: "꾸미러",
-            price: 0,
+            price: 1,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.949, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "red-point",
@@ -325,7 +325,7 @@ enum StoreCatalog {
             id: "art-lovely-bow",
             name: "러블리 보우",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.910, blue: 0.929)),
             artwork: StoreArtworkResource(
                 fileName: "lovely-bow",
@@ -337,7 +337,7 @@ enum StoreCatalog {
             id: "art-love-letter",
             name: "러브 레터",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.980, green: 0.933, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "love-letter",
@@ -349,7 +349,7 @@ enum StoreCatalog {
             id: "art-cherry-love",
             name: "체리 러브",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.925, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "cherry-love",
@@ -361,7 +361,7 @@ enum StoreCatalog {
             id: "art-angel-heart",
             name: "엔젤 하트",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.937, green: 0.953, blue: 0.976)),
             artwork: StoreArtworkResource(
                 fileName: "angel-heart",
@@ -373,7 +373,7 @@ enum StoreCatalog {
             id: "art-my-diary",
             name: "마이 다이어리",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.969, green: 0.945, blue: 0.890)),
             artwork: StoreArtworkResource(
                 fileName: "my-diary",
@@ -385,7 +385,7 @@ enum StoreCatalog {
             id: "art-checklist",
             name: "체크리스트",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.961, green: 0.961, blue: 0.957)),
             artwork: StoreArtworkResource(
                 fileName: "checklist",
@@ -397,7 +397,7 @@ enum StoreCatalog {
             id: "art-scrapbook",
             name: "스크랩북",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.973, green: 0.953, blue: 0.918)),
             artwork: StoreArtworkResource(
                 fileName: "scrapbook",
@@ -409,7 +409,7 @@ enum StoreCatalog {
             id: "art-cafe-note",
             name: "카페 노트",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.965, green: 0.945, blue: 0.925)),
             artwork: StoreArtworkResource(
                 fileName: "cafe-note",
@@ -421,7 +421,7 @@ enum StoreCatalog {
             id: "art-y2k-star",
             name: "Y2K 스타",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.878, green: 0.878, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "y2k-star",
@@ -433,7 +433,7 @@ enum StoreCatalog {
             id: "art-cyber-love",
             name: "사이버 러브",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.898, green: 0.914, blue: 0.976)),
             artwork: StoreArtworkResource(
                 fileName: "cyber-love",
@@ -445,7 +445,7 @@ enum StoreCatalog {
             id: "art-flash-girl",
             name: "플래시 걸",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.984, green: 0.902, blue: 0.941)),
             artwork: StoreArtworkResource(
                 fileName: "flash-girl",
@@ -457,7 +457,7 @@ enum StoreCatalog {
             id: "art-retro-pop",
             name: "레트로 팝",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.941, blue: 0.898)),
             artwork: StoreArtworkResource(
                 fileName: "retro-pop",
@@ -469,7 +469,7 @@ enum StoreCatalog {
             id: "art-birthday",
             name: "생일",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.961, blue: 0.902)),
             artwork: StoreArtworkResource(
                 fileName: "birthday",
@@ -481,7 +481,7 @@ enum StoreCatalog {
             id: "art-summer-trip",
             name: "여름 여행",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.910, green: 0.957, blue: 0.969)),
             artwork: StoreArtworkResource(
                 fileName: "summer-trip",
@@ -493,7 +493,7 @@ enum StoreCatalog {
             id: "art-spring-bloom",
             name: "봄 꽃",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.988, green: 0.945, blue: 0.937)),
             artwork: StoreArtworkResource(
                 fileName: "spring-bloom",
@@ -505,7 +505,7 @@ enum StoreCatalog {
             id: "art-winter-letter",
             name: "겨울 편지",
             creator: "꾸미러",
-            price: 4,
+            price: 3,
             style: MirrorStyle(frame: Color(red: 0.933, green: 0.953, blue: 0.973)),
             artwork: StoreArtworkResource(
                 fileName: "winter-letter",

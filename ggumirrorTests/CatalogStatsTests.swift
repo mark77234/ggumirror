@@ -37,6 +37,7 @@ private final class FakeCatalogBackend: CatalogBackend, @unchecked Sendable {
     var stats: [String: Int] = [:]
     var failure: Error?
     var calls: [String] = []
+    var purchased: Set<String> = []
     var sawToken = false
     /// 서버 쪽 기록. 멱등을 실제로 흉내 낸다.
     var recorded: Set<String> = []
@@ -67,6 +68,22 @@ private final class FakeCatalogBackend: CatalogBackend, @unchecked Sendable {
         sawToken = !accessToken.isEmpty
         try check()
         return try await ids.asyncMap { try await acquireTemplate(id: $0, accessToken: accessToken) }
+    }
+
+    /// 유료 구매. **가격을 받지 않는다** — 서버 표가 값을 정한다.
+    func purchaseTemplate(id: String, accessToken: String) async throws -> CatalogAcquisition {
+        calls.append("purchase(\(id))")
+        sawToken = !accessToken.isEmpty
+        try check()
+        purchased.insert(id)
+        return try await acquireTemplate(id: id, accessToken: accessToken)
+    }
+
+    func ownedTemplateIDs(accessToken: String) async throws -> [String] {
+        calls.append("owned")
+        sawToken = !accessToken.isEmpty
+        try check()
+        return purchased.sorted()
     }
 }
 

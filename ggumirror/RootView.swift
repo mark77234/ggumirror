@@ -116,6 +116,7 @@ struct RootView: View {
                     await shardStore.recoverUnfinished(session: server, wallet: shards)
                     // 이름도 계정을 따라간다. 로그아웃이면 `refresh`가 비운다.
                     await profile.refresh(session: server)
+                    await catalogStats.refreshOwned(session: server)
                 }
             }
             // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
@@ -170,6 +171,7 @@ struct RootView: View {
                     // 조각 상점을 열 때만 한다(거울 시작을 StoreKit에 묶지 않는다).
                     await shardStore.recoverUnfinished(session: session.server, wallet: shards)
                     await profile.refresh(session: session.server)
+                    await catalogStats.refreshOwned(session: session.server)
                 }
                 Task {
                     // 광고는 가장 무겁고(UMP 양식 · SDK 초기화 · ad load) 가장 덜 급하다.

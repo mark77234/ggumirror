@@ -15,6 +15,9 @@ struct TemplateDetailView: View {
     /// 열려 있으면 미리보기 화면이 떠 있다. **받기와 무관하다** — 여기서는 아무것도 사지 않는다.
     @State private var preview: MirrorPreviewSubject?
     @State private var showsStorageFull = false
+    @State private var isBuying = false
+    /// 잔액은 서버가 authority다. 산 뒤 다시 읽기만 한다.
+    @Environment(ShardWallet.self) private var wallet: ShardWallet?
     @Environment(CatalogStats.self) private var catalogStats
     @Environment(AuthSession.self) private var session
 
@@ -140,11 +143,13 @@ struct TemplateDetailView: View {
         .padding(.top, 4)
     }
 
-    /// 사용자 상품과 공유하는 상태 모델. 내장에는 서버 소유권 개념이 없다.
+    /// 사용자 상품과 **같은 상태 모델**을 쓴다. 1.1.0부터 내장에도 서버 소유권이 있다 —
+    /// 사고 나서 기기에서 지운 사람에게 다시 사라고 하지 않기 위해서다.
     private var cta: MirrorAcquireCTA {
         MirrorAcquireCTA.state(
             price: template.price,
             isSignedIn: session.server != nil,
+            ownsOnServer: catalogStats.isOwned(template.id),
             existsLocally: isOwned
         )
     }
@@ -164,11 +169,40 @@ struct TemplateDetailView: View {
             // **로컬 저장이 끝난 뒤에** 서버에 남긴다.
             Task { await catalogStats.recordAcquisition(template.id, session: session.server) }
         case .purchase:
-            // 내장 유료 템플릿의 조각 결제는 아직 서버 경로가 없다.
-            notice = "조각으로 받기는 다음 업데이트에서 열려요."
-        case .addToLibrary, .alreadyInLibrary, .ownListing:
+            Task { await buy() }
+        case .addToLibrary:
+            // 이미 서버가 아는 내 것이다. **다시 사지 않는다** — 담기만 한다.
+            addToLibrary()
+        case .alreadyInLibrary, .ownListing:
             break
         }
+    }
+
+    /// 조각을 내고 산다. **잔액을 여기서 계산하지 않는다** — 서버가 옮기고,
+    /// 우리는 서버가 준 값을 다시 읽는다.
+    private func buy() async {
+        guard !isBuying else { return }   // 연타로 두 번 보내지 않는다
+        isBuying = true
+        defer { isBuying = false }
+
+        if let failure = await catalogStats.purchase(template.id, session: session.server) {
+            notice = failure
+            return
+        }
+        // 산 것과 담는 것은 별개다(사용자 상품과 같은 2단계) — 여기서 자동으로
+        // 담지 않는다. 보관 공간이 없어도 소유권은 그대로 남는다.
+        await wallet?.refresh(session: session.server)
+        notice = "\(template.name)을(를) 샀어요. 내 거울에 추가할 수 있어요."
+    }
+
+    /// 산 것을 이 기기에 담는다. **조각이 빠지지 않는다.**
+    private func addToLibrary() {
+        guard let library else { return }
+        guard library.acquire(template) != nil else {
+            showsStorageFull = true
+            return
+        }
+        notice = "\(template.name)을(를) 내 거울에 담았어요."
     }
 
     /// 이 템플릿이 이미 내 거울에 있는가. `acquire`가 `MyMirror.id = template.id`로

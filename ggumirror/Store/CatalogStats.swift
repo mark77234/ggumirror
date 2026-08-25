@@ -40,6 +40,10 @@ nonisolated protocol CatalogBackend: Sendable {
     func reconcileTemplates(
         ids: [String], accessToken: String
     ) async throws -> [CatalogAcquisition]
+    /// 조각을 내고 산다. **가격을 보내지 않는다** — 서버 표가 값을 정한다.
+    func purchaseTemplate(id: String, accessToken: String) async throws -> CatalogAcquisition
+    /// 내가 가진 내장 템플릿 id.
+    func ownedTemplateIDs(accessToken: String) async throws -> [String]
 }
 
 // MARK: - 상태
@@ -96,6 +100,40 @@ final class CatalogStats {
         counts[result.templateId] = result.downloadCount
     }
 
+    /// 서버가 아는 **내가 가진** 내장 템플릿. 로그아웃하면 비운다.
+    private(set) var owned: Set<String> = []
+
+    func refreshOwned(session: ServerSession?) async {
+        guard let token = session?.accessToken else {
+            // 로그아웃은 비우는 것이다 — A가 산 것이 B에게 보이면 안 된다.
+            owned = []
+            return
+        }
+        if let ids = try? await backend.ownedTemplateIDs(accessToken: token) {
+            owned = Set(ids)
+        }
+    }
+
+    /// 이 템플릿을 이미 가지고 있는가(서버 기준).
+    func isOwned(_ templateID: String) -> Bool { owned.contains(templateID) }
+
+    /// 내장 템플릿을 산다. **조각은 서버가 옮긴다** — 여기서 잔액을 계산하지 않는다.
+    ///
+    /// - Returns: 실패 이유. 성공이면 `nil`.
+    func purchase(_ templateID: String, session: ServerSession?) async -> String? {
+        guard let token = session?.accessToken else { return "로그인이 필요해요." }
+        do {
+            let result = try await backend.purchaseTemplate(id: templateID, accessToken: token)
+            counts[result.templateId] = result.downloadCount
+            owned.insert(result.templateId)
+            return nil
+        } catch let error as BackendError {
+            return error.message
+        } catch {
+            return BackendError.unavailable.message
+        }
+    }
+
     /// 앱에 이미 있는 내장 템플릿을 한 번씩 따라잡는다.
     ///
     /// 예전 버전에서 받은 것과 로그아웃 상태에서 받은 것이 여기서 반영된다.
@@ -127,6 +165,7 @@ final class CatalogStats {
 
     /// 로그아웃. 다음 사용자에게 맞춰 본 기록을 물려주지 않는다.
     func clear() {
+        owned = []
         reconciledUserIDs.removeAll()
     }
 }

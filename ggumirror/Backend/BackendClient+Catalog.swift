@@ -44,6 +44,34 @@ extension BackendClient: CatalogBackend {
         )
     }
 
+    /// 내가 가진 내장 템플릿 id. **CTA가 이 값으로 갈린다.**
+    func ownedTemplateIDs(accessToken: String) async throws -> [String] {
+        struct Payload: Decodable { let templateIds: [String] }
+        let data = try await request(
+            "catalog/templates/mine", method: "GET", accessToken: accessToken
+        )
+        return try decodeCatalog(
+            Payload.self, from: data, path: "GET /catalog/templates/mine"
+        ).templateIds
+    }
+
+    /// 조각을 내고 내장 템플릿을 산다. **body가 없다** —
+    /// 가격도 수량도 사용자도 client가 정하는 자리가 없다. 값은 서버 표가 정한다.
+    ///
+    /// 이미 가진 것은 값을 내지 않고 그대로 돌려준다(`firstAcquisition=false`).
+    /// 같은 요청을 여러 번 보내도 조각은 한 번만 빠진다 — 서버가 멱등이다.
+    func purchaseTemplate(id: String, accessToken: String) async throws -> CatalogAcquisition {
+        let data = try await request(
+            "catalog/templates/\(try catalogPathComponent(id))/purchases",
+            method: "POST",
+            accessToken: accessToken
+        )
+        return try decodeCatalog(
+            CatalogAcquisition.self, from: data,
+            path: "POST /catalog/templates/{id}/purchases"
+        )
+    }
+
     /// 앱에 이미 있는 것을 한 번씩 따라잡는다. **서버가 멱등이다.**
     func reconcileTemplates(
         ids: [String], accessToken: String
