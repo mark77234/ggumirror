@@ -28,6 +28,9 @@ struct SettingsView: View {
     @State private var restoreState = PurchaseRestoreState.idle
     @State private var isConfirmingAccountDeletion = false
     @State private var isDeletingAccount = false
+    /// 운영자인가. **서버에 물어본 답이다** — 앱이 판단하지 않는다.
+    /// 확인 전에는 `nil`이고, 그동안 항목은 보이지 않는다.
+    @State private var isAdmin: Bool?
     @Environment(MirrorLibrary.self) private var library: MirrorLibrary?
     @Environment(\.openURL) private var openURL
 
@@ -88,6 +91,18 @@ struct SettingsView: View {
 
                 legalRow("이용약관", url: LegalLinks.termsOfService)
 
+                // 운영자에게만 보인다. **보인다고 권한이 생기는 것이 아니다** —
+                // 화면을 강제로 열어도 서버가 모든 요청을 다시 판단한다.
+                if isAdmin == true {
+                    InkSeparator()
+
+                    NavigationLink(value: SettingsRoute.adminStore) {
+                        InkListRow(title: "상점 관리", showsChevron: true)
+                    }
+                    .buttonStyle(InkPressStyle())
+                    .accessibilityIdentifier("adminStore")
+                }
+
                 // 계정을 만들 수 있으면 지울 수도 있어야 한다. 로그인한 사람에게만 보인다.
                 if session.server != nil {
                     InkSeparator()
@@ -111,6 +126,9 @@ struct SettingsView: View {
         .paperBackground()
         .navigationTitle("설정")
         .navigationBarTitleDisplayMode(.inline)
+        // 실패하면 항목이 보이지 않는다. **일반 사용자의 설정을 깨뜨리지 않는다** —
+        // 대부분에게 403이 정상 답이고, 그것으로 화면이 흔들리면 안 된다.
+        .task(id: session.server?.userID) { await checkAdmin() }
         .inkDialog(
             "계정 삭제",
             message: isConfirmingAccountDeletion ? accountDeletionMessage : nil,
@@ -173,6 +191,18 @@ struct SettingsView: View {
     }
 
     /// 법적 문서 한 줄. 주소가 아직 없으면 **열지 않고** 준비 중이라고 말한다.
+    /// 운영자인지 서버에 물어본다. **답이 아니면 항목을 보이지 않는다.**
+    ///
+    /// 네트워크가 안 되거나 로그인하지 않았으면 그냥 없는 것으로 둔다 —
+    /// 여기서 오류창을 띄우면 일반 사용자가 설정을 열 때마다 경고를 본다.
+    private func checkAdmin() async {
+        guard let token = session.server?.accessToken else {
+            isAdmin = false
+            return
+        }
+        isAdmin = (try? await BackendClient().isAdmin(accessToken: token)) ?? false
+    }
+
     private func legalRow(_ title: String, url: URL?) -> some View {
         Button {
             guard let url else {
@@ -237,6 +267,9 @@ enum SettingsRoute: Hashable {
     case profile
     case privacy
     case terms
+    /// 운영자 전용. 이 경로가 있다고 권한이 생기지 않는다 — 화면 안의 모든
+    /// 요청을 서버가 다시 판단한다.
+    case adminStore
 }
 
 /// 예전 프로필 저장소. **더 이상 읽지 않는다.**

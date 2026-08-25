@@ -93,14 +93,22 @@ struct MyListingsSection: View {
             .labelStyle(.titleAndIcon)
             .imageScale(.small)
 
+            if listing.isModerated {
+                // **다시 판매 버튼을 주지 않는다.** 서버가 거절하므로 버튼이 있으면
+                // 눌러도 안 되는 버튼이 된다 — 사유는 여기서 말하지 않는다.
+                Text("운영자에 의해 판매가 중지되었어요.")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+            }
+
             HStack(spacing: 8) {
                 if listing.isPublished {
                     action("상점에서 내리기") { await unpublish(listing) }
                 }
-                if listing.isUnlisted {
+                if listing.isUnlisted && !listing.isModerated {
                     action("다시 올리기") { await republish(listing) }
                 }
-                if listing.isDraft {
+                if listing.isDraft && !listing.isModerated {
                     // **등록을 이어서 마친다.** 새 snapshot도 새 listing도 만들지 않는다 —
                     // 이 draft가 이미 가리키는 불변 snapshot을 그대로 올린다.
                     action("상점에 올리기") { await resume(listing) }
