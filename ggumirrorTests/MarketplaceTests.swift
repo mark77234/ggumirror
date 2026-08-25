@@ -189,7 +189,8 @@ private func listing(
 ) -> MarketplaceListing {
     MarketplaceListing(
         id: id, contentType: contentType, title: "상품 \(id)", description: "설명",
-        priceShards: price, downloadCount: downloads, likeCount: likes, publishedAt: published
+        priceShards: price, downloadCount: downloads, likeCount: likes, publishedAt: published,
+        sellerDisplayName: nil
     )
 }
 

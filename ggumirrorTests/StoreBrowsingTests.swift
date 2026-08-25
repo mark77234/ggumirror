@@ -30,7 +30,8 @@ private func listing(
     return MarketplaceListing(
         id: id, contentType: type, title: id, description: "",
         priceShards: price, downloadCount: downloads, likeCount: likes,
-        publishedAt: formatter.date(from: published) ?? .distantPast
+        publishedAt: formatter.date(from: published) ?? .distantPast,
+        sellerDisplayName: nil
     )
 }
 

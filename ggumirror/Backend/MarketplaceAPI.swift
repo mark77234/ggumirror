@@ -18,7 +18,7 @@ import Foundation
 
 /// `GET /marketplace/listings` · `GET /marketplace/listings/{id}` 응답 하나.
 ///
-/// 여덟 칸이 전부다. 판매자 신원과 저장 위치는 서버가 공개하지 않는다.
+/// 판매자 **신원**과 저장 위치는 서버가 공개하지 않는다 — 나오는 것은 이름뿐이다.
 nonisolated struct MarketplaceListing: Decodable, Hashable, Identifiable, Sendable {
     let id: String
     let contentType: String
@@ -29,6 +29,10 @@ nonisolated struct MarketplaceListing: Decodable, Hashable, Identifiable, Sendab
     let likeCount: Int
     /// 상점에 **처음** 올라온 시각. 다시 올려도 바뀌지 않는다(서버 authority).
     let publishedAt: Date
+    /// 판매자가 정한 이름. **없을 수 있다** — 아직 이름을 정하지 않은 판매자와
+    /// 1.0.7 시절에 올라온 상품이 그렇다. 가짜 이름을 지어내지 않는다.
+    /// `decodeIfPresent`가 아니라 optional이라 예전 응답도 그대로 읽힌다.
+    let sellerDisplayName: String?
 }
 
 /// 판매자 자신이 보는 모양. `status`와 `publishedAt: nil`이 더 있다.

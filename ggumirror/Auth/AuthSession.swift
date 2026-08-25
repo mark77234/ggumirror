@@ -108,7 +108,11 @@ final class AuthSession {
 
         let session: ServerSession
         do {
-            session = try await backend.signIn(identityToken: identityToken, nonce: nonce.raw)
+            // Apple이 이름을 준 **최초 로그인에서만** 값이 있다. 서버는 아직 이름이
+            // 없을 때만 이것을 쓰고, 이미 사용자가 정한 이름은 덮지 않는다.
+            session = try await backend.signIn(
+                identityToken: identityToken, nonce: nonce.raw, displayName: result.displayName
+            )
         } catch {
             // 서버가 거부했거나 닿지 못했다. **로그인 상태로 만들지 않는다.**
             // 거울 / 스티커 / 등록 준비는 하나도 건드리지 않는다.

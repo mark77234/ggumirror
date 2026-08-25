@@ -29,6 +29,8 @@ struct RootView: View {
     @State private var aiStickers = AIStickerService.live
     /// 조각 충전. StoreKit 거래 수신은 앱 수명 동안 하나만 돈다.
     @State private var shardStore = ShardPurchaseController.live
+    /// 이름의 authority. 로그아웃하면 비운다 — A의 이름이 B에게 보이면 안 된다.
+    @State private var profile = ProfileSession()
     /// 상점 서버 상태. **하나만 둔다** — 화면마다 목록을 따로 받아오면
     /// 같은 상품의 좋아요 수가 화면마다 달라 보인다.
     @State private var marketplace = MarketplaceStore.live
@@ -59,6 +61,7 @@ struct RootView: View {
             .environment(adsConsent)
             .environment(aiStickers)
             .environment(shardStore)
+            .environment(profile)
             .environment(marketplace)
             .environment(catalogStats)
             .environment(mirrorCapacity)
@@ -108,6 +111,8 @@ struct RootView: View {
                     }
                     // 로그인이 준비되면 못 끝낸 결제를 되찾는다. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
                     await shardStore.recoverUnfinished(session: server, wallet: shards)
+                    // 이름도 계정을 따라간다. 로그아웃이면 `refresh`가 비운다.
+                    await profile.refresh(session: server)
                 }
             }
             // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
@@ -159,6 +164,7 @@ struct RootView: View {
                     // **상품 조회(`Product.products`)는 여기서 하지 않는다** —
                     // 조각 상점을 열 때만 한다(거울 시작을 StoreKit에 묶지 않는다).
                     await shardStore.recoverUnfinished(session: session.server, wallet: shards)
+                    await profile.refresh(session: session.server)
                 }
                 Task {
                     // 광고는 가장 무겁고(UMP 양식 · SDK 초기화 · ad load) 가장 덜 급하다.

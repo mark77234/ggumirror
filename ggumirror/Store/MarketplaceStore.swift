@@ -540,7 +540,8 @@ nonisolated extension MarketplaceListing {
             priceShards: priceShards,
             downloadCount: downloadCount ?? self.downloadCount,
             likeCount: likeCount ?? self.likeCount,
-            publishedAt: publishedAt
+            publishedAt: publishedAt,
+            sellerDisplayName: sellerDisplayName
         )
     }
 }

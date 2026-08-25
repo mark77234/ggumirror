@@ -58,9 +58,11 @@ struct MarketplaceGalleryItem: View {
     private var cardModel: StoreMirrorCardModel {
         StoreMirrorCardModel(
             title: listing.title,
-            // **판매자 이름을 지어내지 않는다.** 공개 응답에 그런 값이 없다
-            // (seller profile이 아직 없고, 내부 id를 화면에 쓰지 않는다).
-            subtitle: nil,
+            // 1.1.0부터 서버가 판매자 **이름**을 준다(내부 id는 여전히 주지 않는다).
+            // 아직 이름을 정하지 않은 판매자와 1.0.7 시절 상품은 `nil`이고,
+            // 그때는 가짜 이름을 지어내지 않고 자리만 비운다 —
+            // 자리는 카드가 늘 잡고 있어 높이가 데이터에 따라 달라지지 않는다.
+            subtitle: listing.sellerDisplayName,
             price: listing.priceShards,
             downloadCount: listing.downloadCount,
             footnote: listing.publishedAtLabel
@@ -315,6 +317,15 @@ struct MarketplaceListingDetailView: View {
                     .font(InkFont.pageTitle)
                     .foregroundStyle(PaperTheme.ink)
                     .multilineTextAlignment(.center)
+
+                // 누가 올렸는지. **이름뿐이다** — 내부 id는 서버가 주지도 않는다.
+                // 이름이 없는 판매자는 줄 자체를 그리지 않는다(가짜 이름 금지).
+                if let seller = listing.sellerDisplayName, !seller.isEmpty {
+                    Text(seller)
+                        .font(InkFont.secondary)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                        .accessibilityLabel("판매자 \(seller)")
+                }
 
                 if !listing.description.isEmpty {
                     Text(listing.description)

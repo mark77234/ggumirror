@@ -11,8 +11,11 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AuthSession.self) private var session
     @Environment(AdsConsent.self) private var adsConsent
-    @AppStorage(ProfileStore.nameKey) private var profileName = ProfileStore.defaultName
-    @AppStorage(ProfileStore.tagsKey) private var profileTags = ""
+    /// 이름의 authority는 **서버**다. `UserDefaults`에 두지 않는다 —
+    /// 계정을 바꿔도 남아서 A의 이름이 B에게 보였다.
+    @Environment(ProfileSession.self) private var profile: ProfileSession?
+
+    private var profileDisplayName: String? { profile?.displayName }
     @AppStorage("notificationsOn") private var notificationsOn = true
 
     @State private var notice: String?
@@ -98,13 +101,13 @@ struct SettingsView: View {
             InkAvatar(size: 56)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(profileName.isEmpty ? ProfileStore.defaultName : profileName)
+                // **모두에게 같은 기본 이름을 보여 주지 않는다.** 아직 정하지 않았으면
+                // 그렇게 말하고, 그 문구는 저장되는 값이 아니다.
+                Text(profileDisplayName ?? DisplayNamePolicy.placeholder)
                     .font(InkFont.cardTitle)
-                    .foregroundStyle(PaperTheme.ink)
-                    .lineLimit(1)
-                Text(ProfileStore.tagLine(from: profileTags))
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .foregroundStyle(
+                        profileDisplayName == nil ? PaperTheme.secondaryInk : PaperTheme.ink
+                    )
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -118,7 +121,7 @@ struct SettingsView: View {
         .frame(minHeight: 44)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("프로필, \(profileName)")
+        .accessibilityLabel("프로필, \(profileDisplayName ?? DisplayNamePolicy.placeholder)")
     }
 }
 
@@ -129,36 +132,11 @@ enum SettingsRoute: Hashable {
     case terms
 }
 
-/// 아직 backend가 없어 프로필은 UserDefaults에만 저장한다.
-enum ProfileStore {
-    static let nameKey = "profileName"
-    static let tagsKey = "profileTags"
-    static let defaultName = "거울지기"
-
-    static func tags(from raw: String) -> Set<String> {
-        Set(raw.split(separator: ",").map(String.init))
-    }
-
-    static func raw(from tags: Set<String>) -> String {
-        ProfileTag.allCases.map(\.rawValue).filter(tags.contains).joined(separator: ",")
-    }
-
-    static func tagLine(from raw: String) -> String {
-        let selected = ProfileTag.allCases.map(\.rawValue).filter(tags(from: raw).contains)
-        return selected.isEmpty ? "태그를 골라 스타일을 소개해 보세요" : selected.joined(separator: " · ")
-    }
-}
-
-enum ProfileTag: String, CaseIterable, Identifiable {
-    case y2k = "Y2K"
-    case ribbon = "리본"
-    case cute = "큐트"
-    case minimal = "미니멀"
-    case vintage = "빈티지"
-    case fashion = "패션"
-
-    var id: String { rawValue }
-}
+/// 예전 프로필 저장소. **더 이상 읽지 않는다.**
+///
+/// 이름은 서버가 authority이고(`ProfileSession`), 태그 기능은 없앴다.
+/// 여기 남아 있던 `profileName` · `profileTags` 값을 **지우지 않는다** —
+/// 지울 이유가 없고, 지우는 코드가 곧 새 버그다. 그냥 읽지 않는다.
 
 #Preview {
     NavigationStack { SettingsView() }

@@ -47,7 +47,13 @@ final class FakeAuthBackend: AuthBackend, @unchecked Sendable {
         self.verifyOutcome = signInOutcome
     }
 
-    func signIn(identityToken: String, nonce: String) async throws -> ServerSession {
+    /// 마지막 로그인 요청에 담긴 이름. Apple이 준 값이 실제로 실려 가는지 본다.
+    var sawDisplayName: String?
+
+    func signIn(
+        identityToken: String, nonce: String, displayName: String? = nil
+    ) async throws -> ServerSession {
+        sawDisplayName = displayName
         receivedIdentityTokens.append(identityToken)
         receivedNonces.append(nonce)
         switch signInOutcome {
