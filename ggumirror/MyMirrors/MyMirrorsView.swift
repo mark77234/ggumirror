@@ -24,6 +24,8 @@ struct MyMirrorsView: View {
     @State private var wantsArtworkImport = false
     @State private var isChoosingCreateStyle = false
     @State private var isImportingArtwork = false
+    @State private var wantsAIMirror = false
+    @State private var isMakingAIMirror = false
     /// 상점 등록 준비 중인 거울. 실제 등록이 아니라 판매 정보 작성이다.
     @State private var publishTarget: MyMirror?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -115,13 +117,23 @@ struct MyMirrorsView: View {
                     wantsArtworkImport = false
                     isImportingArtwork = true
                 }
+                if wantsAIMirror {
+                    wantsAIMirror = false
+                    isMakingAIMirror = true
+                }
             }
         ) {
             [
                 InkDialogAction("꾸미러에서 만들기", role: .primary) { onCreateMirror(.blank) },
                 InkDialogAction("외부에서 만들기") { wantsArtworkImport = true },
+                InkDialogAction("AI로 만들기") { wantsAIMirror = true },
                 InkDialogAction("취소"),
             ]
+        }
+        .inkBottomSheet(isPresented: $isMakingAIMirror, size: .fraction(0.92)) {
+            NavigationStack {
+                AIMirrorView(library: library) {}
+            }
         }
         .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { mirror in
             // 저장 때 쓰는 이름 시트를 그대로 쓴다 — 입력 규칙과 버튼 규칙이 같다.

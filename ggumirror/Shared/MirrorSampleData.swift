@@ -59,6 +59,20 @@ enum MirrorOrigin: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+/// 이 거울이 **어떻게 만들어졌는가.**
+///
+/// `MirrorOrigin`에 case를 더하지 않는다 — 그쪽은 "내가 만든 / 구매한 / 판매 중"이라
+/// 출처와 상점 상태가 섞여 있고, AI를 거기 넣으면 AI로 만든 거울이 `내가 만든`
+/// 목록에서 사라진다. 만든 방법은 **따로** 적는다.
+nonisolated enum MirrorCreationSource: String, Codable, Hashable {
+    /// 앱 안에서 사람이 꾸민 것.
+    case handmade
+    /// 바깥에서 만들어 가져온 것.
+    case imported
+    /// AI가 그려 준 것. **한 번 붙으면 떼지 않는다** — 기록이다.
+    case aiGenerated
+}
+
 enum MyMirrorFilter: String, CaseIterable, Identifiable {
     case all = "전체"
     case made = "내가 만든"
@@ -90,6 +104,9 @@ struct MyMirror: Identifiable, Hashable {
     var texts: [TextObject] = []
     /// 외부 그림 앱에서 가져온 전체 캔버스 디자인.
     var importedArtworks: [ImportedArtworkObject] = []
+    /// 어떻게 만들어졌는가. **없을 수 있다** — 이 값이 생기기 전에 만든 거울이 그렇다.
+    /// 이름이나 파일로 추측하지 않는다. 모르면 모르는 채로 둔다.
+    var creationSource: MirrorCreationSource?
 }
 
 /// 내 거울 보관 정책.
@@ -419,7 +436,10 @@ final class MirrorLibrary {
     func save(
         _ design: MirrorDesign,
         name rawName: String,
-        context: MirrorEditorContext
+        context: MirrorEditorContext,
+        /// 어떻게 만들었는가. **새로 만들 때만** 적힌다 — 기존 거울을 고칠 때
+        /// 출처가 바뀌면 안 된다(AI로 만든 거울을 손으로 고쳐도 AI 기록은 남는다).
+        creationSource: MirrorCreationSource? = nil
     ) -> MirrorSaveOutcome {
         if context == .editCurrent,
            let index = mirrors.firstIndex(where: { $0.id == design.id }) {
@@ -457,7 +477,8 @@ final class MirrorLibrary {
             // 사진 / 외부 디자인은 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers,
             texts: design.texts,
-            importedArtworks: design.importedArtworks
+            importedArtworks: design.importedArtworks,
+            creationSource: creationSource
         )
         mirrors.append(copy)
         currentID = copy.id

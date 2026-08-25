@@ -252,6 +252,7 @@ extension ImportedArtworkObject: Codable {
 extension MyMirror: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, origin, style, strokes, stickers, texts, importedArtworks
+        case creationSource
     }
 
     init(from decoder: Decoder) throws {
@@ -271,7 +272,11 @@ extension MyMirror: Codable {
             // schema v1에는 이 키가 없다. 빈 배열로 읽히는 것이 곧 v1 → v2 마이그레이션이다.
             importedArtworks: try container.decodeIfPresent(
                 [ImportedArtworkObject].self, forKey: .importedArtworks
-            ) ?? []
+            ) ?? [],
+            // 이 값이 생기기 전 파일에는 없다. **없는 것이 정상이다.**
+            creationSource: try container.decodeIfPresent(
+                MirrorCreationSource.self, forKey: .creationSource
+            )
         )
     }
 
@@ -285,6 +290,7 @@ extension MyMirror: Codable {
         try container.encode(stickers, forKey: .stickers)
         try container.encode(texts, forKey: .texts)
         try container.encode(importedArtworks, forKey: .importedArtworks)
+        try container.encodeIfPresent(creationSource, forKey: .creationSource)
     }
 }
 
