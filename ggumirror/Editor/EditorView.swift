@@ -7,6 +7,7 @@
 //
 
 import PhotosUI
+import StoreKit
 import SwiftUI
 
 struct EditorView: View {
@@ -64,6 +65,10 @@ struct EditorView: View {
     @State private var pendingCreatorRequest: StickerCreatorRequest?
     @State private var creatorRequest: StickerCreatorRequest?
     @Environment(\.dismiss) private var dismiss
+    /// Apple 공식 리뷰 요청. **우리가 별점 UI를 만들지 않는다.**
+    @Environment(\.requestReview) private var requestReview
+    /// 언제 물어봐도 되는지 아는 값. optional이라 이 화면을 따로 그리는 곳에서도 안전하다.
+    @Environment(ReviewPromptTracker.self) private var reviewPrompt: ReviewPromptTracker?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -433,6 +438,7 @@ struct EditorView: View {
         switch library.save(design, name: draftName, context: saveContext) {
         case .updated:
             isNamingMirror = false
+            recordSuccessfulSave()
             onSaved()
             dismiss()
         case .created(let id, let name):
@@ -441,12 +447,24 @@ struct EditorView: View {
             design.id = id
             design.name = name
             saveContext = .editCurrent
+            recordSuccessfulSave()
             onSaved()
             dismiss()
         case .needsMoreSlots:
             isNamingMirror = false
             if !library.hasFreeMirrorSlot { showsSlotFull = true }
         }
+    }
+
+    /// **성공한 직후에만** 리뷰를 묻는다. 저장 실패나 보관 공간 부족에서는 묻지 않는다 —
+    /// 방금 막힌 사람에게 별점을 부탁하는 셈이 된다.
+    ///
+    /// 실제로 창이 뜰지는 OS가 정한다. 우리는 물어봐도 되는 상태인지만 판단한다.
+    private func recordSuccessfulSave() {
+        reviewPrompt?.recordSuccessfulSave()
+        guard reviewPrompt?.shouldRequest() == true else { return }
+        reviewPrompt?.recordRequestAttempt()
+        requestReview()
     }
 
     // MARK: - 사진 스티커

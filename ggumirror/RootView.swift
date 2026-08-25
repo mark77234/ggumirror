@@ -31,6 +31,8 @@ struct RootView: View {
     @State private var shardStore = ShardPurchaseController.live
     /// 이름의 authority. 로그아웃하면 비운다 — A의 이름이 B에게 보이면 안 된다.
     @State private var profile = ProfileSession()
+    /// 리뷰를 언제 물어볼지 아는 값. 기기 기준이라 서버에 아무것도 보내지 않는다.
+    @State private var reviewPrompt = ReviewPromptTracker()
     /// 상점 서버 상태. **하나만 둔다** — 화면마다 목록을 따로 받아오면
     /// 같은 상품의 좋아요 수가 화면마다 달라 보인다.
     @State private var marketplace = MarketplaceStore.live
@@ -62,6 +64,7 @@ struct RootView: View {
             .environment(aiStickers)
             .environment(shardStore)
             .environment(profile)
+            .environment(reviewPrompt)
             .environment(marketplace)
             .environment(catalogStats)
             .environment(mirrorCapacity)
@@ -159,6 +162,8 @@ struct RootView: View {
                     await shards.refresh(session: session.server)
                     await aiStickers.refresh(session: session.server)
                     // StoreKit 거래 수신은 **한 번만** 시작한다(내부에서 보장).
+                    // 앱을 연 횟수. 반복 사용자에게만 리뷰를 묻기 위한 값이다.
+                    reviewPrompt.recordLaunch()
                     shardStore.startListening(session: { session.server }, wallet: shards)
                     // 못 끝낸 결제 되찾기. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
                     // **상품 조회(`Product.products`)는 여기서 하지 않는다** —
