@@ -80,30 +80,15 @@ struct MarketplaceGalleryItem: View {
 
     /// **칸 크기는 종류가 정하고 그림은 그 안에 들어간다.**
     /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
+    /// **칸 크기는 카드가 정하고 그리는 규칙은 공용 view가 갖는다.**
+    /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
     private var previewImage: some View {
         let shape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
-        let type = listing.contentType
-        return ZStack {
-            if ListingPreviewStyle.showsTransparency(for: type) {
-                // 투명한 것이 정상이라 바탕을 깔아야 보인다.
-                TransparencyCheckerboard(cell: 10).clipShape(shape)
-            } else {
-                shape.fill(PaperTheme.subtleSurface)
-            }
-
-            if let preview, let image = UIImage(data: preview) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: ListingPreviewStyle.contentMode(for: type))
-                    .clipShape(shape)
-            } else {
-                // 실패/대기 모두 같은 자리표시자다. 가짜 그림을 만들지 않는다.
-                Image(systemName: "photo")
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(PaperTheme.separator)
-            }
-        }
-        .aspectRatio(ListingPreviewStyle.aspectRatio(for: type), contentMode: .fit)
+        return MarketplaceListingPreview(
+            contentType: listing.contentType,
+            data: preview,
+            shape: shape
+        )
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
     }
 

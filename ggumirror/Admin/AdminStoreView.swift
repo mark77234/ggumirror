@@ -384,17 +384,18 @@ struct AdminStoreView: View {
         )
     }
 
+    /// 상품 미리보기. **상점과 같은 규칙으로 그린다.**
+    ///
+    /// 예전에는 여기서 `scaledToFill`을 직접 적고 종류를 보지 않아서, 스티커가
+    /// 거울 모양 칸에 꽉 채워져 잘렸다. 크기와 테두리만 이 화면이 정한다.
     private func preview(_ listing: AdminListing) -> some View {
         let shape = UnevenRoundedRectangle.ink(14, 12, 15, 13)
-        return Group {
-            if let data = store.preview(listing.id), let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                PaperTheme.subtleSurface
-            }
-        }
-        .frame(width: 62, height: 62 * MirrorCanvas.aspectRatio)
-        .clipShape(shape)
+        return MarketplaceListingPreview(
+            contentType: listing.contentType,
+            data: store.preview(listing.id),
+            shape: shape
+        )
+        .frame(width: 62)
         .overlay { shape.stroke(PaperTheme.separator, lineWidth: 1.2) }
     }
 

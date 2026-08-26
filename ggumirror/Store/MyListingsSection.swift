@@ -134,36 +134,20 @@ struct MyListingsSection: View {
     }
 
     /// 상품 미리보기. 카드와 같은 테두리 · 같은 비율이다 — 새 디자인을 만들지 않는다.
+    /// 상품 미리보기. 카드와 같은 테두리 · **상점과 같은 그리기 규칙**이다.
+    ///
+    /// 예전에는 `.fill`을 직접 적어 두고 종류를 보지 않아 스티커가 잘렸다.
     private func preview(_ listing: MarketplaceOwnedListing) -> some View {
         let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
-        return ZStack {
-            shape.fill(PaperTheme.subtleSurface)
-            if let data = store.myPreviews[listing.id], let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .clipShape(shape)
-            } else if store.myPreviewFailures.contains(listing.id) {
-                // 실패는 실패라고 둔다 — 가짜 그림을 만들지 않는다.
-                Label("미리보기를 불러오지 못했어요", systemImage: "photo")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                    .labelStyle(.titleAndIcon)
-            } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(PaperTheme.separator)
-            }
-        }
-        .aspectRatio(MirrorStyle.aspectRatio, contentMode: .fit)
+        return MarketplaceListingPreview(
+            contentType: listing.contentType,
+            data: store.myPreviews[listing.id],
+            didFail: store.myPreviewFailures.contains(listing.id),
+            shape: shape
+        )
         .frame(maxHeight: 220)
         .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
-        .accessibilityLabel(
-            store.myPreviews[listing.id] != nil
-                ? "\(listing.title) 미리보기"
-                : (store.myPreviewFailures.contains(listing.id)
-                    ? "미리보기를 불러오지 못했어요" : "미리보기를 불러오는 중")
-        )
+        .accessibilityHidden(true)
     }
 
     private func action(_ title: String, work: @escaping () async -> Void) -> some View {
