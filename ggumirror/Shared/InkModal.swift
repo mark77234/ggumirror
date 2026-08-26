@@ -226,6 +226,8 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
 
     /// 끌어내리는 중의 이동량. 손을 떼면 0으로 돌아가거나 닫힌다.
     @State private var drag: CGFloat = 0
+    /// 내용이 잠갔는가. 되돌릴 수 없는 일이 도는 동안 참이다.
+    @State private var isLocked = false
 
     func body(content: Content) -> some View {
         content
@@ -238,7 +240,8 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
             .inkModalPresentation(
                 isPresented: $isPresented,
                 alignment: .bottom,
-                dismissesOnBackgroundTap: dismissesOnBackgroundTap,
+                // 잠겨 있으면 배경을 눌러도 닫히지 않는다 — 끌기와 같은 규칙이다.
+                dismissesOnBackgroundTap: dismissesOnBackgroundTap && !isLocked,
                 onBackgroundTap: close,
                 onDismiss: onDismiss
             ) {
@@ -260,11 +263,15 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
             InkSheetHandle()
                 .padding(.top, 10)
                 .padding(.bottom, 6)
+                // 잠겨 있는 동안은 손잡이도 흐리게 — 닫을 수 없다는 것이 보여야 한다.
+                .opacity(isLocked ? 0.35 : 1)
 
             sheetContent()
                 .frame(maxWidth: .infinity)
                 // 내용은 이 손잡이로만 닫는다. 시스템 dismiss는 뒤 화면을 닫아 버린다.
                 .environment(\.inkModalDismiss) { close() }
+                // 내용이 "지금 닫으면 안 된다"고 말할 수 있게 한다.
+                .onPreferenceChange(InkSheetLockKey.self) { isLocked = $0 }
         }
         .frame(maxWidth: .infinity)
         .modifier(SheetHeight(size: size, available: available))
@@ -272,8 +279,14 @@ private struct InkBottomSheetModifier<SheetContent: View>: ViewModifier {
         .offset(y: max(drag, 0))
         .gesture(
             DragGesture()
-                .onChanged { drag = max($0.translation.height, 0) }
+                .onChanged { if !isLocked { drag = max($0.translation.height, 0) } }
                 .onEnded { value in
+                    // **잠겨 있으면 쓸어내려도 닫히지 않는다.**
+                    // 되돌릴 수 없는 일이 도는 중에 손짓 하나로 결과를 잃지 않게 한다.
+                    guard !isLocked else {
+                        withAnimation(InkMotion.settle) { drag = 0 }
+                        return
+                    }
                     if value.translation.height > 110 || value.predictedEndTranslation.height > 260 {
                         close()
                     } else {
@@ -557,4 +570,28 @@ private struct InkItemSheetModifier<Item: Identifiable, SheetContent: View>: Vie
         }
     }
     return Demo()
+}
+
+
+// MARK: - 시트 닫기 잠금
+
+/// 시트 내용이 "지금은 닫으면 안 된다"고 알리는 통로.
+///
+/// 시스템 `.interactiveDismissDisabled`를 쓸 수 없다 — 이 시트는 실제
+/// presentation이 아니라 **커스텀 오버레이**라서 그 modifier가 닿지 않는다.
+/// 그래서 같은 뜻을 preference로 올린다.
+struct InkSheetLockKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+extension View {
+    /// 되돌릴 수 없는 일이 도는 동안 시트가 닫히지 않게 한다.
+    ///
+    /// 손잡이 끌기와 배경 탭이 모두 막힌다. 일이 끝나면 다시 닫을 수 있다.
+    func inkSheetDismissDisabled(_ disabled: Bool) -> some View {
+        preference(key: InkSheetLockKey.self, value: disabled)
+    }
 }

@@ -85,6 +85,13 @@ struct StoreMirrorCard<Preview: View>: View {
             preview()
                 .frame(maxWidth: .infinity)
                 .aspectRatio(StoreMirrorCardMetrics.previewRatio, contentMode: .fit)
+                // **맞춘 뒤 다시 가운데로 놓는다.**
+                //
+                // `.aspectRatio(.fit)`는 맞춘 크기 그대로를 내놓는다. 목록에서는
+                // 칸 너비를 꽉 채우니 차이가 없지만, 상세처럼 **높이가 제한되면**
+                // 그림이 좁아지고 — 이 VStack이 `.leading`이라 그대로 왼쪽에 붙었다.
+                // 비율도 content mode도 그대로 두고 놓이는 자리만 고친다.
+                .frame(maxWidth: .infinity, alignment: .center)
                 .clipped()
                 .padding(.bottom, StoreMirrorCardMetrics.previewSpacing)
 

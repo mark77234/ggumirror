@@ -298,6 +298,8 @@ struct MarketplaceListingDetailView: View {
     @State private var preview: MirrorPreviewSubject?
     @State private var isImporting = false
     @State private var didImport = false
+    /// 방금 산 거울을 내 거울로 가져올지 묻는 중.
+    @State private var showsRegistrationPrompt = false
 
     private var isOwned: Bool { store.purchasedListingIDs.contains(listing.id) }
     private var isLiked: Bool { store.likedListingIDs.contains(listing.id) }
@@ -348,7 +350,7 @@ struct MarketplaceListingDetailView: View {
             .padding(.horizontal, 20)
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+        .inkTabBarSafeContent()
         .paperBackground()
         .navigationTitle(listing.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -360,6 +362,23 @@ struct MarketplaceListingDetailView: View {
             isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
         ) {
             [InkDialogAction("확인", role: .primary)]
+        }
+        .inkDialog(
+            "구매 완료!",
+            message: showsRegistrationPrompt
+                ? "이 거울은 구매가 완료됐어요.\n실제로 사용하려면 내 거울에 등록해주세요."
+                : nil,
+            isPresented: $showsRegistrationPrompt
+        ) {
+            [
+                // **기존 등록 흐름을 그대로 쓴다.** 새 복사 경로를 만들지 않는다 —
+                // 보관 공간 확인도 실패 안내도 거기에 이미 있다.
+                InkDialogAction("내 거울에 등록하기", role: .primary) {
+                    Task { await runImport() }
+                },
+                // 누르지 않아도 산 것은 그대로 남는다. 몰래 등록하지 않는다.
+                InkDialogAction("나중에", role: .secondary),
+            ]
         }
     }
 
@@ -449,12 +468,23 @@ struct MarketplaceListingDetailView: View {
             notice = store.failure?.message
             return
         }
+        // 지갑을 서버 authority로 다시 맞춘다.
+        await wallet?.refresh(session: session)
+
+        // **산 것과 내 거울에 있는 것은 다른 일이다.**
+        //
+        // 구매는 소유권이고, 실제로 쓰려면 이 기기의 내 거울로 가져와야 한다.
+        // 그 사실을 말해 주지 않으면 "샀는데 왜 목록에 없지?"가 된다.
+        // 스티커에는 이 안내를 쓰지 않는다 — 거울과 쓰는 방식이 다르다.
+        if !result.alreadyOwned, !ListingPreviewStyle.isSticker(listing.contentType) {
+            showsRegistrationPrompt = true
+            return
+        }
+
         // 이미 산 것이면 실패가 아니다. 조각은 한 번만 빠졌다.
         notice = result.alreadyOwned
             ? "이미 가진 상품이에요. 조각은 다시 빠지지 않았어요."
             : "\(listing.title)을(를) 샀어요."
-        // 지갑을 서버 authority로 다시 맞춘다.
-        await wallet?.refresh(session: session)
     }
 
     /// 산 것을 내 목록으로. **downloadCount는 오르지 않는다**(서버 규칙).

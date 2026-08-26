@@ -44,6 +44,8 @@ struct RootView: View {
     @State private var dailyReminder = DailyReminderScheduler()
     /// 판매 알림을 받을 기기 등록. token과 로그인이 둘 다 갖춰졌을 때만 서버에 묶는다.
     @State private var pushRegistration = PushRegistration()
+    /// 시스템 권한 창 앞에 나오는 우리 설명. **한 번만** 보여 준다.
+    @State private var notificationOnboarding = NotificationOnboarding()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -73,6 +75,27 @@ struct RootView: View {
             .environment(catalogStats)
             .environment(mirrorCapacity)
             .environment(dailyReminder)
+            // 첫 프레임에 던지지 않는다. 사용자가 거울을 보고 홈까지 온 뒤에 —
+            // 그때는 이 앱이 무엇인지 알고 있다.
+            .onChange(of: screen) { _, value in
+                guard value == .home else { return }
+                Task {
+                    await dailyReminder.refreshPermission()
+                    notificationOnboarding.presentIfNeeded(
+                        permission: dailyReminder.permission
+                    )
+                }
+            }
+            .inkBottomSheet(isPresented: $notificationOnboarding.isPresented) {
+                NotificationOnboardingSheet {
+                    // 허락하면 기존 등록 흐름을 그대로 탄다 — 새 경로를 만들지 않는다.
+                    await dailyReminder.enable()
+                    await pushRegistration.startIfAllowed()
+                    await pushRegistration.accountChanged(to: session.server)
+                } onLater: {
+                    // 시스템 창을 부르지 않는다. 설정에서 언제든 켤 수 있다.
+                }
+            }
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in

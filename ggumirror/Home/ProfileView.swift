@@ -72,10 +72,12 @@ struct ProfileView: View {
                     .padding(.top, 12)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 40)
+            .padding(.bottom, 12)
             .inkDismissesKeyboardOnTap()
         }
         .scrollIndicators(.hidden)
+        // 탭 막대에 가리지 않게 아래를 띄운다. 숫자는 막대가 정한다.
+        .inkTabBarSafeContent()
         .scrollDismissesKeyboard(.interactively)
         .paperBackground()
         .navigationTitle("프로필")

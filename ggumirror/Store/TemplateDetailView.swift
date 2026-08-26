@@ -55,7 +55,7 @@ struct TemplateDetailView: View {
             .padding(.horizontal, 20)
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+        .inkTabBarSafeContent()
         .paperBackground()
         .navigationTitle(template.name)
         .navigationBarTitleDisplayMode(.inline)

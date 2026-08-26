@@ -175,6 +175,8 @@ struct AIMirrorView: View {
 
                 if let artwork = maker.artwork {
                     result(artwork)
+                } else if maker.isGenerating {
+                    generatingNotice
                 } else {
                     generateButton
                 }
@@ -196,6 +198,10 @@ struct AIMirrorView: View {
         .navigationTitle("AI로 거울 만들기")
         .navigationBarTitleDisplayMode(.inline)
         .task { await maker.refresh(session: session.server) }
+        // **만드는 동안에는 닫히지 않는다.** 취소해도 서버는 멈추지 않고,
+        // 그림은 저장되지 않으므로 여기서 나가면 조각만 나가고 결과가 사라진다.
+        // 그래서 안전한 취소를 줄 수 없고, 대신 실수로 닫히지 않게 막는다.
+        .inkSheetDismissDisabled(maker.isGenerating)
         .inkMirrorStorageFullDialog("저장하려면", isPresented: $showsStorageFull, library: library)
         .inkDialog(
             "조각이 부족해요",
@@ -213,6 +219,32 @@ struct AIMirrorView: View {
         ) {
             [InkDialogAction("확인", role: .primary)]
         }
+    }
+
+    /// 기다리는 동안 무엇이 일어나는지 **사실대로** 말한다.
+    ///
+    /// 요청은 동기다(응답 본문으로 그림이 온다). `URLSession.shared`는 background
+    /// 전송이 아니고, 서버는 결과를 저장하지 않는다 — 응답을 놓치면 그림은 사라진다.
+    /// 그래서 "앱을 꺼도 계속돼요" 같은 말을 쓰지 않는다. 사실이 아니다.
+    private var generatingNotice: some View {
+        VStack(spacing: 10) {
+            ProgressView().tint(PaperTheme.ink)
+            Text("AI 거울을 그리고 있어요 🪞")
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
+            Text("조금 시간이 걸릴 수 있어요.\n생성이 끝날 때까지 이 화면을 유지해주세요.")
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("꾸미러를 완전히 종료하면 결과를 받지 못할 수 있어요.")
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
     }
 
     private var generateButton: some View {

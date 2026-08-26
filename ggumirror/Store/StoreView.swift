@@ -80,7 +80,7 @@ struct StoreView: View {
             }
             .scrollIndicators(.hidden)
             // UI-P2 그대로 — tab bar가 마지막 상품을 덮지 않게 한다.
-            .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+            .inkTabBarSafeContent()
             // 내장 템플릿 다운로드 수는 **한 번에** 받는다(카드마다 부르지 않는다).
             .task {
                 await catalogStats.refresh()

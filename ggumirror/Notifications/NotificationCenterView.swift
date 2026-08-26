@@ -133,9 +133,11 @@ struct NotificationCenterView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 40)
+            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
+        // 탭 막대에 가리지 않게 아래를 띄운다. 숫자는 막대가 정한다.
+        .inkTabBarSafeContent()
         .paperBackground()
         .navigationTitle("알림")
         .navigationBarTitleDisplayMode(.inline)

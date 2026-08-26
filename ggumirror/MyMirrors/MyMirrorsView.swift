@@ -433,7 +433,7 @@ struct MyMirrorsView: View {
             }
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+        .inkTabBarSafeContent()
     }
 
     /// 처음 설치하면 내 거울은 비어 있다. 빈 화면 대신 다음에 할 일을 보여준다.
