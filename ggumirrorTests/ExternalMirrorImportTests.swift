@@ -180,12 +180,21 @@ struct CameraOpeningRemovalTests {
 @Suite("확신이 없으면 지우지 않는다")
 struct SafeImportFailureTests {
 
-    @Test("표시가 없으면 거절한다")
+    @Test("표시가 없으면 거절한다 — 무엇이 없는지까지 말한다")
     func unmarkedOpeningIsRefused() {
-        // 규격을 모르고 만든 그림이다. 사용자가 그린 것을 지우지 않는다.
-        let image = cgImage(from: makePixels(outside: RED, inside: RED))
+        // 어느 쪽이든 **사용자가 그린 것을 지우지 않는다.** 다만 할 말이 다르다.
+        //
+        // 투명한 곳이 하나도 없으면 보통의 사진이다.
+        let photo = cgImage(from: makePixels(outside: RED, inside: RED))
+        #expect(throws: MirrorImportFailure.fullyOpaque) {
+            try MirrorImportNormalizer.normalize(image: photo)
+        }
+
+        // 어딘가는 뚫려 있는데 규격을 못 맞춘 것은 규격 문제다 —
+        // 사진에게 "초록이 규격과 다르다"고 하면 무슨 소리인지 알 수 없다.
+        let misMarked = cgImage(from: makePixels(outside: CLEAR, inside: RED))
         #expect(throws: MirrorImportFailure.cameraOpeningNotMarked) {
-            try MirrorImportNormalizer.normalize(image: image)
+            try MirrorImportNormalizer.normalize(image: misMarked)
         }
     }
 

@@ -48,9 +48,16 @@ nonisolated enum MirrorImportNormalizer {
 
     /// 파일에서 읽어 정규화한다.
     static func normalize(_ data: Data) throws -> CGImage {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            throw MirrorImportFailure.unreadable
-        }
+        guard let decoded = decode(data) else { throw MirrorImportFailure.unreadable }
+        return try normalize(image: decoded)
+    }
+
+    /// 바이트를 그림으로 편다. **규격 검사는 하지 않는다.**
+    ///
+    /// 자르기 도우미가 규격에 맞지 않는 그림도 먼저 보여 줘야 해서 나눠 두었다.
+    /// 읽는 방법은 한 곳뿐이다 — `normalize(_:)`도 이것을 쓴다.
+    static func decode(_ data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         // EXIF 회전을 반영해 실제 픽셀 방향으로 편다.
         // **원본을 통째로 올리지 않는다** — 큰 사진에서 메모리가 터진다.
         let options: [CFString: Any] = [
@@ -59,12 +66,7 @@ nonisolated enum MirrorImportNormalizer {
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: Int(ExternalMirrorImportContract.canvasSize.height),
         ]
-        guard let decoded = CGImageSourceCreateThumbnailAtIndex(
-            source, 0, options as CFDictionary
-        ) else {
-            throw MirrorImportFailure.unreadable
-        }
-        return try normalize(image: decoded)
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     /// 이미 메모리에 있는 그림을 정규화한다. **AI 결과가 이 문으로 들어온다.**
@@ -84,7 +86,12 @@ nonisolated enum MirrorImportNormalizer {
         switch marking(in: pixels, width: width, height: height) {
         case .unmarked:
             // **그림을 지우지 않는다.** 규격을 모르고 만든 것일 수 있다.
-            throw MirrorImportFailure.cameraOpeningNotMarked
+            //
+            // 다만 무엇을 모르는지는 픽셀이 말해 준다. 투명한 곳이 한 곳도 없으면
+            // 규격을 맞추려던 그림이 아니라 **보통의 사진**이다 — 할 말이 다르다.
+            throw isFullyOpaque(pixels, width: width, height: height)
+                ? MirrorImportFailure.fullyOpaque
+                : MirrorImportFailure.cameraOpeningNotMarked
         case .alreadyTransparent, .chroma:
             break
         }
@@ -130,6 +137,38 @@ nonisolated enum MirrorImportNormalizer {
         if Double(transparent) >= needed { return .alreadyTransparent }
         if Double(transparent + chroma) >= needed { return .chroma }
         return .unmarked
+    }
+
+    /// 그림 전체에 투명한 곳이 하나도 없는가.
+    ///
+    /// **문자열이 아니라 픽셀로 판단한다.** 보통의 사진은 여기서 참이고,
+    /// 규격을 맞추려다 실패한 그림(어딘가는 뚫려 있다)은 거짓이다.
+    static func isFullyOpaque(_ pixels: [UInt8], width: Int, height: Int) -> Bool {
+        // 성긴 표본으로 충분하다 — 한 곳이라도 뚫려 있으면 사진이 아니다.
+        let step = max(1, width / 64)
+        for y in stride(from: 0, to: height, by: step) {
+            let row = y * width * 4
+            for x in stride(from: 0, to: width, by: step) {
+                if pixels[row + x * 4 + 3] < 255 { return false }
+            }
+        }
+        return true
+    }
+
+    /// 카메라 자리를 **비운 사본**을 만든다. 원본은 그대로 둔다.
+    ///
+    /// 사용자가 명시적으로 승인했을 때만 부른다 — 이 함수가 곧 "가운데를 거울로
+    /// 지정한다"는 동작이고, 좌표는 규격에서 그대로 온다.
+    static func clearingCameraOpening(_ image: CGImage) throws -> CGImage {
+        guard var pixels = rasterized(image) else { throw MirrorImportFailure.unreadable }
+        let size = ExternalMirrorImportContract.canvasSize
+        let width = Int(size.width)
+        let height = Int(size.height)
+        clearCameraOpening(&pixels, width: width, height: height)
+        guard let output = makeImage(pixels, width: width, height: height) else {
+            throw MirrorImportFailure.unreadable
+        }
+        return output
     }
 
     /// 지운 뒤에도 거울 테두리가 남아 있는가. **카메라 자리 밖만 본다.**

@@ -27,6 +27,8 @@ struct ExternalArtworkView: View {
     /// 승인 전 상태. 여기서 "다시 선택"하면 그냥 버린다.
     @State private var candidate: ImportedArtworkObject?
     @State private var problem: ImportProblem?
+    /// 고칠 수 있는 실패를 만난 그림의 바이트. 있으면 도우미가 열린다.
+    @State private var assistantSource: Data?
 
     private struct ImportProblem: Identifiable {
         let id = UUID()
@@ -53,6 +55,21 @@ struct ExternalArtworkView: View {
         ) { result in
             guard case .success(let url) = result else { return }
             load(url)
+        }
+        .inkBottomSheet(
+            isPresented: Binding(
+                get: { assistantSource != nil },
+                set: { if !$0 { assistantSource = nil } }
+            ),
+            size: .fraction(0.92)
+        ) {
+            if let assistantSource {
+                MirrorImportAssistantView(source: assistantSource) { image in
+                    candidate = ImportedArtworkObject(
+                        assetID: ImportedArtworkAssetStore.shared.register(image)
+                    )
+                }
+            }
         }
         .inkDialog(
             problem?.title ?? "",
@@ -331,9 +348,14 @@ struct ExternalArtworkView: View {
     private func accept(_ data: Data) {
         do {
             let image = try MirrorImportNormalizer.normalize(data)
+            // **정상인 그림은 예전 그대로다.** 도우미를 거치지 않는다 —
+            // 규격에 맞게 만들어 온 사람에게 한 단계를 더 시키지 않는다.
             candidate = ImportedArtworkObject(
                 assetID: ImportedArtworkAssetStore.shared.register(image)
             )
+        } catch let failure as MirrorImportFailure where failure.remedy != nil {
+            // 고칠 수 있는 실패다. **막다른 문구 대신 고치는 자리를 연다.**
+            assistantSource = data
         } catch let failure as MirrorImportFailure {
             problem = ImportProblem(title: Self.title(for: failure), message: failure.message)
         } catch {
@@ -344,7 +366,8 @@ struct ExternalArtworkView: View {
     private static func title(for failure: MirrorImportFailure) -> String {
         switch failure {
         case .wrongAspectRatio: "작업 가이드와 비율이 달라요"
-        case .cameraOpeningNotMarked: "카메라 자리를 찾지 못했어요"
+        case .cameraOpeningNotMarked: "거울 영역을 정확히 찾지 못했어요"
+        case .fullyOpaque: "카메라가 보일 공간이 없어요"
         case .nothingLeftAfterRemoval: "거울 테두리가 없어요"
         case .unreadable: "이미지를 읽지 못했어요"
         }

@@ -81,9 +81,29 @@ nonisolated enum MirrorImportFailure: Error, Equatable {
     /// 비율이 다르다. 늘려서 왜곡시키지 않는다.
     case wrongAspectRatio(width: Int, height: Int)
     /// 카메라 자리를 확인하지 못했다. **그림을 함부로 지우지 않는다.**
+    ///
+    /// 투명하거나 초록인 흔적은 있는데 규격을 만족하지 못한 경우다 —
+    /// 다른 도구로 만들었거나 초록이 우리 값과 다를 때 여기로 온다.
     case cameraOpeningNotMarked
+    /// 투명한 곳이 **한 곳도 없다.** 보통의 사진이다.
+    ///
+    /// `cameraOpeningNotMarked`와 나눠 둔 이유: 두 경우에 할 말이 다르다.
+    /// 사진에게 "초록이 규격과 다르다"고 하면 무슨 소리인지 알 수 없고,
+    /// 규격을 맞추려던 사람에게 "카메라 자리가 없다"고 하면 틀린 말이다.
+    case fullyOpaque
     /// 지우고 나니 거울이 거의 남지 않았다. 규격이 어긋난 그림이다.
     case nothingLeftAfterRemoval
+
+    /// 사용자가 고칠 수 있는 실패인가. **화면이 문자열을 보고 판단하지 않는다.**
+    var remedy: MirrorImportRemedy? {
+        switch self {
+        case .wrongAspectRatio: .crop
+        // 둘 다 "가운데를 거울로 지정"으로 고칠 수 있다. 안내 문구만 다르다.
+        case .fullyOpaque, .cameraOpeningNotMarked: .openingRepair
+        // 규격이 근본적으로 어긋났거나 읽지 못한 것이다. 물어볼 것이 없다.
+        case .nothingLeftAfterRemoval, .unreadable: nil
+        }
+    }
 
     var message: String {
         switch self {
@@ -96,8 +116,19 @@ nonisolated enum MirrorImportFailure: Error, Equatable {
             "카메라가 보일 자리를 찾지 못했어요. "
                 + "그 부분을 \(ExternalMirrorImportContract.chromaHex) 초록색으로 "
                 + "채웠는지 제작 가이드를 확인해 주세요."
+        case .fullyOpaque:
+            "이 이미지에는 카메라가 보일 공간이 없어요."
         case .nothingLeftAfterRemoval:
             "거울 테두리가 남지 않았어요. 제작 가이드의 크기와 위치를 확인해 주세요."
         }
     }
+}
+
+
+/// 실패를 사용자가 고칠 수 있는 방법.
+nonisolated enum MirrorImportRemedy: Equatable {
+    /// 비율이 다르다 — 잘라내면 된다.
+    case crop
+    /// 카메라 자리를 못 찾았다 — 가운데를 거울로 **지정하면** 된다.
+    case openingRepair
 }
