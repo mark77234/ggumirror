@@ -44,7 +44,20 @@ final class AIMirrorMaker {
         config = try? await backend.aiMirrorConfig(accessToken: token)
     }
 
+    /// 값. **서버가 준 값을 그대로 쓴다** — 앱에 숫자를 적으면 서버와 갈라진다.
+    var price: Int { config?.price ?? 0 }
+
+    /// 지금 만들 수 있을 만큼 조각이 있는가. **화면을 위한 판단일 뿐이다** —
+    /// 진짜 판단은 서버가 하고, 모자라면 provider를 부르기 전에 거절한다.
+    func canAfford(balance: Int?) -> Bool {
+        guard let balance, price > 0 else { return true }
+        return balance >= price
+    }
+
     /// 만든다. **한 번에 하나만** — 연타로 두 번 요청하면 하루 몫이 두 번 빠진다.
+    ///
+    /// `requestID`는 이 시도를 가리키는 멱등 키다. 같은 시도를 다시 보내면
+    /// 서버가 조각을 다시 빼지 않는다.
     func generate(prompt: String, session: ServerSession?) async {
         guard !isGenerating else { return }
         guard let token = session?.accessToken else {
@@ -59,7 +72,9 @@ final class AIMirrorMaker {
         state = .generating
         artwork = nil
         do {
-            let png = try await backend.generateAIMirror(prompt: cleaned, accessToken: token)
+            let png = try await backend.generateAIMirror(
+                prompt: cleaned, requestID: UUID().uuidString, accessToken: token
+            )
             // **AI가 만든 것을 믿지 않는다.** 규격은 여기서 찍고 Phase C가 마무리한다.
             let image = try GeneratedMirrorAdapter.prepare(png)
             artwork = ImportedArtworkObject(
@@ -110,8 +125,12 @@ struct AIMirrorView: View {
     @State private var maker = AIMirrorMaker()
     @State private var prompt = ""
     @State private var showsStorageFull = false
+    @State private var insufficientNotice: String?
     @State private var notice: String?
     @Environment(AuthSession.self) private var session
+    /// 잔액. **서버가 authority다** — 여기서 임의로 줄이지 않는다.
+    /// 미리보기·테스트에는 없을 수 있어 optional이다.
+    @Environment(ShardWallet.self) private var wallet: ShardWallet?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isPromptFocused: Bool
 
@@ -141,9 +160,17 @@ struct AIMirrorView: View {
                     }
 
                 if let config = maker.config, config.available {
-                    Text("오늘 \(config.remaining)번 남았어요.")
-                        .font(InkFont.caption)
-                        .foregroundStyle(PaperTheme.secondaryInk)
+                    HStack(spacing: 8) {
+                        // **값은 서버가 준 것을 그대로 보여 준다.** 조각 아이콘은
+                        // 상점·지갑이 쓰는 것과 같은 컴포넌트다.
+                        if config.price > 0 {
+                            ShardAmount(amount: config.price, font: InkFont.caption, iconSize: 14)
+                        }
+                        Text("오늘 \(config.remaining)번 남았어요.")
+                            .font(InkFont.caption)
+                            .foregroundStyle(PaperTheme.secondaryInk)
+                        Spacer(minLength: 0)
+                    }
                 }
 
                 if let artwork = maker.artwork {
@@ -170,6 +197,16 @@ struct AIMirrorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await maker.refresh(session: session.server) }
         .inkMirrorStorageFullDialog("저장하려면", isPresented: $showsStorageFull, library: library)
+        .inkDialog(
+            "조각이 부족해요",
+            message: insufficientNotice,
+            isPresented: Binding(
+                get: { insufficientNotice != nil },
+                set: { if !$0 { insufficientNotice = nil } }
+            )
+        ) {
+            [InkDialogAction("확인", role: .primary)]
+        }
         .inkDialog(
             "AI 거울", message: notice,
             isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
@@ -248,7 +285,15 @@ struct AIMirrorView: View {
             showsStorageFull = true
             return
         }
+        // **화면에서 먼저 막는 것은 친절일 뿐이다.** 진짜 판단은 서버가 하고,
+        // 모자라면 provider를 부르기 전에 거절한다. 여기서 잔액을 고치지 않는다.
+        guard maker.canAfford(balance: wallet?.balance) else {
+            insufficientNotice = "조각이 부족해요.\nAI 거울을 만들려면 \(maker.price)조각이 필요해요."
+            return
+        }
         await maker.generate(prompt: prompt, session: session.server)
+        // 성공이든 실패든 **서버가 아는 잔액을 다시 읽는다.** 앱이 계산하지 않는다.
+        await wallet?.refresh(session: session.server)
     }
 
     private func save(_ artwork: ImportedArtworkObject) {

@@ -10,13 +10,38 @@ import Foundation
 
 nonisolated struct AIMirrorConfig: Decodable, Equatable, Sendable {
     let available: Bool
+    /// 한 장에 몇 조각인가. **서버가 정한다** — 앱에 숫자를 적지 않는다.
+    /// 옛 서버 응답에는 없다. 그때는 0이고 화면이 값을 숨긴다.
+    let price: Int
     let dailyLimit: Int
     let remaining: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case available, price, dailyLimit, remaining
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        available = try c.decode(Bool.self, forKey: .available)
+        price = try c.decodeIfPresent(Int.self, forKey: .price) ?? 0
+        dailyLimit = try c.decode(Int.self, forKey: .dailyLimit)
+        remaining = try c.decode(Int.self, forKey: .remaining)
+    }
+
+    init(available: Bool, price: Int, dailyLimit: Int, remaining: Int) {
+        self.available = available
+        self.price = price
+        self.dailyLimit = dailyLimit
+        self.remaining = remaining
+    }
 }
 
 nonisolated enum AIMirrorFailure: Error, Equatable {
     case notSignedIn
     case quotaExceeded
+    /// 조각이 모자라다. **서버가 provider를 부르기 전에 거절한 것이다** —
+    /// 요금도 하루 몫도 쓰지 않았다.
+    case insufficientShards
     case safetyRejected
     case unavailable
     case network
@@ -25,6 +50,7 @@ nonisolated enum AIMirrorFailure: Error, Equatable {
         switch self {
         case .notSignedIn: "로그인이 필요해요."
         case .quotaExceeded: "오늘 만들 수 있는 AI 거울을 모두 사용했어요. 내일 다시 만들어 주세요."
+        case .insufficientShards: "조각이 부족해요."
         case .safetyRejected: "이 내용으로는 거울을 만들기 어려워요. 다른 표현으로 다시 시도해 주세요."
         case .unavailable: "지금은 AI 거울을 만들 수 없어요. 잠시 뒤 다시 시도해 주세요."
         case .network: "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요."
@@ -35,7 +61,9 @@ nonisolated enum AIMirrorFailure: Error, Equatable {
 nonisolated protocol AIMirrorBackend: Sendable {
     func aiMirrorConfig(accessToken: String) async throws -> AIMirrorConfig
     /// - Returns: 거울 그림 PNG bytes.
-    func generateAIMirror(prompt: String, accessToken: String) async throws -> Data
+    func generateAIMirror(
+        prompt: String, requestID: String, accessToken: String
+    ) async throws -> Data
 }
 
 extension BackendClient: AIMirrorBackend {
@@ -49,19 +77,27 @@ extension BackendClient: AIMirrorBackend {
         }
     }
 
-    func generateAIMirror(prompt: String, accessToken: String) async throws -> Data {
-        struct Body: Encodable { let prompt: String }
+    func generateAIMirror(
+        prompt: String, requestID: String, accessToken: String
+    ) async throws -> Data {
+        // **보내는 것은 프롬프트와 멱등 키뿐이다.** 값도 모델도 실을 자리가 없다.
+        //
+        // `requestId`가 같으면 서버가 조각을 다시 빼지 않는다 — 응답을 잃었을 때
+        // 다시 부를 수 있는 유일한 안전장치다.
+        struct Body: Encodable { let prompt: String; let requestId: String }
         do {
             // **긴 요청이다.** 이미지 생성은 몇십 초가 걸릴 수 있다.
             return try await request(
                 "ai/mirrors/generate",
                 method: "POST",
-                body: try JSONEncoder.backend.encode(Body(prompt: prompt)),
+                body: try JSONEncoder.backend.encode(Body(prompt: prompt, requestId: requestID)),
                 accessToken: accessToken,
                 interpretFailure: { status, _ in
                     switch status {
                     case 401: AIMirrorFailure.notSignedIn
                     case 429: AIMirrorFailure.quotaExceeded
+                    // 서버가 조각을 세고 거절했다. **provider는 부르지 않았다.**
+                    case 409: AIMirrorFailure.insufficientShards
                     // 서버가 provider 거절을 이 코드로 준다. 내부 문구를 그대로 보여 주지 않는다.
                     case 422: AIMirrorFailure.safetyRejected
                     default: AIMirrorFailure.unavailable

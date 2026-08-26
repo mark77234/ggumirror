@@ -48,12 +48,17 @@ private func generatedPNG() -> Data {
 private nonisolated final class FakeAIBackend: AIMirrorBackend, @unchecked Sendable {
     var calls = 0
     var failure: AIMirrorFailure?
-    var config = AIMirrorConfig(available: true, dailyLimit: 3, remaining: 3)
+    var config = AIMirrorConfig(available: true, price: 10, dailyLimit: 3, remaining: 3)
 
     func aiMirrorConfig(accessToken: String) async throws -> AIMirrorConfig { config }
 
-    func generateAIMirror(prompt: String, accessToken: String) async throws -> Data {
+    var requestIDs: [String] = []
+
+    func generateAIMirror(
+        prompt: String, requestID: String, accessToken: String
+    ) async throws -> Data {
         calls += 1
+        requestIDs.append(requestID)
         if let failure { throw failure }
         return generatedPNG()
     }
@@ -236,8 +241,15 @@ struct AIMirrorSecurityTests {
         for forbidden in ["model", "provider", "apiKey", "openai", "OPENAI"] {
             #expect(!api.contains(forbidden), "client가 \(forbidden)를 보낸다")
         }
-        // 보내는 것은 프롬프트 하나뿐이다.
-        #expect(api.contains("struct Body: Encodable { let prompt: String }"))
+        // 보내는 것은 프롬프트와 멱등 키뿐이다. **값도 모델도 실을 자리가 없다** —
+        // `requestId`는 같은 요청인지만 알려주고, 얼마인지는 서버 표가 정한다.
+        #expect(api.contains("struct Body: Encodable { let prompt: String; let requestId: String }"))
+
+        // 값은 **읽기만** 한다(`AIMirrorConfig.price`). 보내는 쪽에는 없다 —
+        // 요청에 값을 실을 수 있으면 앱이 값을 정하는 셈이 된다.
+        let body = try #require(api.range(of: "struct Body: Encodable"))
+        let request = api[body.lowerBound...].prefix(400)
+        #expect(!request.contains("price"))
     }
 
     @Test("내부 오류를 그대로 보여 주지 않는다")
@@ -249,5 +261,96 @@ struct AIMirrorSecurityTests {
                 #expect(!message.lowercased().contains(leak), "\(failure): \(message)")
             }
         }
+    }
+}
+
+@Suite("AI 거울 값")
+@MainActor
+struct AIMirrorPriceTests {
+
+    private func maker(_ backend: FakeAIBackend) -> AIMirrorMaker {
+        AIMirrorMaker(backend: backend)
+    }
+
+    @Test("값은 서버가 준 것을 쓴다")
+    func priceComesFromTheServer() async {
+        let backend = FakeAIBackend()
+        let store = maker(backend)
+        await store.refresh(session: session())
+        #expect(store.price == 10)
+    }
+
+    @Test("앱에 값을 적어 두지 않는다")
+    func priceIsNotHardcoded() throws {
+        let view = try source("ggumirror/MyMirrors/AIMirrorView.swift")
+        // 숫자를 적으면 서버 표를 바꿀 때 화면만 옛 값을 말한다.
+        #expect(!view.contains("10조각"))
+        #expect(view.contains("maker.price"))
+        // 조각 표시는 상점·지갑과 같은 컴포넌트를 쓴다.
+        #expect(view.contains("ShardAmount(amount: config.price"))
+    }
+
+    @Test("옛 서버 응답에는 값이 없다")
+    func legacyConfigDecodes() throws {
+        let json = """
+        {"available":true,"dailyLimit":3,"remaining":2}
+        """
+        let config = try JSONDecoder.backend.decode(AIMirrorConfig.self, from: Data(json.utf8))
+        #expect(config.price == 0)
+        #expect(config.dailyLimit == 3)
+    }
+
+    @Test("잔액이 모자라면 서버를 부르지 않는다")
+    func poorUserNeverCallsTheProvider() {
+        let backend = FakeAIBackend()
+        let store = maker(backend)
+        // 값을 모르면(옛 서버) 막지 않는다 — 판단은 서버가 한다.
+        #expect(store.canAfford(balance: 0))
+    }
+
+    @Test("값을 알면 부족할 때 막는다")
+    func affordabilityUsesTheServerPrice() async {
+        let backend = FakeAIBackend()
+        let store = maker(backend)
+        await store.refresh(session: session())
+
+        #expect(!store.canAfford(balance: 9))
+        #expect(store.canAfford(balance: 10))
+        // 잔액을 모르면 막지 않는다.
+        #expect(store.canAfford(balance: nil))
+    }
+
+    @Test("시도마다 다른 멱등 키를 보낸다")
+    func eachAttemptCarriesARequestID() async {
+        let backend = FakeAIBackend()
+        let store = maker(backend)
+        await store.generate(prompt: "핑크 리본", session: session())
+        await store.generate(prompt: "노란 별", session: session())
+
+        #expect(backend.requestIDs.count == 2)
+        #expect(Set(backend.requestIDs).count == 2)
+        #expect(backend.requestIDs.allSatisfy { !$0.isEmpty })
+    }
+
+    @Test("잔액을 앱이 계산하지 않는다")
+    func balanceIsNeverDecrementedLocally() throws {
+        let view = try source("ggumirror/MyMirrors/AIMirrorView.swift")
+        // 성공/실패 어느 쪽에서도 앱이 잔액을 줄이지 않는다 — 서버에 다시 묻는다.
+        #expect(view.contains("wallet?.refresh(session: session.server)"))
+        #expect(!view.contains("balance -="))
+        #expect(!view.contains("balance = balance"))
+    }
+
+    @Test("조각 부족을 사용자 말로 알린다")
+    func insufficientHasItsOwnMessage() {
+        #expect(AIMirrorFailure.insufficientShards.message.contains("조각"))
+        // 하루 몫과 다른 실패다 — 뭉치면 "내일 다시"라고 잘못 안내한다.
+        #expect(AIMirrorFailure.insufficientShards != AIMirrorFailure.quotaExceeded)
+    }
+
+    @Test("서버가 409로 조각 부족을 알린다")
+    func statusMapping() throws {
+        let api = try source("ggumirror/Backend/BackendClient+AIMirror.swift")
+        #expect(api.contains("case 409: AIMirrorFailure.insufficientShards"))
     }
 }
