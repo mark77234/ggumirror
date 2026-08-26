@@ -144,7 +144,7 @@ struct StickerStoreView: View {
         }
         .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { project in
             // 거울과 **같은 시트**를 쓴다 — 입력 규칙도 44pt 버튼 규칙도 같다.
-            MirrorNameSheet(name: $renameText, isNewMirror: false) { commitRename(project) }
+            MirrorNameSheet(initialName: renameText, isNewMirror: false) { commitRename(project, to: $0) }
         }
         .inkBottomSheet(item: $publishTarget, size: .fraction(0.92)) { project in
             PublishStickerView(project: project, library: library)
@@ -350,14 +350,14 @@ struct StickerStoreView: View {
     }
 
     /// **저장 직전에 다시 확인한다.** 창을 열어 둔 사이에 등록이 끝났을 수 있다.
-    private func commitRename(_ project: StickerProject) {
+    private func commitRename(_ project: StickerProject, to newName: String) {
         let availability = renameAvailability(project)
         guard availability.isAllowed else {
             renameTarget = nil
             notice = availability.message(for: .sticker)
             return
         }
-        if case .invalidName = library.rename(project.id, to: renameText) {
+        if case .invalidName = library.rename(project.id, to: newName) {
             renameTarget = nil
             notice = "이름을 입력해 주세요."
             return

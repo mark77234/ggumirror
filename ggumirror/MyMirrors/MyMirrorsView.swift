@@ -137,7 +137,7 @@ struct MyMirrorsView: View {
         }
         .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { mirror in
             // 저장 때 쓰는 이름 시트를 그대로 쓴다 — 입력 규칙과 버튼 규칙이 같다.
-            MirrorNameSheet(name: $renameText, isNewMirror: false) { commitRename(mirror) }
+            MirrorNameSheet(initialName: renameText, isNewMirror: false) { commitRename(mirror, to: $0) }
         }
         .inkDialog(
             "이름 변경",
@@ -257,14 +257,14 @@ struct MyMirrorsView: View {
     }
 
     /// **저장 직전에 다시 확인한다.** 창을 열어 둔 사이에 등록이 끝났을 수 있다.
-    private func commitRename(_ mirror: MyMirror) {
+    private func commitRename(_ mirror: MyMirror, to newName: String) {
         let availability = renameAvailability(mirror)
         guard availability.isAllowed else {
             renameTarget = nil
             renameNotice = availability.message
             return
         }
-        if case .invalidName = library.rename(mirror.id, to: renameText) {
+        if case .invalidName = library.rename(mirror.id, to: newName) {
             renameTarget = nil
             renameNotice = "이름을 입력해 주세요."
             return

@@ -10,9 +10,18 @@ import SwiftUI
 /// 저장 시 거울 이름을 정한다.
 /// 기본 제공 / 구매 거울을 꾸민 경우에는 원본을 두고 새 거울로 저장된다.
 struct MirrorNameSheet: View {
-    @Binding var name: String
     let isNewMirror: Bool
-    let onSave: () -> Void
+    let onSave: (String) -> Void
+
+    /// **입력 중인 이름은 이 시트만 안다.** `TextInputSheet`와 같은 이유다 —
+    /// 부모의 `@State`에 바로 쓰면 한 글자마다 거울 canvas가 다시 그려진다.
+    @State private var name: String
+
+    init(initialName: String = "", isNewMirror: Bool, onSave: @escaping (String) -> Void) {
+        self.isNewMirror = isNewMirror
+        self.onSave = onSave
+        _name = State(initialValue: initialName)
+    }
 
     @Environment(\.inkModalDismiss) private var dismiss
     @FocusState private var isFocused: Bool
@@ -39,7 +48,7 @@ struct MirrorNameSheet: View {
                 .foregroundStyle(PaperTheme.ink)
                 .focused($isFocused)
                 .submitLabel(.done)
-                .onSubmit { if !trimmed.isEmpty { onSave() } }
+                .onSubmit { if !trimmed.isEmpty { onSave(name) } }
                 .onChange(of: name) { _, newValue in
                     // 지나치게 긴 이름은 입력 단계에서 막는다.
                     if newValue.count > MirrorStoragePolicy.maxNameLength {
@@ -76,7 +85,7 @@ struct MirrorNameSheet: View {
                 .buttonStyle(InkPressStyle())
 
                 Button {
-                    onSave()
+                    onSave(name)
                 } label: {
                     Text("저장")
                         .font(InkFont.body.weight(.semibold))
@@ -180,6 +189,6 @@ struct StickerColorSheet: View {
 }
 
 #Preview {
-    MirrorNameSheet(name: .constant("나만의 거울"), isNewMirror: true, onSave: {})
+    MirrorNameSheet(initialName: "나만의 거울", isNewMirror: true) { _ in }
         .paperBackground()
 }

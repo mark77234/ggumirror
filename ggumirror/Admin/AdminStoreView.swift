@@ -15,6 +15,36 @@ import SwiftUI
 
 // MARK: - 상태
 
+/// 운영 목록에서 무엇을 볼 것인가.
+///
+/// 종류(거울/스티커) 필터와 **다른 축이다** — 하나로 합치면 "스티커이면서
+/// 내려간 것"을 고를 수 없다.
+nonisolated enum AdminStatusFilter: String, CaseIterable, Sendable {
+    /// 지금 상점에 있거나 판매자가 손볼 수 있는 것. **기본값.**
+    case live
+    /// 운영자가 내린 것. 복구할지 판단하는 화면이다.
+    case removed
+    /// 판매자가 삭제한 것까지 전부. 되살릴 수 없어 조치할 것은 없고, 기록을 볼 때만 쓴다.
+    case all
+
+    var label: String {
+        switch self {
+        case .live: "판매 중"
+        case .removed: "내려감"
+        case .all: "전체"
+        }
+    }
+
+    func includes(_ listing: AdminListing) -> Bool {
+        switch self {
+        case .all: true
+        case .removed: listing.isRemoved && !listing.isDeletedBySeller
+        // 판매자가 삭제한 것은 끝 상태라 여기 오지 않는다.
+        case .live: !listing.isRemoved && !listing.isDeletedBySeller
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AdminStore {
@@ -29,6 +59,12 @@ final class AdminStore {
 
     var contentType: String?
     var query = ""
+    /// 어떤 상태를 볼 것인가. **기본은 "지금 상점에 있는 것"이다.**
+    ///
+    /// 판매자가 삭제한 상품은 되살릴 수 없고 운영자가 할 일도 없다. 그것이
+    /// 판매 중인 상품과 같은 목록에 섞여 있으면, 훑어보는 사람이 무엇을
+    /// 조치해야 하는지 알 수 없다.
+    var statusFilter: AdminStatusFilter = .live
 
     private let backend: any AdminBackend
     private var previews: [String: Data] = [:]
@@ -40,9 +76,10 @@ final class AdminStore {
     /// 화면에 보일 목록. 검색은 **받아 온 장 안에서만** 한다 —
     /// 전체 검색 색인을 만들 규모가 아니다.
     var visible: [AdminListing] {
+        let matching = listings.filter { statusFilter.includes($0) }
         let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return listings }
-        return listings.filter {
+        guard !text.isEmpty else { return matching }
+        return matching.filter {
             $0.title.localizedCaseInsensitiveContains(text)
                 || ($0.sellerDisplayName ?? "").localizedCaseInsensitiveContains(text)
         }
@@ -145,10 +182,11 @@ struct AdminStoreView: View {
         ScrollView {
             VStack(spacing: 0) {
                 filterRow
+                statusRow
                     .padding(.bottom, 14)
 
                 if store.visible.isEmpty && !store.isLoading {
-                    Text(store.listings.isEmpty ? "상품이 없어요." : "찾는 상품이 없어요.")
+                    Text(store.listings.isEmpty ? "상품이 없어요." : "이 조건에 맞는 상품이 없어요.")
                         .font(InkFont.caption)
                         .foregroundStyle(PaperTheme.secondaryInk)
                         .padding(.top, 40)
@@ -257,6 +295,33 @@ struct AdminStoreView: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 10)
+    }
+
+    /// 상태 줄. 종류 칩과 **같은 생김새**를 쓴다 — 두 줄이 다르게 보이면
+    /// 둘이 같은 종류의 선택이라는 것이 읽히지 않는다.
+    private var statusRow: some View {
+        HStack(spacing: 8) {
+            ForEach(AdminStatusFilter.allCases, id: \.self) { option in
+                Button(option.label) {
+                    guard store.statusFilter != option else { return }
+                    store.statusFilter = option
+                }
+                .font(InkFont.caption)
+                .foregroundStyle(
+                    store.statusFilter == option ? PaperTheme.ink : PaperTheme.secondaryInk
+                )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background {
+                    Capsule().stroke(
+                        store.statusFilter == option ? PaperTheme.ink : PaperTheme.separator,
+                        lineWidth: 1.4
+                    )
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
     }
 
     private func row(_ listing: AdminListing) -> some View {

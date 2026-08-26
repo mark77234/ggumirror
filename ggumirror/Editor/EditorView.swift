@@ -88,9 +88,9 @@ struct EditorView: View {
         }
         .inkBottomSheet(isPresented: $isNamingMirror) {
             MirrorNameSheet(
-                name: $draftName,
+                initialName: draftName,
                 isNewMirror: true,
-                onSave: { saveMirror() }
+                onSave: { saveMirror(named: $0) }
             )
         }
         .inkMirrorStorageFullDialog(
@@ -173,7 +173,7 @@ struct EditorView: View {
             )
         }
         .inkBottomSheet(isPresented: $isEditingText) {
-            TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
+            TextInputSheet(initialText: draftText, isNew: isAddingText) { commitText($0) }
         }
         .inkBottomSheet(isPresented: $isChoosingTextColor) {
             if let text = selectedText {
@@ -429,7 +429,7 @@ struct EditorView: View {
     private func beginSave() {
         guard library.needsName(for: saveContext) else {
             // 홈에서 들어왔으면 이름을 묻지 않는다. 새로 만들어야 하면 자동 이름이 붙는다.
-            saveMirror()
+            saveMirror(named: draftName)
             return
         }
         // 복제로 들어왔으면 원본 이름을 바탕으로 채워두고, 사용자가 고칠 수 있게 한다.
@@ -437,8 +437,10 @@ struct EditorView: View {
         isNamingMirror = true
     }
 
-    private func saveMirror() {
-        switch library.save(design, name: draftName, context: saveContext) {
+    /// 이름은 시트가 넘겨준 값을 쓴다. 시트가 없는 경로(홈에서 들어온 저장)는
+    /// `draftName`이 그대로 들어온다 — 그때는 라이브러리가 자동 이름을 붙인다.
+    private func saveMirror(named name: String) {
+        switch library.save(design, name: name, context: saveContext) {
         case .updated:
             isNamingMirror = false
             recordSuccessfulSave()
@@ -752,9 +754,9 @@ struct EditorView: View {
     }
 
     /// 시트의 "추가" / "저장". 빈 문자열은 정책 단계에서 걸러진다.
-    private func commitText() {
+    private func commitText(_ draft: String) {
         defer { isEditingText = false }
-        guard let value = TextPolicy.normalized(draftText) else { return }
+        guard let value = TextPolicy.normalized(draft) else { return }
 
         if isAddingText {
             let object = TextPlacement.insert(value, in: design, visibleRect: visibleRect)
