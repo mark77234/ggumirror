@@ -150,12 +150,27 @@ struct LegalLinkTests {
 
     @Test("주소가 없으면 열지 않는다")
     func missingURLDoesNotOpen() throws {
-        // 아직 채우지 않았다. 그때 openURL을 부르면 안 된다.
-        #expect(LegalLinks.privacyPolicy == nil)
-        #expect(LegalLinks.termsOfService == nil)
+        // 주소는 채워졌지만 **없을 때의 길은 그대로 남는다** — 나중에 문서를
+        // 내리거나 주소를 바꾸는 동안 빈 페이지를 여는 대신 사람 말로 답한다.
         let settings = try source("ggumirror/Home/SettingsView.swift")
         #expect(settings.contains("guard let url else"))
         #expect(settings.contains("LegalLinks.notReadyMessage"))
+    }
+
+    @Test("두 링크가 실제 공개 문서를 가리킨다")
+    func linksPointAtPublishedDocuments() throws {
+        let privacy = try #require(LegalLinks.privacyPolicy)
+        let terms = try #require(LegalLinks.termsOfService)
+
+        // 사용자의 기기에서 열리는 주소다. http로 두면 App Store 심사에서 걸리고,
+        // 무엇보다 중간에서 내용이 바뀔 수 있다.
+        for url in [privacy, terms] {
+            #expect(url.scheme == "https")
+            #expect(url.host()?.isEmpty == false)
+        }
+        // **서로 다른 문서다.** 한 주소를 두 곳에 붙여 넣으면 약관을 눌러도
+        // 개인정보처리방침이 열린다 — 눈으로는 잘 보이지 않는 실수다.
+        #expect(privacy != terms)
     }
 
     @Test("둘은 서로 다른 주소다")
@@ -167,8 +182,8 @@ struct LegalLinkTests {
 
     @Test("출시 준비 여부를 한 곳에서 판단한다")
     func releaseReadinessIsCheckable() {
-        // 지금은 아직 준비되지 않은 것이 **정답**이다.
-        #expect(LegalLinks.isReadyForRelease == false)
+        // 두 주소가 모두 채워졌다. 하나라도 비면 여기서 먼저 걸린다.
+        #expect(LegalLinks.isReadyForRelease)
     }
 
     @Test("문서 초안이 있다")
