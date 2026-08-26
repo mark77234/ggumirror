@@ -46,6 +46,8 @@ struct RootView: View {
     @State private var pushRegistration = PushRegistration()
     /// 시스템 권한 창 앞에 나오는 우리 설명. **한 번만** 보여 준다.
     @State private var notificationOnboarding = NotificationOnboarding()
+    /// 알림 종류별 설정. **서버가 authority다** — 계정이 바뀌면 비운다.
+    @State private var notificationPreferences = NotificationPreferenceSession()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -75,6 +77,7 @@ struct RootView: View {
             .environment(catalogStats)
             .environment(mirrorCapacity)
             .environment(dailyReminder)
+            .environment(notificationPreferences)
             // 첫 프레임에 던지지 않는다. 사용자가 거울을 보고 홈까지 온 뒤에 —
             // 그때는 이 앱이 무엇인지 알고 있다.
             .onChange(of: screen) { _, value in

@@ -25,9 +25,73 @@ struct SettingsView: View {
     private var profileDisplayName: String? { profile?.displayName }
     /// 매일 알림. **기기 설정이라 계정별로 두지 않는다.**
     @Environment(DailyReminderScheduler.self) private var reminder: DailyReminderScheduler?
+    /// 알림 종류별 설정. **서버가 authority다.**
+    @Environment(NotificationPreferenceSession.self)
+    private var notificationPreferences: NotificationPreferenceSession?
 
     /// 토글은 값을 바로 쓰지 않는다 — 켤 때는 권한을 먼저 물어야 하고,
     /// 끌 때는 예약을 지워야 한다.
+    /// 설정은 **서버가 authority다.** 화면을 먼저 바꾸고 실패하면 되돌린다.
+    private var salesBinding: Binding<Bool> {
+        Binding(
+            get: { notificationPreferences?.preferences.salesEnabled ?? true },
+            set: { value in
+                Task { await notificationPreferences?.setSales(value, session: session.server) }
+            }
+        )
+    }
+
+    private var recommendationBinding: Binding<Bool> {
+        Binding(
+            get: { notificationPreferences?.preferences.recommendationEnabled ?? false },
+            set: { value in
+                Task {
+                    await notificationPreferences?.setRecommendation(
+                        value, session: session.server
+                    )
+                }
+            }
+        )
+    }
+
+    /// 새 거울 소식은 켜고 끄는 것이 아니라 **얼마나 자주**다.
+    private var digestSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("새 거울 소식")
+                .font(InkFont.body)
+                .foregroundStyle(PaperTheme.ink)
+            Text("새로운 거울이 등록되면 모아서 알려드려요.")
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+
+            HStack(spacing: 8) {
+                ForEach(DigestFrequency.allCases, id: \.self) { option in
+                    let isSelected =
+                        notificationPreferences?.preferences.mirrorDigestFrequency == option
+                    Button(option.label) {
+                        Task {
+                            await notificationPreferences?.setDigest(
+                                option, session: session.server
+                            )
+                        }
+                    }
+                    .font(InkFont.caption)
+                    .foregroundStyle(isSelected ? PaperTheme.ink : PaperTheme.secondaryInk)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .frame(minHeight: InkTapTarget.minimum)
+                    .background {
+                        Capsule().stroke(
+                            isSelected ? PaperTheme.ink : PaperTheme.separator, lineWidth: 1.4
+                        )
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
     private var dailyReminderBinding: Binding<Bool> {
         Binding(
             get: { reminder?.isOn ?? false },
@@ -81,6 +145,36 @@ struct SettingsView: View {
                     InkListRow(title: "알림", showsChevron: true)
                 }
                 .buttonStyle(InkPressStyle())
+
+                InkSeparator()
+
+                Text("알림을 켜두면 판매 소식과 새로운 거울 소식을 놓치지 않을 수 있어요. "
+                     + "알림은 언제든 바꿀 수 있어요.")
+                    .font(InkFont.caption)
+                    .foregroundStyle(PaperTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 8)
+
+                InkListRow(title: "판매 알림", subtitle: "내 거울이 판매되면 알려드려요.") {
+                    Toggle("판매 알림", isOn: salesBinding)
+                        .labelsHidden()
+                        .tint(PaperTheme.ink)
+                }
+
+                InkSeparator()
+
+                digestSection
+
+                InkSeparator()
+
+                InkListRow(
+                    title: "꾸미러 추천 소식",
+                    subtitle: "새로운 기능이나 다시 둘러볼 만한 소식을 알려드려요."
+                ) {
+                    Toggle("꾸미러 추천 소식", isOn: recommendationBinding)
+                        .labelsHidden()
+                        .tint(PaperTheme.ink)
+                }
 
                 InkSeparator()
 
@@ -173,6 +267,9 @@ struct SettingsView: View {
         .task(id: session.server?.userID) { await checkAdmin() }
         // 설정 앱에서 권한을 바꾸고 돌아왔을 수 있다. **여기서 창을 띄우지 않는다.**
         .task { await reminder?.refreshPermission() }
+        .task(id: session.server?.userID) {
+            await notificationPreferences?.refresh(session: session.server)
+        }
         .inkDialog(
             "계정 삭제",
             message: isConfirmingAccountDeletion ? accountDeletionMessage : nil,

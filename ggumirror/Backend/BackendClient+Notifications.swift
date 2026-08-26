@@ -10,19 +10,89 @@ import Foundation
 
 // MARK: - 서버가 보내는 모양
 
+/// 알림의 종류. **모르는 값 하나가 목록 전체를 깨뜨리지 않는다.**
+nonisolated enum NotificationKind: String, Decodable, Sendable {
+    case sale = "marketplace_sale"
+    case mirrorDigest = "mirror_digest"
+    case recommendation
+    /// 이 앱이 모르는 종류. 서버가 나중에 새 종류를 보내도 여기로 온다.
+    case unknown
+
+    static func of(_ raw: String?) -> NotificationKind {
+        guard let raw, let known = NotificationKind(rawValue: raw) else { return .unknown }
+        return known
+    }
+}
+
 nonisolated struct SaleNotification: Decodable, Hashable, Identifiable, Sendable {
     let id: String
     let type: String
+    /// **판매 알림에만 있다.** 모아 보기는 상품 하나에 매이지 않는다.
     let listingId: String
     let contentType: String
     /// 팔린 그때의 제목. 판매자가 나중에 이름을 바꿔도 기록은 그때를 가리킨다.
     let title: String
     /// 이번 판매로 받은 조각. 무료 상품이면 0이다.
     let shardAmount: Int
+    /// 종류와 무관한 문구. 판매 알림에는 없고(옛 문서에도 없다) 그때는
+    /// 화면이 상품 이름과 조각으로 문장을 만든다.
+    let headline: String
+    let body: String
     let createdAt: Date
     let read: Bool
 
     var isMirror: Bool { contentType == "mirror" }
+    /// **모르는 종류가 와도 목록이 살아 있다.**
+    var kind: NotificationKind { NotificationKind.of(type) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, listingId, contentType, title, shardAmount
+        case headline, body, createdAt, read
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        // **열거형으로 받지 않는다.** 새 종류가 오면 decode가 통째로 실패한다.
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
+        // 옛 판매 문서에는 새 field가 없고, 모아 보기에는 판매 field가 없다.
+        listingId = try c.decodeIfPresent(String.self, forKey: .listingId) ?? ""
+        contentType = try c.decodeIfPresent(String.self, forKey: .contentType) ?? ""
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        shardAmount = try c.decodeIfPresent(Int.self, forKey: .shardAmount) ?? 0
+        headline = try c.decodeIfPresent(String.self, forKey: .headline) ?? ""
+        body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        read = try c.decodeIfPresent(Bool.self, forKey: .read) ?? false
+    }
+
+    init(
+        id: String, type: String, listingId: String = "", contentType: String = "",
+        title: String = "", shardAmount: Int = 0, headline: String = "", body: String = "",
+        createdAt: Date, read: Bool = false
+    ) {
+        self.id = id; self.type = type; self.listingId = listingId
+        self.contentType = contentType; self.title = title; self.shardAmount = shardAmount
+        self.headline = headline; self.body = body
+        self.createdAt = createdAt; self.read = read
+    }
+
+    /// 화면에 보여 줄 제목. **종류마다 다르다.**
+    var displayTitle: String {
+        switch kind {
+        case .sale: "\(title)이 판매됐어요"
+        case .mirrorDigest, .recommendation: headline.isEmpty ? "새로운 소식" : headline
+        // 모르는 종류는 일반 알림으로 보여 준다. **raw 값을 노출하지 않는다.**
+        case .unknown: headline.isEmpty ? "알림" : headline
+        }
+    }
+
+    var displayBody: String {
+        switch kind {
+        case .sale: shardAmount > 0 ? "+\(shardAmount)조각" : "누군가 받아 갔어요"
+        default: body.isEmpty ? "새로운 소식이 있어요." : body
+        }
+    }
 }
 
 nonisolated struct SaleNotificationPage: Decodable, Sendable {
@@ -41,6 +111,59 @@ nonisolated struct SaleStat: Decodable, Hashable, Identifiable, Sendable {
 
     var id: String { listingId }
     var isMirror: Bool { contentType == "mirror" }
+}
+
+/// 새 거울 소식을 얼마나 자주 받을까. **서버 값과 같은 문자열이다.**
+nonisolated enum DigestFrequency: String, CaseIterable, Decodable, Sendable {
+    case off
+    case daily
+    case weekly
+
+    var label: String {
+        switch self {
+        case .off: "받지 않기"
+        case .daily: "매일"
+        case .weekly: "매주"
+        }
+    }
+
+    /// 모르는 값은 **끔**이다. 알 수 없을 때 더 보내는 쪽으로 기울지 않는다.
+    static func of(_ raw: String?) -> DigestFrequency {
+        guard let raw, let known = DigestFrequency(rawValue: raw) else { return .off }
+        return known
+    }
+}
+
+/// 알림 설정. **OS 권한과 다른 것이다** — 이건 "무엇을 받을까"다.
+nonisolated struct NotificationPreferences: Decodable, Equatable, Sendable {
+    var salesEnabled: Bool
+    var mirrorDigestFrequency: DigestFrequency
+    var recommendationEnabled: Bool
+
+    /// 서버에 문서가 없을 때의 값. **판매는 켜짐, 나머지는 꺼짐.**
+    static let fallback = NotificationPreferences(
+        salesEnabled: true, mirrorDigestFrequency: .off, recommendationEnabled: false
+    )
+
+    private enum CodingKeys: String, CodingKey {
+        case salesEnabled, mirrorDigestFrequency, recommendationEnabled
+    }
+
+    init(salesEnabled: Bool, mirrorDigestFrequency: DigestFrequency, recommendationEnabled: Bool) {
+        self.salesEnabled = salesEnabled
+        self.mirrorDigestFrequency = mirrorDigestFrequency
+        self.recommendationEnabled = recommendationEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        salesEnabled = try c.decodeIfPresent(Bool.self, forKey: .salesEnabled) ?? true
+        mirrorDigestFrequency = DigestFrequency.of(
+            try c.decodeIfPresent(String.self, forKey: .mirrorDigestFrequency)
+        )
+        recommendationEnabled =
+            try c.decodeIfPresent(Bool.self, forKey: .recommendationEnabled) ?? false
+    }
 }
 
 /// 어느 APNs로 보낼지. **앱이 지어내는 값이 아니다** — 빌드가 정한다.
@@ -94,6 +217,12 @@ nonisolated enum NotificationFailure: Error, Equatable, Sendable {
 // MARK: - 호출
 
 nonisolated protocol NotificationBackend: Sendable {
+    func notificationPreferences(accessToken: String) async throws -> NotificationPreferences
+    /// **보낸 값만 바뀐다.** 토글 하나를 바꿀 때 나머지를 함께 보내지 않는다.
+    func updateNotificationPreferences(
+        salesEnabled: Bool?, digestFrequency: DigestFrequency?,
+        recommendationEnabled: Bool?, accessToken: String
+    ) async throws -> NotificationPreferences
     func notifications(cursor: String?, accessToken: String) async throws -> SaleNotificationPage
     func saleStats(accessToken: String) async throws -> [SaleStat]
     func markNotificationRead(id: String, accessToken: String) async throws -> SaleNotification
@@ -106,6 +235,41 @@ nonisolated protocol NotificationBackend: Sendable {
 }
 
 extension BackendClient: NotificationBackend {
+    func notificationPreferences(accessToken: String) async throws -> NotificationPreferences {
+        let data = try await notificationRequest(
+            "users/me/notification-preferences", method: "GET", accessToken: accessToken
+        )
+        return try decodeNotification(
+            NotificationPreferences.self, from: data,
+            path: "GET /users/me/notification-preferences"
+        )
+    }
+
+    func updateNotificationPreferences(
+        salesEnabled: Bool?, digestFrequency: DigestFrequency?,
+        recommendationEnabled: Bool?, accessToken: String
+    ) async throws -> NotificationPreferences {
+        struct Body: Encodable {
+            let salesEnabled: Bool?
+            let mirrorDigestFrequency: String?
+            let recommendationEnabled: Bool?
+        }
+        let data = try await notificationRequest(
+            "users/me/notification-preferences",
+            method: "PATCH",
+            body: try JSONEncoder.backend.encode(Body(
+                salesEnabled: salesEnabled,
+                mirrorDigestFrequency: digestFrequency?.rawValue,
+                recommendationEnabled: recommendationEnabled
+            )),
+            accessToken: accessToken
+        )
+        return try decodeNotification(
+            NotificationPreferences.self, from: data,
+            path: "PATCH /users/me/notification-preferences"
+        )
+    }
+
     func notifications(cursor: String?, accessToken: String) async throws -> SaleNotificationPage {
         var query: [URLQueryItem] = []
         if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }

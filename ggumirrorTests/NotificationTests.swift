@@ -303,6 +303,18 @@ private nonisolated final class FakePushBackend: NotificationBackend, @unchecked
         page
     }
     func saleStats(accessToken: String) async throws -> [SaleStat] { stats }
+
+    // I-11에서 protocol이 넓어졌다. 이 fake는 설정을 다루지 않으므로 기본값만 준다.
+    func notificationPreferences(accessToken: String) async throws -> NotificationPreferences {
+        .fallback
+    }
+
+    func updateNotificationPreferences(
+        salesEnabled: Bool?, digestFrequency: DigestFrequency?,
+        recommendationEnabled: Bool?, accessToken: String
+    ) async throws -> NotificationPreferences {
+        .fallback
+    }
     func markNotificationRead(id: String, accessToken: String) async throws -> SaleNotification {
         throw NotificationFailure.notFound
     }

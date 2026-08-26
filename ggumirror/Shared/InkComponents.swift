@@ -312,15 +312,25 @@ struct InkToggleChip: View {
 /// 설정처럼 잉크 구분선으로 나뉜 줄. 오른쪽에 값 / chevron / 스위치를 놓을 수 있다.
 struct InkListRow<Trailing: View>: View {
     let title: String
+    /// 한 줄 설명. **없으면 줄 자체를 그리지 않는다** — 기존 줄의 높이가 그대로다.
+    var subtitle: String?
     var showsChevron = false
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(InkFont.body)
+                    .foregroundStyle(PaperTheme.ink)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(InkFont.caption)
+                        .foregroundStyle(PaperTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             trailing()
 

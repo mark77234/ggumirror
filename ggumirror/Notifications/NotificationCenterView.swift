@@ -92,6 +92,9 @@ final class NotificationSession {
 }
 
 struct NotificationCenterView: View {
+    /// 모아 보기를 눌렀을 때 상점으로 보내는 길. 없으면 읽음 처리만 한다.
+    var onOpenStore: (() -> Void)?
+
     @Environment(AuthSession.self) private var session
     @State private var store = NotificationSession()
 
@@ -189,6 +192,8 @@ struct NotificationCenterView: View {
     private func row(_ item: SaleNotification) -> some View {
         Button {
             Task { await store.markRead(item.id, session: session.server) }
+            // 모아 보기는 상품 하나가 아니라 **상점**으로 간다.
+            if item.kind == .mirrorDigest { onOpenStore?() }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 // 안 읽은 것에만 점을 찍는다. 배지 체계를 만들지 않는다.
@@ -198,17 +203,21 @@ struct NotificationCenterView: View {
                     .padding(.top, 7)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(item.title)이 판매됐어요")
+                    // 문구는 model이 정한다 — 종류마다 화면이 분기하지 않는다.
+                    Text(item.displayTitle)
                         .font(InkFont.body)
                         .foregroundStyle(PaperTheme.ink)
                         .multilineTextAlignment(.leading)
                     HStack(spacing: 8) {
-                        if item.shardAmount > 0 {
-                            Text("+\(item.shardAmount)조각")
-                                .font(InkFont.caption)
-                                .foregroundStyle(PaperTheme.ink)
+                        Text(item.displayBody)
+                            .font(InkFont.caption)
+                            .foregroundStyle(
+                                item.kind == .sale ? PaperTheme.ink : PaperTheme.secondaryInk
+                            )
+                        // 판매 알림에만 종류가 있다. 모아 보기는 상품 하나가 아니다.
+                        if item.kind == .sale {
+                            Text(item.isMirror ? "거울" : "스티커")
                         }
-                        Text(item.isMirror ? "거울" : "스티커")
                         Text(Self.when.string(for: item.createdAt) ?? "")
                     }
                     .font(InkFont.caption)
@@ -221,7 +230,7 @@ struct NotificationCenterView: View {
         }
         .buttonStyle(InkPressStyle())
         .accessibilityLabel(
-            "\(item.title) 판매됨, \(item.shardAmount)조각, \(item.read ? "읽음" : "안 읽음")"
+            "\(item.displayTitle), \(item.displayBody), \(item.read ? "읽음" : "안 읽음")"
         )
     }
 
