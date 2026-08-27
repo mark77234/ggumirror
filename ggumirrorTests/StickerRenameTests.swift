@@ -235,8 +235,21 @@ struct StickerRenameIntegrityTests {
 
     @Test("이름 변경 UI가 거울과 같은 시트를 쓴다")
     func sharesTheMirrorSheet() throws {
-        let view = try source("ggumirror/Store/StickerStoreView.swift")
-        #expect(view.contains("MirrorNameSheet(name: $renameText"))
+        // 지킬 것은 "스티커가 자기 이름 시트를 따로 만들지 않는다"이다.
+        // 예전에는 그것을 `MirrorNameSheet(name: $renameText`라는 **호출 형태**로
+        // 봤는데, 시트가 binding 대신 `initialName:`을 받도록 바뀌면서 stale해졌다.
+        // 형태가 아니라 **같은 component를 쓰는가**를 본다.
+        let sticker = try source("ggumirror/Store/StickerStoreView.swift")
+        let mirror = try source("ggumirror/MyMirrors/MyMirrorsView.swift")
+
+        #expect(sticker.contains("MirrorNameSheet("))
+        // 거울과 **같은 인자 모양**으로 부른다 — 이름 변경이므로 새 콘텐츠가 아니다.
+        for call in [sticker, mirror] {
+            #expect(call.contains("MirrorNameSheet(initialName: renameText, isNewMirror: false)"))
+        }
+        // 스티커 전용 이름 시트를 만들지 않았다.
+        #expect(!sticker.contains("struct StickerNameSheet"))
+        #expect(!sticker.contains("TextField(\"이름\""))
     }
 
     @Test("숨은 long-press가 아니라 목록 action이다")

@@ -246,11 +246,21 @@ struct AppConfigTests {
         // Debug / Release 두 configuration 모두 잡혔는지 먼저 확인한다.
         #expect(versions["com.mark77234.ggumirror"]?.count == 2)
 
+        // **embed되는 target을 손으로 적지 않는다.** 목록을 적어 두면 나중에 extension을
+        // 하나 더 만들었을 때 이 테스트가 조용히 그것을 빼놓는다 — parity가 깨져도
+        // 초록으로 남는다. 앱 bundle id로 시작하는 것은 전부 embed 대상이다.
+        let embedded = versions.keys
+            .filter { $0.hasPrefix("com.mark77234.ggumirror.") }
+            .sorted()
+        #expect(embedded.count >= 2, "embed되는 target을 찾지 못했다")
+        // test target은 앱에 embed되지 않으므로 이 규칙에서 빠진다.
+        #expect(!embedded.contains { $0.hasSuffix("Tests") })
+
         // 앱 안에 embed되는 extension은 **반드시** 부모와 같아야 한다.
         // 다르면 `CFBundleVersion ... must match` 경고가 나고 App Store 검증에서 막힌다.
-        for target in ["com.mark77234.ggumirror.capture", "com.mark77234.ggumirror.controls"] {
+        for target in embedded {
             let configurations = try #require(versions[target], "\(target) 설정을 찾지 못했다")
-            #expect(configurations.count == 2)
+            #expect(configurations.count == 2, "\(target): Debug/Release 둘 다 잡히지 않았다")
             for configuration in configurations {
                 #expect(
                     configuration.build == app.build,
@@ -262,6 +272,38 @@ struct AppConfigTests {
                 )
             }
         }
+
+        // 앱 자신의 두 configuration도 서로 같아야 한다.
+        //
+        // **실제로 이것이 깨진 적이 있다** — Xcode General 탭에서 Version을 고치면
+        // 그 target의 Debug/Release만 함께 바뀌고 extension은 그대로 남는다.
+        // 위 비교는 `app.first`(Debug 하나)만 기준으로 삼으므로, 앱의 두 값이
+        // 서로 다른 경우는 여기서만 잡힌다.
+        let appConfigurations = try #require(versions["com.mark77234.ggumirror"])
+        #expect(Set(appConfigurations.map(\.marketing)).count == 1, "앱의 Debug/Release version이 다르다")
+        #expect(Set(appConfigurations.map(\.build)).count == 1, "앱의 Debug/Release build가 다르다")
+    }
+
+    @Test("출시 버전이 의도한 값이다")
+    func releaseVersionIsIntentional() throws {
+        // 버전은 **사람이 정하는 값**이라 여기서 형태만 확인한다. 특정 숫자를 못 박으면
+        // 다음 출시마다 이 테스트를 고쳐야 하고, 그러면 고치는 것이 습관이 되어
+        // 의도하지 않은 bump도 함께 통과한다.
+        //
+        // 대신 **모든 target이 한 값을 말하는지**를 본다 — drift는 그 조건을 깬다.
+        // **앱에 embed되는 것만** 본다. test target(`…ggumirrorTests`)은 앱에 들어가지
+        // 않으므로 자기 버전(1.0)을 그대로 둔다 — 이 규칙에서 빠진다.
+        let versions = try projectVersions()
+        let shipping = versions
+            .filter { $0.key == "com.mark77234.ggumirror"
+                || $0.key.hasPrefix("com.mark77234.ggumirror.") }
+            .values.flatMap { $0 }
+
+        #expect(Set(shipping.map(\.marketing)).count == 1, "target마다 version이 다르다")
+        let marketing = try #require(shipping.first?.marketing)
+        // `1.1.0` 같은 세 자리 형태다.
+        #expect(marketing.split(separator: ".").count == 3, "version 형태가 아니다: \(marketing)")
+        #expect(marketing.allSatisfy { $0.isNumber || $0 == "." })
     }
 
     // MARK: - Privacy manifest

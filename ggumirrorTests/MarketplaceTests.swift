@@ -1539,12 +1539,22 @@ struct StoreScrollHierarchyTests {
 
     @Test("UI-P2의 tab bar 여백이 유지된다")
     func tabBarClearanceSurvives() throws {
+        // 여백을 주는 방법은 **`inkTabBarSafeContent()` 한 곳**이 갖는다.
+        // 예전에는 화면마다 `contentMargins(...)`를 직접 적었고, 이 테스트도 그
+        // 형태를 봤다 — 값이 modifier로 빠지면서 stale해졌다. 지킬 것은 형태가
+        // 아니라 "탭 막대가 마지막 상품을 덮지 않는다"이므로 그것을 본다.
         let code = try source("Store/StoreView.swift")
-        #expect(code.contains("InkTabBar.reservedHeight"))
-        #expect(code.contains("contentMargins(.bottom"))
-        #expect(code.contains("for: .scrollContent"))
-        // scroll이 하나이므로 여백도 한 곳에서만 준다.
-        #expect(code.components(separatedBy: "contentMargins(.bottom").count - 1 == 1)
+        #expect(code.contains("inkTabBarSafeContent()"))
+        // scroll이 하나이므로 여백도 한 번만 준다.
+        #expect(code.components(separatedBy: "inkTabBarSafeContent()").count - 1 == 1)
+
+        // 그 modifier가 실제로 탭 막대 높이만큼 scroll content를 띄운다.
+        let bar = try source("Shared/InkTabBar.swift")
+        let start = try #require(bar.range(of: "func inkTabBarSafeContent()"))
+        let body = String(bar[start.upperBound...].prefix(220))
+        #expect(body.contains("contentMargins("))
+        #expect(body.contains("InkTabBar.reservedHeight"))
+        #expect(body.contains("for: .scrollContent"))
     }
 
     @Test("공개 거울 탭은 grid 하나다 — 구획으로 나뉘지 않는다")
@@ -2275,10 +2285,16 @@ struct StoreIAHardeningTests {
             guard let c = line.range(of: "//") else { return String(line) }
             return String(line[..<c.lowerBound])
         }.joined(separator: "\n")
+        // 세로 scroll은 상점 화면에 하나뿐이다 — 중첩되면 상단 제어부가
+        // 상품과 함께 밀려 올라가지 않는다.
         #expect(stripped.components(separatedBy: "ScrollView {").count - 1 == 1)
-        #expect(code.contains("InkTabBar.reservedHeight"))
-        // 내 판매도 같은 scroll 안에 있다.
-        #expect(!(try source("Store/MySalesSection.swift")).contains("ScrollView"))
+        // 그 하나에만 탭 막대 여백을 준다(`inkTabBarSafeContent`가 그 authority다).
+        #expect(code.contains("inkTabBarSafeContent()"))
+        // 안쪽 구획은 자기 scroll을 갖지 않는다 — 중첩되면 상단 제어부가 따라 오지 않는다.
+        // 주석의 낱말이 아니라 **실제로 만드는가**(`ScrollView {`)를 본다.
+        for inner in ["Store/MySalesSection.swift", "Store/StickerStoreView.swift"] {
+            #expect(!(try source(inner)).contains("ScrollView {"), "\(inner)")
+        }
     }
 
     @Test("내장 카드는 서버가 센 값만 보여 준다")

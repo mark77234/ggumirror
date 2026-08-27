@@ -56,12 +56,12 @@ struct StoreActionsTests {
 
     // MARK: - 등록 비용
 
-    @Test("등록 비용은 거울 10 · 스티커 5다")
+    @Test("등록 비용은 거울 10 · 스티커 10이다")
     func publishFeesAreLocked() {
+        // 1.1.0에서 스티커 등록비가 5 → 10이 됐다. 상점에 자리를 차지하는 값은
+        // 콘텐츠 크기가 아니라 자리값이라, 종류로 나누지 않는다.
         #expect(MirrorPublishPolicy.feeInShards == 10)
-        #expect(StickerPublishPolicy.feeInShards == 5)
-        // 스티커가 거울보다 싸다는 것이 정책이다.
-        #expect(StickerPublishPolicy.feeInShards < MirrorPublishPolicy.feeInShards)
+        #expect(StickerPublishPolicy.feeInShards == 10)
     }
 
     /// 화면이 숫자를 직접 적으면 정책이 바뀔 때 거짓말이 된다.

@@ -671,10 +671,38 @@ struct NotificationEntryTests {
 
     @Test("앱을 켜자마자 권한을 묻지 않는다")
     func launchNeverPrompts() throws {
+        // 지킬 것은 "시작하자마자 system 권한 창이 뜨지 않는다"이다.
+        //
+        // 예전에는 그것을 "RootView에 `enable(`이라는 글자가 없다"로 확인했는데,
+        // 앱이 **우리 설명 시트**를 갖게 되면서 그 시트의 `허용` callback에
+        // `enable()`이 정당하게 생겼다. 글자의 유무가 아니라 **어디서 불리는지**를 본다.
         let code = try source("ggumirror/RootView.swift")
-        // 시작 경로에는 `refresh`만 있다 — `enable`이 권한 창을 띄우는 쪽이다.
+
+        // 권한 창을 띄우는 호출은 하나뿐이고, 그것은 설명 시트 **안**에 있다.
+        #expect(code.components(separatedBy: "dailyReminder.enable(").count - 1 == 1)
+        let sheet = try #require(code.range(of: "NotificationOnboardingSheet {"))
+        let sheetEnd = try #require(
+            code.range(of: "onLater:", range: sheet.upperBound..<code.endIndex)
+        )
+        #expect(String(code[sheet.upperBound..<sheetEnd.lowerBound]).contains("dailyReminder.enable("))
+
+        // 시작 경로가 부르는 것은 `refresh`뿐이다 — 그것은 권한을 묻지 않는다.
         #expect(code.contains("dailyReminder.refresh()"))
-        #expect(!code.contains("dailyReminder.enable("))
+    }
+
+    @Test("설명을 먼저 보여 준 뒤에 시스템 창으로 간다")
+    func ourExplainerComesFirst() throws {
+        // 시스템 창은 한 번 거절당하면 다시 띄울 수 없다. 그래서 우리 설명이 먼저다.
+        let onboarding = try source("ggumirror/Notifications/NotificationOnboarding.swift")
+        // 설명은 한 번이면 된다 — 본 뒤에는 다시 띄우지 않는다.
+        #expect(onboarding.contains("func markSeen()"))
+        #expect(onboarding.contains("guard shouldPresent(permission: permission) else { return }"))
+
+        // `나중에`는 시스템 창을 부르지 않는다.
+        let code = try source("ggumirror/RootView.swift")
+        let later = try #require(code.range(of: "onLater:"))
+        let body = String(code[later.upperBound...].prefix(200))
+        #expect(!body.contains("enable("))
     }
 
     @Test("거울을 한 번 만들어 본 뒤에 묻는다")

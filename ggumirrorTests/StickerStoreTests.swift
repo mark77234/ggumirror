@@ -529,8 +529,8 @@ struct StickerStoreTests {
             stickers.saveDraft(draft)
             store.flush()
 
-            // UI-P3에서 확정됐다 — 스티커 5, 거울 10.
-            #expect(StickerPublishPolicy.feeInShards == 5)
+            // 1.1.0에서 확정됐다 — 등록비는 둘 다 10이다.
+            #expect(StickerPublishPolicy.feeInShards == 10)
             #expect(MirrorPublishPolicy.feeInShards == 10)
             // 상점에는 여전히 아무 listing도 없다.
             #expect(stickers.projects.count == 1)

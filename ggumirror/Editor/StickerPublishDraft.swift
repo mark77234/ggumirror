@@ -19,10 +19,15 @@ enum StickerPublishPolicy {
     /// 판매자가 정하는 가격. 0(무료)도 허용한다.
     static let priceRange = 0...999
 
-    /// 상점 등록 비용. 거울(10)보다 싸다 — 스티커는 더 작은 콘텐츠다.
+    /// 상점 등록 비용. 거울과 **같은 10조각**이다 — 상점에 자리를 차지하는 값은
+    /// 콘텐츠 크기가 아니라 자리값이라, 종류로 나누지 않는다.
     ///
     /// 거울과 마찬가지로 **화면·검증·안내가 전부 이 값 하나에서 나온다.**
-    static let feeInShards = 5
+    ///
+    /// **AI 스티커 생성값(5조각)과 다른 축이다.** 이것은 "상점에 내놓는 값"이고
+    /// 그쪽은 "만드는 값"이다. 실제 차감은 서버(`MarketplacePublishPolicy`)가 하고
+    /// 이 값은 화면에 미리 보여 주기 위한 것이다 — 요청에 실어 보내지 않는다.
+    static let feeInShards = 10
 
     static func normalizedTitle(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
