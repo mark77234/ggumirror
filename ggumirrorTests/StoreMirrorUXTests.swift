@@ -158,11 +158,13 @@ struct MirrorCardLayoutTests {
         // 예전에는 사용자 상품만 정사각 카드 + 왼쪽 그림 · 오른쪽 정보였다.
         // 기준은 원래 있던 내장 카드이고, 사용자 상품을 그쪽에 맞췄다.
         let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("StoreMirrorCard(model: cardModel"))
+        #expect(gallery.contains("MarketplaceListingCard("))
         #expect(!gallery.contains("private var mirrorCard"))
         #expect(!gallery.contains(".aspectRatio(1, contentMode: .fit)"))
-        #expect(gallery.contains("private var stickerCard"))
-        #expect(gallery.contains("if ListingPreviewStyle.isSticker(listing.contentType)"))
+        // 스티커도 같은 카드다 — 종류별 카드가 더는 없다.
+        #expect(!gallery.contains("private var stickerCard"))
+        #expect(try uxSource("ggumirror/Store/MarketplaceListingCard.swift")
+            .contains("StoreMirrorCard(model: model"))
     }
 
     @Test("칸 폭을 손으로 재지 않는다")
@@ -178,8 +180,11 @@ struct MirrorCardLayoutTests {
     func thumbnailIsCentered() throws {
         // `aspectRatio(_:contentMode: .fit)`이 칸 안에서 가운데로 놓는다.
         // 상품마다 왼쪽으로 붙던 구조(고정 폭 + topLeading)가 사라졌다.
+        // 칸 비율은 공용 카드가 종류별 authority에게 물어 정한다.
+        let card = try uxSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains("ListingPreviewStyle.aspectRatio(for: model.contentType)"))
+        #expect(card.contains("frame(maxWidth: .infinity, alignment: .center)"))
         let gallery = try uxSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("aspectRatio(ListingPreviewStyle.aspectRatio(for: type)"))
         #expect(!gallery.contains("alignment: .topLeading)"))
     }
 

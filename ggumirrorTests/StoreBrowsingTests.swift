@@ -145,11 +145,14 @@ struct StoreLikeTests {
 
     @Test("공개 카드에 하트가 있다")
     func publicCardsHaveHearts() throws {
-        let gallery = try browseSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("heart"))
-        #expect(gallery.contains("onToggleLike"))
+        // 이제 하트를 그리는 자리는 공용 카드 하나다.
+        let card = try browseSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains("heart"))
+        #expect(try browseSource("ggumirror/Store/MarketplaceGallery.swift")
+            .contains("onToggleLike"))
         // 손이 닿는 자리는 44pt다.
-        #expect(gallery.contains("minWidth: 44, minHeight: 44"))
+        #expect(card.contains("minWidth: InkTapTarget.minimum"))
+        #expect(InkTapTarget.minimum == 44)
         // 거울/스티커 카드가 **같은 view**를 쓴다 — 한쪽에만 하트가 있을 수 없다.
         // 스티커는 구획으로 그리고, 거울은 내장 목록과 합친 grid에서 같은 카드를 쓴다.
         #expect(try browseSource("ggumirror/Store/StickerStoreView.swift")
@@ -161,10 +164,11 @@ struct StoreLikeTests {
 
     @Test("자기 상품에는 숫자만 보이고 누를 수 없다")
     func selfLikeIsNotOffered() throws {
-        let gallery = try browseSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("if isMine {"))
-        // 목록에서 감추지는 않는다.
-        #expect(!gallery.contains("if isMine { EmptyView() }"))
+        let card = try browseSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains("if like.isMine {"))
+        // 숫자는 보이고 버튼만 없다 — 목록에서 감추지는 않는다.
+        #expect(card.contains("내 상품이라 누를 수 없어요"))
+        #expect(!card.contains("if like.isMine { EmptyView() }"))
     }
 
     @Test("좋아요 상태는 서버가 정한다 — 낙관적 표시를 남기지 않는다")
@@ -254,10 +258,13 @@ struct StickerCardLayoutTests {
 
     @Test("칸 크기가 원본 픽셀 크기에 기대지 않는다")
     func cardSizeIgnoresSourcePixels() throws {
+        // 칸 비율을 정하는 자리는 공용 카드 하나다.
+        #expect(try browseSource("ggumirror/Store/StoreMirrorCard.swift")
+            .contains("ListingPreviewStyle.aspectRatio(for:"))
         for path in ["ggumirror/Store/MarketplaceGallery.swift",
-                     "ggumirror/Store/MySalesSection.swift"] {
+                     "ggumirror/Store/MySalesSection.swift",
+                     "ggumirror/Admin/AdminStoreView.swift"] {
             let source = try browseSource(path)
-            #expect(source.contains("ListingPreviewStyle.aspectRatio(for:"), "\(path)")
             // 원본 크기를 재서 칸을 정하지 않는다.
             #expect(!source.contains("image.size"), "\(path)")
             #expect(!source.contains("cgImage?.width"), "\(path)")
@@ -266,10 +273,9 @@ struct StickerCardLayoutTests {
 
     @Test("긴 제목이 카드를 밀어내지 않는다")
     func longTitlesAreClipped() throws {
-        for path in ["ggumirror/Store/MarketplaceGallery.swift",
-                     "ggumirror/Store/MySalesSection.swift"] {
-            #expect(try browseSource(path).contains(".lineLimit(1)"), "\(path)")
-        }
+        // 제목을 그리는 자리도 공용 카드 하나다.
+        #expect(try browseSource("ggumirror/Store/StoreMirrorCard.swift")
+            .contains(".lineLimit(1)"))
     }
 }
 
@@ -432,9 +438,10 @@ struct StoreUnifiedMirrorGridTests {
         #expect(view.contains("StoreGalleryItem("))
         #expect(view.contains("MarketplaceGalleryItem("))
         // 종류별 표현 규칙은 여전히 공용 authority가 갖는다.
-        let gallery = try browseSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("ListingPreviewStyle.isSticker"))
-        #expect(gallery.contains("MarketplaceListingPreview("))
+        #expect(try browseSource("ggumirror/Store/MarketplaceGallery.swift")
+            .contains("MarketplaceListingCard("))
+        #expect(try browseSource("ggumirror/Store/MarketplaceListingCard.swift")
+            .contains("MarketplaceListingPreview("))
     }
 
     @Test("내장 템플릿에 없는 값을 지어내지 않는다")

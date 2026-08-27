@@ -256,10 +256,14 @@ struct LikeVisibilityTests {
 
     @Test("누른 상태가 칩 전체로 드러난다")
     func likedStateInvertsTheChip() throws {
-        let code = try overlaySource("Store/MarketplaceGallery.swift")
-        #expect(code.contains("shape.fill(isLiked ? PaperTheme.ink : PaperTheme.paper)"))
-        #expect(code.contains("isLiked ? PaperTheme.subtleSurface : PaperTheme.ink"))
+        // 카드를 하나로 합치면서 스티커 전용 칩이 사라졌다. 그 칩이 있었던 이유
+        // (caption 크기에서 빈 하트와 찬 하트의 차이가 너무 미묘하다)는 색으로 살렸다 —
+        // 눌리면 속이 찬 하트 + 진한 먹지가 된다.
+        let code = try overlaySource("Store/StoreMirrorCard.swift")
+        #expect(code.contains("like.isLiked ? \"heart.fill\" : \"heart\""))
+        #expect(code.contains("like.isLiked ? PaperTheme.ink : PaperTheme.secondaryInk"))
         // 손이 닿는 자리는 그대로 44pt다.
-        #expect(code.contains("minWidth: 44, minHeight: 44"))
+        #expect(code.contains("minWidth: InkTapTarget.minimum"))
+        #expect(InkTapTarget.minimum == 44)
     }
 }

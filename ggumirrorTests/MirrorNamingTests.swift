@@ -29,9 +29,10 @@ struct StoreMirrorCardGeometryTests {
     @Test("비율은 제품 상수를 재사용한다")
     func ratioIsNotDuplicated() throws {
         // 새 비율 상수를 만들면 거울마다 다른 모양이 생긴다.
-        #expect(StoreMirrorCardMetrics.previewRatio == MirrorStyle.aspectRatio)
+        // 카드는 비율을 **직접 알지 않고** 종류별 authority에게 묻는다.
+        #expect(ListingPreviewStyle.aspectRatio(for: "mirror") == MirrorStyle.aspectRatio)
         let card = try source(cardPath)
-        #expect(card.contains("MirrorStyle.aspectRatio"))
+        #expect(card.contains("ListingPreviewStyle.aspectRatio(for: model.contentType)"))
         for magic in ["0.46", "9 / 19.5", "9.0 / 19.5"] {
             #expect(!card.contains(magic), "카드가 비율을 다시 적었다: \(magic)")
         }
@@ -61,7 +62,7 @@ struct StoreMirrorCardGeometryTests {
     func previewGeometryIsOwnedByTheCard() throws {
         let card = try source(cardPath)
         // 카드가 직접 비율을 걸어 준다. 넘겨받은 그림이 높이를 정하지 못한다.
-        #expect(card.contains("aspectRatio(StoreMirrorCardMetrics.previewRatio, contentMode: .fit)"))
+        #expect(card.contains("ListingPreviewStyle.aspectRatio(for: model.contentType), contentMode: .fit"))
         #expect(card.contains(".clipped()"))
         #expect(card.contains("frame(maxWidth: .infinity)"))
     }

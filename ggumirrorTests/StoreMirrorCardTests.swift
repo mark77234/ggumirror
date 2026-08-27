@@ -28,8 +28,11 @@ struct StoreMirrorCardContractTests {
     @Test("사용자 상품과 내장 템플릿이 같은 컴포넌트를 쓴다")
     func bothSourcesUseOneCard() throws {
         // 이 계약이 깨지면 다시 두 벌의 레이아웃이 생긴다.
+        // 서버 상품은 공용 카드를 지나고, 그 카드가 내장 카드를 그대로 쓴다.
         #expect(try cardSource("ggumirror/Store/MarketplaceGallery.swift")
-            .contains("StoreMirrorCard(model: cardModel"))
+            .contains("MarketplaceListingCard(\n            model: cardModel"))
+        #expect(try cardSource("ggumirror/Store/MarketplaceListingCard.swift")
+            .contains("StoreMirrorCard(model: model"))
         #expect(try cardSource("ggumirror/Store/StoreView.swift")
             .contains("StoreMirrorCard("))
     }
@@ -46,13 +49,16 @@ struct StoreMirrorCardContractTests {
         #expect(!gallery.contains(".aspectRatio(1, contentMode: .fit)"))
     }
 
-    @Test("스티커는 예전 정사각 표현을 유지한다")
-    func stickerCardIsUnchanged() throws {
+    @Test("스티커도 같은 카드를 쓰고 칸만 정사각이다")
+    func stickerSharesTheCard() throws {
         let gallery = try cardSource("ggumirror/Store/MarketplaceGallery.swift")
-        #expect(gallery.contains("private var stickerCard"))
-        #expect(gallery.contains("if ListingPreviewStyle.isSticker(listing.contentType)"))
-        // 스티커 칸은 여전히 정사각이다.
+        // 스티커 전용 카드는 사라졌다 — 종류는 **값으로** 넘어간다.
+        #expect(!gallery.contains("private var stickerCard"))
+        #expect(gallery.contains("contentType: listing.contentType"))
+        // 칸 비율만 종류가 정한다. 스티커는 여전히 정사각이다.
         #expect(ListingPreviewStyle.aspectRatio(for: "sticker") == 1)
+        #expect(try cardSource("ggumirror/Store/StoreMirrorCard.swift")
+            .contains("ListingPreviewStyle.aspectRatio(for: model.contentType)"))
     }
 
     @Test("거울 비율은 9:19.5 그대로다")
@@ -178,15 +184,17 @@ struct StoreMirrorCardPreviewTests {
 
     @Test("불러오는 중에도 칸 크기가 움직이지 않는다")
     func placeholderKeepsTheFrame() throws {
-        let gallery = try cardSource("ggumirror/Store/MarketplaceGallery.swift")
-        // 그림이 있든 없든 같은 `aspectRatio` 칸 안에서 그린다.
-        let preview = try #require(gallery.range(of: "private var previewImage: some View"))
+        // 그림을 그리는 자리는 이제 공용 카드 하나다.
+        let gallery = try cardSource("ggumirror/Store/MarketplaceListingCard.swift")
+        let preview = try #require(gallery.range(of: "var body: some View"))
         // 함수 끝까지 본다 — 고정 길이로 자르면 아래쪽 modifier를 놓친다.
         let rest = gallery[preview.lowerBound...]
         let stop = rest.range(of: "\n    }\n") ?? rest.range(of: "\n}")
         let body = stop.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
-        #expect(body.contains("aspectRatio(ListingPreviewStyle.aspectRatio(for: type)"))
-        #expect(body.contains("Image(systemName: \"photo\")"))
+        // 그림이 있든 없든 같은 칸 안에서 그린다 — 자리표시자도 공용 view가 낸다.
+        #expect(body.contains("MarketplaceListingPreview("))
+        #expect(try cardSource("ggumirror/Store/MarketplaceListingPreview.swift")
+            .contains("Image(systemName: \"photo\")"))
     }
 
     @Test("실패해도 항목이 사라지지 않는다")

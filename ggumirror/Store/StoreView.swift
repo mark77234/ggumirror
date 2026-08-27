@@ -239,12 +239,15 @@ struct StoreView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
             } else {
-                LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
+                LazyVGrid(
+                    columns: GalleryLayout.columns(for: dynamicTypeSize),
+                    spacing: GalleryLayout.spacing
+                ) {
                     ForEach(mirrorItems) { item in
                         mirrorCell(item)
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, GalleryLayout.horizontalPadding)
             }
         }
         // **공개 목록은 여기서 받아온다.** 상품 구획 안에 두면 목록이 비었을 때
@@ -321,14 +324,6 @@ private struct StoreGalleryItem: View {
         ) {
             MirrorPreview(template: template)
         }
-    }
-}
-
-/// Gallery는 2열이 기본. 큰 글씨 설정에서는 이름이 뭉개지지 않게 1열로 바꾼다.
-enum GalleryLayout {
-    static func columns(for size: DynamicTypeSize) -> [GridItem] {
-        let count = size.isAccessibilitySize ? 1 : 2
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
     }
 }
 

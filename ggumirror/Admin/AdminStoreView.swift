@@ -10,6 +10,11 @@
 //  새 관리자 웹을 만들지 않았다. 새 hosting도 새 로그인도 필요 없고,
 //  이미 있는 인증을 그대로 쓴다.
 //
+//  **상점과 같은 카드 · 같은 격자를 쓴다.** 예전에는 여기만 작은 썸네일을 왼쪽에 붙이고
+//  글자를 오른쪽에 세운 표였다 — 운영자가 사용자에게 실제로 보이는 모습과 다른 것을
+//  보고 내릴지 판단했다. 카드는 `MarketplaceListingCard` 하나이고, 운영자에게만
+//  필요한 것(판매 상태 · 내려간 사유)은 배지와 통계 줄 끝에 얹는다.
+//
 
 import SwiftUI
 
@@ -169,6 +174,7 @@ final class AdminStore {
 
 struct AdminStoreView: View {
     @Environment(AuthSession.self) private var session
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = AdminStore()
     @State private var pendingTakedown: AdminListing?
     @State private var pendingRestore: AdminListing?
@@ -192,9 +198,15 @@ struct AdminStoreView: View {
                         .padding(.top, 40)
                 }
 
-                ForEach(store.visible) { listing in
-                    row(listing)
-                    InkSeparator()
+                // **상점과 같은 격자다.** 필터가 이미 하나의 결과 목록을 만들므로
+                // 여기서 다시 구획으로 나누지 않는다 — 홀수 개여도 그냥 이어진다.
+                LazyVGrid(
+                    columns: GalleryLayout.columns(for: dynamicTypeSize),
+                    spacing: GalleryLayout.spacing
+                ) {
+                    ForEach(store.visible) { listing in
+                        card(listing)
+                    }
                 }
 
                 if store.hasMore {
@@ -207,7 +219,7 @@ struct AdminStoreView: View {
                     .disabled(store.isLoading)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, GalleryLayout.horizontalPadding)
             .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
@@ -326,89 +338,52 @@ struct AdminStoreView: View {
         .padding(.top, 8)
     }
 
-    private func row(_ listing: AdminListing) -> some View {
-        let isBusy = store.busyListingID == listing.id
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                // **생김새를 보여준다** — 제목만 보고 내릴지 판단할 수 없다.
-                preview(listing)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(listing.title)
-                        .font(InkFont.body)
-                        .foregroundStyle(PaperTheme.ink)
-                        .lineLimit(2)
-                    Text("\(listing.sellerLabel) · \(listing.isMirror ? "거울" : "스티커")")
-                        .font(InkFont.caption)
-                        .foregroundStyle(PaperTheme.secondaryInk)
-                    HStack(spacing: 10) {
-                        ShardAmount(amount: listing.priceShards, font: InkFont.caption, iconSize: 13)
-                        Label("\(listing.downloadCount)", systemImage: "arrow.down")
-                        Label("\(listing.likeCount)", systemImage: "heart")
-                    }
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                    .labelStyle(.titleAndIcon)
-                    .imageScale(.small)
-                    Text(listing.statusLabel)
-                        .font(InkFont.caption)
-                        .foregroundStyle(PaperTheme.secondaryInk)
-                }
-                Spacer(minLength: 0)
-            }
-
-            if listing.isRemoved, let reason = listing.reasonLabel {
-                Text("운영자에 의해 내려간 상품 · 사유: \(reason)")
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-            }
-
-            HStack(spacing: 8) {
-                if listing.isRemoved {
-                    // 판매자가 삭제한 것은 되살릴 수 없다 — 버튼을 주지 않는다.
-                    if !listing.isDeletedBySeller {
-                        action("다시 공개하기") { pendingRestore = listing }
-                    }
-                } else if !listing.isDeletedBySeller {
-                    action("상점에서 내리기") { pendingTakedown = listing }
-                }
-                Spacer(minLength: 0)
-            }
-            .disabled(isBusy)
-        }
-        .padding(.vertical, 12)
-        .task { await store.loadPreview(listing.id, session: session.server) }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(listing.title), \(listing.sellerLabel), \(listing.statusLabel)"
-        )
-    }
-
-    /// 상품 미리보기. **상점과 같은 규칙으로 그린다.**
+    /// 격자 칸 하나. **상점 카드와 같은 component다** — 운영자 전용 미리보기를
+    /// 따로 만들지 않는다. 예전에는 여기서 `scaledToFill`을 직접 적어 스티커가 잘렸다.
     ///
-    /// 예전에는 여기서 `scaledToFill`을 직접 적고 종류를 보지 않아서, 스티커가
-    /// 거울 모양 칸에 꽉 채워져 잘렸다. 크기와 테두리만 이 화면이 정한다.
-    private func preview(_ listing: AdminListing) -> some View {
-        let shape = UnevenRoundedRectangle.ink(14, 12, 15, 13)
-        return MarketplaceListingPreview(
-            contentType: listing.contentType,
-            data: store.preview(listing.id),
-            shape: shape
+    /// 운영 판단에 필요한 값은 그대로다: 판매자 · 종류 · 가격 · 다운로드 · 좋아요 ·
+    /// 판매 상태 · 내려간 사유.
+    private func card(_ listing: AdminListing) -> some View {
+        MarketplaceListingCard(
+            model: StoreMirrorCardModel(
+                contentType: listing.contentType,
+                title: listing.title,
+                subtitle: "\(listing.sellerLabel) · \(listing.isMirror ? "거울" : "스티커")",
+                price: listing.priceShards,
+                downloadCount: listing.downloadCount,
+                // 내려간 상품에는 **왜 내려갔는지**가 상태보다 먼저다.
+                // 사유를 모르면(서버가 모르는 값을 줬다) 지어내지 않고 상태를 그대로 둔다.
+                footnote: listing.isRemoved
+                    ? (listing.reasonLabel.map { "사유: \($0)" } ?? listing.statusLabel)
+                    : listing.statusLabel,
+                status: listing.statusLabel
+            ),
+            preview: store.preview(listing.id),
+            // 운영자는 좋아요를 누르지 않는다 — 숫자만 본다.
+            like: StoreMirrorCardLike(
+                count: listing.likeCount, isLiked: false,
+                isMine: true, isBusy: false, toggle: {}
+            ),
+            action: action(for: listing)
         )
-        .frame(width: 62)
-        .overlay { shape.stroke(PaperTheme.separator, lineWidth: 1.2) }
+        .task { await store.loadPreview(listing.id, session: session.server) }
     }
 
-    private func action(_ title: String, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            Text(title)
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background { Capsule().stroke(PaperTheme.separator, lineWidth: 1.4) }
+    /// 이 상태에서 운영자가 할 수 있는 **하나뿐인** 동작.
+    ///
+    /// **판매자가 삭제한 것은 끝 상태다** — 되살릴 수 없으므로 버튼을 주지 않는다
+    /// (서버가 409로 거절한다). 정책은 그대로이고 자리만 카드 안으로 옮겼다.
+    private func action(for listing: AdminListing) -> MarketplaceCardAction? {
+        guard !listing.isDeletedBySeller else { return nil }
+        let isBusy = store.busyListingID == listing.id
+        if listing.isRemoved {
+            return MarketplaceCardAction(title: "다시 공개하기", isEnabled: !isBusy) {
+                pendingRestore = listing
+            }
         }
-        .buttonStyle(InkPressStyle())
+        return MarketplaceCardAction(title: "상점에서 내리기", isEnabled: !isBusy) {
+            pendingTakedown = listing
+        }
     }
 
     private func takedown(_ listing: AdminListing, reason: AdminModerationReason) async {

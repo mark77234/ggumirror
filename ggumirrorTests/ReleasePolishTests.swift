@@ -82,7 +82,7 @@ struct MirrorPreviewCenteringTests {
     @Test("비율도 content mode도 그대로다")
     func aspectAndContentModeUnchanged() throws {
         let card = try polish("ggumirror/Store/StoreMirrorCard.swift")
-        #expect(card.contains("aspectRatio(StoreMirrorCardMetrics.previewRatio, contentMode: .fit)"))
+        #expect(card.contains("ListingPreviewStyle.aspectRatio(for: model.contentType), contentMode: .fit"))
         // 늘리지 않는다.
         #expect(!card.contains("contentMode: .fill"))
         #expect(!card.contains("scaledToFill"))

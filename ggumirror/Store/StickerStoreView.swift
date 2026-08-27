@@ -218,7 +218,10 @@ struct StickerStoreView: View {
     }
 
     private var grid: some View {
-        LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
+        LazyVGrid(
+            columns: GalleryLayout.columns(for: dynamicTypeSize),
+            spacing: GalleryLayout.spacing
+        ) {
             ForEach(library.projects.reversed()) { project in
                 VStack(spacing: 6) {
                     Button { actionTarget = project } label: {
@@ -230,7 +233,7 @@ struct StickerStoreView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, GalleryLayout.horizontalPadding)
     }
 
     /// 실제 서버 목록. 상품이 없으면 **비어 있다고 말한다** — 가짜 목록을 만들지 않는다.

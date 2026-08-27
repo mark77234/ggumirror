@@ -18,10 +18,22 @@ private func listingSource(_ path: String) throws -> String {
     )
 }
 
-/// 상품 미리보기를 그리는 화면 전부.
+/// 상품을 보여 주는 화면 전부. **직접 그리는 코드가 하나도 없어야 한다.**
 private let surfaces = [
     "ggumirror/Store/MarketplaceGallery.swift",
     "ggumirror/Store/MyListingsSection.swift",
+    "ggumirror/Store/MySalesSection.swift",
+    "ggumirror/Admin/AdminStoreView.swift",
+    "ggumirror/Store/MarketplaceListingCard.swift",
+]
+
+/// 격자에 상품을 늘어놓는 세 화면. **같은 카드를 쓴다.**
+///
+/// 예전에는 셋이 각자 카드를 갖고 있었다 — 상점은 격자 카드, 내 판매는 가로 줄,
+/// 상점 관리는 작은 썸네일 표. 그림 그리는 규칙만 공유하고 그것을 감싼 카드는
+/// 셋이라, 규칙이 갈라질 자리가 셋이었다.
+private let gridSurfaces = [
+    "ggumirror/Store/MarketplaceGallery.swift",
     "ggumirror/Store/MySalesSection.swift",
     "ggumirror/Admin/AdminStoreView.swift",
 ]
@@ -31,8 +43,38 @@ struct SharedListingPreviewTests {
 
     @Test("모든 화면이 공용 view를 쓴다")
     func everySurfaceUsesTheSharedPreview() throws {
-        for path in surfaces {
-            #expect(try listingSource(path).contains("MarketplaceListingPreview("), "\(path)")
+        // 격자 화면은 공용 **카드**를 쓰고, 그 카드가 공용 preview를 쓴다.
+        for path in gridSurfaces {
+            #expect(try listingSource(path).contains("MarketplaceListingCard("), "\(path)")
+        }
+        let card = try listingSource("ggumirror/Store/MarketplaceListingCard.swift")
+        #expect(card.contains("MarketplaceListingPreview("))
+        // 카드를 쓰지 않는 나머지 화면도 공용 preview를 지난다.
+        #expect(try listingSource("ggumirror/Store/MyListingsSection.swift")
+            .contains("MarketplaceListingPreview("))
+    }
+
+    @Test("세 화면이 같은 카드 구현을 쓴다")
+    func theThreeScreensShareOneCard() throws {
+        for path in gridSurfaces {
+            let code = try listingSource(path)
+            // 자기 카드를 다시 만들지 않는다.
+            #expect(!code.contains("private var stickerCard"), "\(path)")
+            #expect(!code.contains("StoreMirrorCard(model:"), "\(path)")
+        }
+        // 카드는 종류를 스스로 판정하지 않고 공용 규칙에게 묻는다.
+        let card = try listingSource("ggumirror/Store/StoreMirrorCard.swift")
+        #expect(card.contains("ListingPreviewStyle.aspectRatio(for: model.contentType)"))
+    }
+
+    @Test("세 화면이 같은 격자를 쓴다")
+    func theThreeScreensShareOneGrid() throws {
+        for path in gridSurfaces + ["ggumirror/Store/StoreView.swift"] {
+            let code = try listingSource(path)
+            #expect(code.contains("GalleryLayout.columns(for: dynamicTypeSize)"), "\(path)")
+            #expect(code.contains("GalleryLayout.spacing"), "\(path)")
+            // 열 수와 간격을 손으로 다시 적지 않는다.
+            #expect(!code.contains("GridItem("), "\(path)")
         }
     }
 

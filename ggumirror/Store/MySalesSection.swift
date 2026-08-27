@@ -14,6 +14,12 @@
 //  서버는 실제로 지우지 않는다(이미 산 사람은 계속 받는다) — 하지만 판매자에게는
 //  끝난 일이므로 "잠시 내림"처럼 말하지 않는다.
 //
+//  **상점과 같은 카드 · 같은 격자를 쓴다.** 예전에는 여기만 가로로 꽉 찬 줄이었다 —
+//  판매자가 상점에서 보던 자기 상품을 여기서는 다른 물건처럼 봤다.
+//  구획(판매 중 / 등록 미완료 / 이전 판매 중지)은 그대로 둔다. 그것은 격자가 갈라진
+//  것이 아니라 **판매자가 실제로 나눠서 봐야 하는 것**이고, 섞으면 아직 안 올린 것과
+//  팔리는 중인 것을 구분할 수 없다(실기기에서 확인된 문제다).
+//
 
 import SwiftUI
 import UIKit
@@ -22,6 +28,8 @@ struct MySalesSection: View {
     @Bindable var store: MarketplaceStore
     var session: ServerSession?
     var wallet: ShardWallet?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var notice: String?
     /// 삭제 확인을 기다리는 상품. 누르자마자 지우지 않는다.
@@ -118,11 +126,17 @@ struct MySalesSection: View {
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.secondaryInk)
             }
-            ForEach(listings) { listing in
-                card(listing)
+            // **상점과 같은 격자다.** 열 수 · 간격을 여기서 다시 정하지 않는다.
+            LazyVGrid(
+                columns: GalleryLayout.columns(for: dynamicTypeSize),
+                spacing: GalleryLayout.spacing
+            ) {
+                ForEach(listings) { listing in
+                    card(listing)
+                }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, GalleryLayout.horizontalPadding)
     }
 
     private var signInNotice: some View {
@@ -161,104 +175,52 @@ struct MySalesSection: View {
 
     // MARK: - 카드
 
+    /// 격자 칸 하나. **상점 카드와 같은 component다** — 그림 그리는 코드가 여기 없다.
+    ///
+    /// 판매자에게 필요한 값은 하나도 빠지지 않는다: 가격 · 다운로드 · 좋아요는 카드가
+    /// 늘 그리고, 판매 상태는 칸 위 배지와 통계 줄 끝에 온다.
     private func card(_ listing: MarketplaceOwnedListing) -> some View {
-        let isBusy = store.isBusy(.delete(listing.id)) || store.isBusy(.publish(listing.id))
-        return VStack(alignment: .leading, spacing: 8) {
-            // 판매자 전용 미리보기 — draft도 보인다(공개 미리보기는 published만).
-            preview(listing)
-                .task { await store.loadMyPreview(listing.id, session: session) }
-
-            HStack(spacing: 8) {
-                Text(listing.title)
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Text(listing.statusLabel)
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-            }
-
-            HStack(spacing: 10) {
-                Text(listing.contentType == "sticker" ? "스티커" : "거울")
-                ShardAmount(amount: listing.priceShards, font: InkFont.caption, iconSize: 14)
-                Label("\(listing.downloadCount)", systemImage: "arrow.down")
-                Label("\(listing.likeCount)", systemImage: "heart")
-                Spacer(minLength: 4)
-            }
-            .font(InkFont.caption)
-            .foregroundStyle(PaperTheme.secondaryInk)
-            .labelStyle(.titleAndIcon)
-            .imageScale(.small)
-
-            HStack(spacing: 8) {
-                if listing.isPublished {
-                    // **"내리기"가 아니라 "삭제"다.** 사용자가 원한 것은 되돌릴 수 있는
-                    // 숨김이 아니라 끝내는 것이다. 누르면 확인을 먼저 받는다.
-                    action("삭제") { pendingDelete = listing }
-                }
-                if listing.isDraft {
-                    // 이 draft가 이미 가리키는 불변 snapshot을 그대로 올린다.
-                    action("상점에 올리기") { Task { await resume(listing) } }
-                }
-                if listing.isUnlisted {
-                    // **삭제만 준다.** 사용자가 원한 것은 되돌릴 수 있는 숨김이 아니라
-                    // 끝내는 것이다. 새 UI는 "다시 판매"를 만들지 않는다.
-                    action("삭제") { pendingDelete = listing }
-                }
-                Spacer(minLength: 0)
-            }
-            .disabled(isBusy)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 14)
-        .background {
-            UnevenRoundedRectangle.ink(18, 15, 19, 16)
-                .stroke(PaperTheme.separator, lineWidth: 1.4)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            """
-            \(listing.title), \(listing.statusLabel), \
-            \(listing.contentType == "sticker" ? "스티커" : "거울"), \
-            \(listing.priceShards == 0 ? "무료" : "\(listing.priceShards) 조각"), \
-            다운로드 \(listing.downloadCount), 좋아요 \(listing.likeCount)
-            """
-        )
-    }
-
-    /// 거울과 스티커가 **같은 칸을 쓰지 않는다.** 거울 비율에 스티커를 넣으면
-    /// 좌우가 잘리고 작은 투명 PNG는 늘어나 뭉개진다(실기기에서 그랬다).
-    /// 상품 미리보기. 규칙은 `MarketplaceListingPreview` 하나가 갖는다.
-    private func preview(_ listing: MarketplaceOwnedListing) -> some View {
-        let shape = UnevenRoundedRectangle.ink(18, 15, 19, 16)
-        return MarketplaceListingPreview(
-            contentType: listing.contentType,
-            data: store.myPreviews[listing.id],
+        MarketplaceListingCard(
+            model: StoreMirrorCardModel(
+                contentType: listing.contentType,
+                title: listing.title,
+                subtitle: listing.contentType == "sticker" ? "스티커" : "거울",
+                price: listing.priceShards,
+                downloadCount: listing.downloadCount,
+                footnote: listing.statusLabel,
+                status: listing.statusLabel
+            ),
+            preview: store.myPreviews[listing.id],
             didFail: store.myPreviewFailures.contains(listing.id),
-            shape: shape
+            // 좋아요 수는 보여 주되 **누를 수 없다.** 자기 상품이라 서버가 거절한다.
+            like: StoreMirrorCardLike(
+                count: listing.likeCount, isLiked: false,
+                isMine: true, isBusy: false, toggle: {}
+            ),
+            action: action(for: listing)
         )
-        .frame(maxHeight: 220)
-        .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
-        .accessibilityHidden(true)
+        // 판매자 전용 미리보기 — draft도 보인다(공개 미리보기는 published만).
+        .task { await store.loadMyPreview(listing.id, session: session) }
     }
 
-    private func action(_ title: String, work: @escaping () -> Void) -> some View {
-        // 테두리 전체가 눌린다. `.contentShape`을 Button 밖에 걸면 소용없다 —
-        // tap 영역은 label이 정한다.
-        Button(action: work) {
-            Text(title)
-                .font(InkFont.caption)
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background {
-                    UnevenRoundedRectangle.ink(14, 12, 15, 13)
-                        .stroke(PaperTheme.ink, lineWidth: 1.6)
-                }
-                .contentShape(.rect)
+    /// 이 상태에서 할 수 있는 **하나뿐인** 동작. 정책은 그대로다 —
+    /// 내려간 것에도 `삭제`만 주고 "다시 판매"를 만들지 않는다.
+    private func action(for listing: MarketplaceOwnedListing) -> MarketplaceCardAction? {
+        let isBusy = store.isBusy(.delete(listing.id)) || store.isBusy(.publish(listing.id))
+        if listing.isPublished || listing.isUnlisted {
+            // **"내리기"가 아니라 "삭제"다.** 사용자가 원한 것은 되돌릴 수 있는
+            // 숨김이 아니라 끝내는 것이다. 누르면 확인을 먼저 받는다.
+            return MarketplaceCardAction(title: "삭제", isEnabled: !isBusy) {
+                pendingDelete = listing
+            }
         }
-        .buttonStyle(InkPressStyle())
+        if listing.isDraft {
+            // 이 draft가 이미 가리키는 불변 snapshot을 그대로 올린다.
+            return MarketplaceCardAction(title: "상점에 올리기", isEnabled: !isBusy) {
+                Task { await resume(listing) }
+            }
+        }
+        return nil
     }
 
     // MARK: - 동작

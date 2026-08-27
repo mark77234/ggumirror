@@ -4,12 +4,16 @@
 //
 //  사용자가 올린 상품 목록과 상세.
 //
-//  내장 템플릿(`StoreGalleryItem`)과 **생김새를 맞춘다** — 같은 글꼴 · 같은 간격 ·
+//  내장 템플릿(`StoreGalleryItem`)과 **같은 카드를 쓴다** — 같은 글꼴 · 같은 간격 ·
 //  같은 metadata 한 줄이다. 새 디자인 언어를 만들지 않는다.
 //
 //  다른 점은 하나뿐이다: 대표 이미지를 로컬에서 그리지 않고 서버에서 받는다.
 //  내장 템플릿은 `style`과 번들 PNG가 있어 `MirrorPreview`로 그릴 수 있지만,
 //  서버 상품은 그것을 공개하지 않는다(그게 맞다 — 사기 전에 원본을 주지 않는다).
+//
+//  **스티커도 같은 카드다.** 예전에는 스티커만 자기 카드를 따로 갖고 있었는데,
+//  그 이유는 공용 카드가 거울 비율을 못 박아 두었기 때문이었다. 이제 칸 비율을
+//  `ListingPreviewStyle`이 정하므로 카드를 나눌 이유가 없다.
 //
 
 import SwiftUI
@@ -29,34 +33,17 @@ struct MarketplaceGalleryItem: View {
     var onToggleLike: (() -> Void)?
 
     var body: some View {
-        card
-            .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            """
-            \(listing.title), \
-            \(listing.priceShards == 0 ? "무료" : "\(listing.priceShards) 조각"), \
-            다운로드 \(listing.downloadCount), 좋아요 \(listing.likeCount), \
-            \(listing.publishedAtLabel) 업로드\(isLiked ? ", 좋아요 누름" : "")
-            """
+        // **카드는 공용 하나다.** 종류별 분기도, 이미지 렌더링 코드도 여기 없다.
+        MarketplaceListingCard(
+            model: cardModel,
+            preview: preview,
+            like: cardLike
         )
-    }
-
-    /// 거울은 **내장 템플릿과 같은 카드**를 쓴다.
-    ///
-    /// 예전에는 사용자 상품만 작은 거울을 왼쪽에 붙이고 정보를 오른쪽에 세웠다 —
-    /// 같은 상점의 같은 물건인데 다른 물건처럼 보였다. 기준은 원래 있던 내장 카드다.
-    /// 스티커는 정사각 표현이 맞으므로 그대로 둔다.
-    @ViewBuilder
-    private var card: some View {
-        if ListingPreviewStyle.isSticker(listing.contentType) {
-            stickerCard
-        } else {
-            StoreMirrorCard(model: cardModel, like: cardLike) { previewImage }
-        }
     }
 
     private var cardModel: StoreMirrorCardModel {
         StoreMirrorCardModel(
+            contentType: listing.contentType,
             title: listing.title,
             // 1.1.0부터 서버가 판매자 **이름**을 준다(내부 id는 여전히 주지 않는다).
             // 아직 이름을 정하지 않은 판매자와 1.0.7 시절 상품은 `nil`이고,
@@ -76,109 +63,6 @@ struct MarketplaceGalleryItem: View {
             count: listing.likeCount, isLiked: isLiked,
             isMine: isMine, isBusy: isLiking, toggle: onToggleLike
         )
-    }
-
-    /// **칸 크기는 종류가 정하고 그림은 그 안에 들어간다.**
-    /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
-    /// **칸 크기는 카드가 정하고 그리는 규칙은 공용 view가 갖는다.**
-    /// 원본 픽셀 크기에 기대지 않으므로 작은 스티커 PNG가 카드를 찌그러뜨리지 않는다.
-    private var previewImage: some View {
-        let shape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
-        return MarketplaceListingPreview(
-            contentType: listing.contentType,
-            data: preview,
-            shape: shape
-        )
-        .overlay(shape.stroke(PaperTheme.ink, lineWidth: InkLine.regular))
-    }
-
-    /// 스티커는 정사각 그림 한 덩어리가 곧 상품이라 예전 표현을 그대로 쓴다.
-    /// 거울처럼 세로로 긴 그림이 아니어서 카드가 밀리는 문제가 없었다.
-    private var stickerCard: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            previewImage
-                .overlay(alignment: .topTrailing) { heart }
-                .padding(.bottom, 6)
-
-            Text(listing.title)
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            HStack(spacing: 6) {
-                Spacer(minLength: 4)
-                ShardAmount(amount: listing.priceShards)
-            }
-
-            metadata
-        }
-    }
-
-    /// 스티커 카드 위 하트. 거울은 통계 줄 안에서 누른다(공통 카드).
-    ///
-    /// 자기 상품에서는 **숫자만 보이고 누를 수 없다.** 실패할 CTA를 일부러
-    /// 보여 주지 않는다(서버가 self-like를 거절한다).
-    ///
-    /// 원래 주석: 상세로 들어가야만
-    /// 누를 수 있으면 어디서 누르는지 알 수 없다는 것이 실기기에서 확인됐다.
-    ///
-    /// 자기 상품에서는 **숫자만 보이고 누를 수 없다.** 실패할 CTA를 일부러
-    /// 보여 주지 않는다(서버가 self-like를 거절한다).
-    @ViewBuilder
-    private var heart: some View {
-        if let onToggleLike {
-            // 누른 상태가 **한눈에** 달라 보여야 한다. 속이 찬 하트와 빈 하트의 차이는
-            // 이 글자 크기에서 너무 미묘해서, 눌렀는지 아닌지 알 수 없었다.
-            // 눌리면 칩 전체가 뒤집힌다 — 기존 Ink 강조(먹지 + 종이 글자) 그대로다.
-            let label = HStack(spacing: 4) {
-                Image(systemName: isLiked ? "heart.fill" : "heart")
-                Text("\(listing.likeCount)")
-            }
-            .font(InkFont.caption)
-            .foregroundStyle(isLiked ? PaperTheme.subtleSurface : PaperTheme.ink)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background {
-                let shape = UnevenRoundedRectangle.ink(12, 10, 13, 11)
-                shape.fill(isLiked ? PaperTheme.ink : PaperTheme.paper)
-                    .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.4))
-            }
-
-            if isMine {
-                label
-                    .opacity(0.55)
-                    .padding(8)
-                    .accessibilityLabel("좋아요 \(listing.likeCount). 내 상품이라 누를 수 없어요")
-            } else {
-                Button(action: onToggleLike) {
-                    label
-                        // 칩이 작아도 손가락이 닿는 자리는 44pt 이상이어야 한다.
-                        .frame(minWidth: 44, minHeight: 44, alignment: .center)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(InkPressStyle())
-                .disabled(isLiking)
-                .padding(4)
-                .accessibilityLabel(isLiked ? "좋아요 취소" : "좋아요")
-                .accessibilityValue("\(listing.likeCount)")
-            }
-        }
-    }
-
-    private var metadata: some View {
-        HStack(spacing: 8) {
-            Label("\(listing.downloadCount)", systemImage: "arrow.down")
-            Label("\(listing.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
-            Spacer(minLength: 2)
-            Text(listing.publishedAtLabel)
-        }
-        .font(InkFont.caption)
-        .foregroundStyle(PaperTheme.secondaryInk)
-        .labelStyle(.titleAndIcon)
-        .imageScale(.small)
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
     }
 }
 
@@ -227,7 +111,10 @@ struct MarketplaceSection: View {
                         .foregroundStyle(PaperTheme.ink)
                         .padding(.horizontal, 20)
 
-                    LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
+                    LazyVGrid(
+                        columns: GalleryLayout.columns(for: dynamicTypeSize),
+                        spacing: GalleryLayout.spacing
+                    ) {
                         ForEach(listings) { listing in
                             Button {
                                 onSelect(listing)
@@ -253,7 +140,7 @@ struct MarketplaceSection: View {
                             .task { await store.loadPreview(listing.id) }
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, GalleryLayout.horizontalPadding)
                 }
                 .padding(.bottom, 20)
             }

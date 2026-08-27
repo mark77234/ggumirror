@@ -21,6 +21,11 @@
 //  차이는 **데이터뿐**이다. 내장 템플릿에는 좋아요 domain이 없으므로 하트 자리를
 //  비운다 — 똑같아 보이게 하려고 `♡ 0`을 지어내지 않는다.
 //
+//  스티커도 **이 카드를 쓴다.** 예전에는 스티커만 자기 카드를 따로 갖고 있었는데,
+//  이유는 디자인이 아니라 이 파일이 거울 비율을 못 박아 두었기 때문이다 —
+//  정사각 스티커를 세로로 긴 칸에 넣을 수 없으니 카드를 하나 더 만든 것이다.
+//  칸 비율을 `ListingPreviewStyle`에서 받아오면 그 이유가 사라진다.
+//
 
 import SwiftUI
 
@@ -35,8 +40,8 @@ import SwiftUI
 /// 그래서 **높이를 데이터가 정하지 않게** 한다 — 자리를 미리 잡아 두고 내용이
 /// 없으면 비워 둔다. 화면을 보고 padding을 더하는 방식이 아니다.
 enum StoreMirrorCardMetrics {
-    /// 거울 칸의 비율. **새 상수를 만들지 않는다** — 제품 전체가 쓰는 그 값이다.
-    static let previewRatio = MirrorStyle.aspectRatio
+    /// 칸의 모서리. **상점 · 내 판매 · 상점 관리가 같은 모양을 쓴다.**
+    static let previewShape = UnevenRoundedRectangle.ink(20, 24, 25, 19)
     /// 칸과 제목 사이.
     static let previewSpacing: CGFloat = 6
     /// 글자 줄 사이.
@@ -51,6 +56,10 @@ enum StoreMirrorCardMetrics {
 
 /// 카드가 보여 주는 값. 두 출처가 같은 모양으로 바뀌어 들어온다.
 struct StoreMirrorCardModel {
+    /// `"mirror"` / `"sticker"`. **판정은 `ListingPreviewStyle` 하나가 한다** —
+    /// 카드가 종류를 다시 해석하지 않고 칸 비율만 그것에게 묻는다.
+    /// 내장 템플릿은 언제나 거울이라 기본값이 있다.
+    var contentType: String = "mirror"
     let title: String
     /// 만든이 / 판매자. **없으면 비워 둔다** — 가짜 이름을 지어내지 않는다.
     /// 사용자 상품에는 공개 판매자 이름이 없다(공개 DTO에 담지 않는 값이다).
@@ -59,7 +68,14 @@ struct StoreMirrorCardModel {
     /// 서버가 센 값. **`nil`이면 아직 모르는 것이고 `0`이 아니다.**
     var downloadCount: Int?
     /// 업로드 날짜 라벨. 올라온 적 없으면 그렇게 말한다.
+    /// 관리 화면에서는 여기에 판매 상태가 온다 — 판매자와 운영자에게는 날짜보다
+    /// "지금 팔리고 있는가"가 먼저다.
     let footnote: String
+    /// 칸 위에 얹는 작은 상태 표시. 공개 상점에서는 `nil`이다.
+    ///
+    /// **글자 줄을 늘리지 않는다** — 늘리면 화면마다 카드 높이가 달라지고,
+    /// 그러면 세 화면이 같은 카드를 쓴다는 사실이 눈에 보이지 않는다.
+    var status: String?
 }
 
 /// 하트가 있는 카드만 넘긴다. 내장 템플릿은 `nil`이다.
@@ -84,7 +100,12 @@ struct StoreMirrorCard<Preview: View>: View {
             // 크기가 제각각이라 그대로 두면 목록이 들쭉날쭉해진다.
             preview()
                 .frame(maxWidth: .infinity)
-                .aspectRatio(StoreMirrorCardMetrics.previewRatio, contentMode: .fit)
+                // **칸 비율은 종류가 정한다.** 거울은 거울 모양, 스티커는 정사각 —
+                // 여기에 거울 비율을 못 박아 두었던 것이 스티커 카드를 따로
+                // 만들게 한 원인이었다.
+                .aspectRatio(
+                    ListingPreviewStyle.aspectRatio(for: model.contentType), contentMode: .fit
+                )
                 // **맞춘 뒤 다시 가운데로 놓는다.**
                 //
                 // `.aspectRatio(.fit)`는 맞춘 크기 그대로를 내놓는다. 목록에서는
@@ -93,6 +114,7 @@ struct StoreMirrorCard<Preview: View>: View {
                 // 비율도 content mode도 그대로 두고 놓이는 자리만 고친다.
                 .frame(maxWidth: .infinity, alignment: .center)
                 .clipped()
+                .overlay(alignment: .topLeading) { statusBadge }
                 .padding(.bottom, StoreMirrorCardMetrics.previewSpacing)
 
             Text(model.title)
@@ -118,6 +140,24 @@ struct StoreMirrorCard<Preview: View>: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
+    /// 판매 상태 표시. **없으면 아무 자리도 차지하지 않는다.**
+    @ViewBuilder
+    private var statusBadge: some View {
+        if let status = model.status, !status.isEmpty {
+            Text(status)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.ink)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background {
+                    let shape = UnevenRoundedRectangle.ink(11, 9, 12, 10)
+                    shape.fill(PaperTheme.paper)
+                        .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.3))
+                }
+                .padding(7)
+        }
+    }
+
     /// 통계 한 줄. **세지 않는 값은 숫자로 말하지 않는다** —
     /// 자리를 비우는 것도 정직한 표현이다.
     private var metadata: some View {
@@ -141,6 +181,11 @@ struct StoreMirrorCard<Preview: View>: View {
     }
 
     /// **카드 밖에 따로 떠 있지 않는다.** 통계 줄 안에 다른 숫자와 나란히 있다.
+    ///
+    /// 눌린 상태는 **속이 찬 하트 + 진한 먹지**다. 예전 스티커 카드는 칩 전체를
+    /// 뒤집었는데, 이유는 caption 크기에서 빈 하트와 찬 하트의 차이가 너무 미묘했기
+    /// 때문이다. 카드를 하나로 합치면서 그 이유를 색으로 살렸다 —
+    /// 상점 카드 생김새는 그대로 두고 눌린 것만 눈에 띄게 한다.
     @ViewBuilder
     private func heart(_ like: StoreMirrorCardLike) -> some View {
         let symbol = like.isLiked ? "heart.fill" : "heart"
@@ -148,9 +193,11 @@ struct StoreMirrorCard<Preview: View>: View {
             // 서버가 거절할 버튼을 일부러 보여 주지 않는다.
             Label("\(like.count)", systemImage: symbol)
                 .opacity(0.55)
+                .accessibilityLabel("좋아요 \(like.count). 내 상품이라 누를 수 없어요")
         } else {
             Button(action: like.toggle) {
                 Label("\(like.count)", systemImage: symbol)
+                    .foregroundStyle(like.isLiked ? PaperTheme.ink : PaperTheme.secondaryInk)
                     // 글자는 작아도 손이 닿는 자리는 44pt다.
                     // **label 안에 있어야** Button이 이 영역을 갖는다.
                     // 높이는 줄이 이미 44pt로 잡아 두었으므로 그것을 꽉 채운다 —
@@ -171,6 +218,7 @@ struct StoreMirrorCard<Preview: View>: View {
 
     private var accessibilityLabel: String {
         var parts = [model.title]
+        if let status = model.status, !status.isEmpty { parts.append(status) }
         if let subtitle = model.subtitle, !subtitle.isEmpty { parts.append(subtitle) }
         parts.append(model.price == 0 ? "무료" : "\(model.price) 조각")
         if let downloadCount = model.downloadCount { parts.append("다운로드 \(downloadCount)") }

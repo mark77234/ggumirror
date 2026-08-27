@@ -1949,15 +1949,18 @@ struct SellerPreviewUITests {
     func cardRendersPreview() throws {
         let code = try source("Store/MyListingsSection.swift")
         #expect(code.contains("store.myPreviews[listing.id]"))
-        #expect(code.contains("Image(uiImage:"))
         #expect(code.contains("loadMyPreview"))
+        // 그림은 **공용 view가 그린다** — 화면이 직접 해독하지 않는다(I-3).
+        #expect(code.contains("MarketplaceListingPreview("))
+        #expect(try source("Store/MarketplaceListingPreview.swift").contains("Image(uiImage:"))
     }
 
     @Test("받는 중 · 실패 자리표시자가 구분된다")
     func placeholdersAreDistinct() throws {
-        let code = try source("Store/MyListingsSection.swift")
-        #expect(code.contains("myPreviewFailures"))
-        #expect(code.contains("미리보기를 불러오지 못했어요"))
+        // 실패 상태를 화면이 넘기고, 문구는 공용 view가 낸다.
+        #expect(try source("Store/MyListingsSection.swift").contains("myPreviewFailures"))
+        #expect(try source("Store/MarketplaceListingPreview.swift")
+            .contains("미리보기를 불러오지 못했어요"))
     }
 
     @Test("draft 문구가 '등록 미완료'다")
@@ -2311,19 +2314,20 @@ struct StoreIAHardeningTests {
 
     @Test("공개 카드에 좋아요 하트가 있다")
     func publicCardHasHeart() throws {
-        let code = try source("Store/MarketplaceGallery.swift")
-        #expect(code.contains("onToggleLike"))
-        #expect(code.contains("heart.fill"))
+        #expect(try source("Store/MarketplaceGallery.swift").contains("onToggleLike"))
+        // 하트를 그리는 자리는 공용 카드 하나다.
+        let card = try source("Store/StoreMirrorCard.swift")
+        #expect(card.contains("heart.fill"))
         // 손가락이 닿는 자리를 확보한다.
-        #expect(code.contains("minWidth: 44, minHeight: 44"))
+        #expect(card.contains("minWidth: InkTapTarget.minimum"))
     }
 
     @Test("자기 상품에는 하트를 누를 수 없다")
     func ownListingHeartIsNotTappable() throws {
-        let code = try source("Store/MarketplaceGallery.swift")
-        #expect(code.contains("isMine"))
+        #expect(try source("Store/MarketplaceGallery.swift").contains("isMine"))
         // 실패할 CTA를 보여 주지 않는다.
-        #expect(code.contains("내 상품이라 누를 수 없어요"))
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("내 상품이라 누를 수 없어요"))
     }
 
     @Test("좋아요 상태는 서버 목록에서 온다")

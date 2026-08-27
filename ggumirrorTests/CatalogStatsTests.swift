@@ -485,11 +485,12 @@ struct RetiredListingsTests {
     @Test("이전 판매 중지에는 삭제만 있고 다시 판매가 없다")
     func onlyDeleteForRetired() throws {
         let code = codeWithoutComments(try source("Store/MySalesSection.swift"))
-        let start = try #require(code.range(of: "if listing.isUnlisted {"))
+        // 판매 중과 판매 중지는 **같은 동작 하나**(삭제)를 쓴다.
+        let start = try #require(code.range(of: "if listing.isPublished || listing.isUnlisted {"))
         let block = String(code[start.upperBound...].prefix(240))
         #expect(block.contains("pendingDelete"))
         #expect(!block.contains("다시 판매"))
-        #expect(!block.contains("republish"))
+        #expect(!code.contains("republish"))
     }
 
     @Test("삭제 문구가 종류별 등록비를 말한다")
