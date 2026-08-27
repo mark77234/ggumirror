@@ -34,6 +34,9 @@ final class AuthSession {
 
     private let store: any AuthIdentityStoring
     private let sessions: any ServerSessionStoring
+    /// 다음 cold launch가 어느 서랍을 먼저 열지. **credential이 아니다** —
+    /// 세션은 여전히 Keychain에만 있다.
+    private let lastActiveUser: LastActiveUser
     private let credentials: any AppleCredentialChecking
     private let backend: any AuthBackend
     private let nonces = AppleNonceBox()
@@ -43,12 +46,14 @@ final class AuthSession {
         store: any AuthIdentityStoring,
         sessions: any ServerSessionStoring,
         credentials: any AppleCredentialChecking = AppleIDCredentialChecker(),
-        backend: any AuthBackend = BackendClient()
+        backend: any AuthBackend = BackendClient(),
+        lastActiveUser: LastActiveUser = .shared
     ) {
         self.store = store
         self.sessions = sessions
         self.credentials = credentials
         self.backend = backend
+        self.lastActiveUser = lastActiveUser
 
         // 저장된 세션이 아직 유효할 때만 로그인 상태로 시작한다.
         // 서버 확인은 나중에 비동기로 한다 — 앱 시작은 언제나 Mirror가 먼저다.
@@ -56,6 +61,8 @@ final class AuthSession {
         if let saved, saved.isValid(), let identity = store.load() {
             server = saved
             state = .signedIn(identity)
+            // Keychain과 서랍 표시를 맞춰 둔다. 이미 같으면 같은 값을 다시 적을 뿐이다.
+            lastActiveUser.remember(saved.userID)
         } else {
             // 만료된 세션은 로그인으로 인정하지 않는다.
             // Apple identity(이름 / 이메일)는 남겨둔다 — Apple이 다시 주지 않기 때문이다.
@@ -129,6 +136,8 @@ final class AuthSession {
 
         persist(identity)
         persist(session)
+        // **여기서부터 이 기기의 마지막 사용자다.** 다음 cold launch가 이 서랍을 먼저 연다.
+        lastActiveUser.remember(session.userID)
         server = session
         state = .signedIn(identity)
         failureMessage = nil
@@ -228,8 +237,12 @@ final class AuthSession {
     }
 
     /// 서버 세션만 정리한다. Apple identity(이름 / 이메일)와 로컬 콘텐츠는 건드리지 않는다.
+    ///
+    /// **서랍 표시도 푼다.** 로그아웃한 사람의 거울이 다음 실행의 guest 화면에 뜨면 안 된다.
+    /// 파일은 그대로 남으므로 다시 로그인하면 되돌아온다 — 지우는 것이 아니라 푸는 것이다.
     private func clearServerSession() {
         sessions.delete()
+        lastActiveUser.forget()
         server = nil
         state = .signedOut
     }

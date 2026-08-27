@@ -119,10 +119,7 @@ struct RootView: View {
                     // (서버 값은 그대로 남는다 — 이 기기의 표시만 바뀐다).
                     // **내 거울 서랍을 계정에 맞춘다.** 로그아웃하면 guest(비어 있음)로,
                     // 로그인하면 그 사용자 서랍으로 간다. 파일은 지우지 않는다.
-                    let owner = MirrorLibraryOwner(userID: server?.userID)
-                    library.activate(owner: owner)
-                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
-                    StickerLibrary.live.activate(owner: owner)
+                    activateLibraries(owner: MirrorLibraryOwner(userID: server?.userID))
                     if server == nil {
                         mirrorCapacity.clear(library: library)
                     } else {
@@ -189,15 +186,26 @@ struct RootView: View {
                 // 무엇도 거울 조작을 막지 않는다. 순서에 의존하는 것만 한 갈래로 묶는다.
                 Task { await session.refreshCredentialState() }
                 Task { await QuickMirrorSync.update(for: library.currentMirror) }
+                // **서랍은 network보다 먼저 연다.**
+                //
+                // 예전에는 `await session.refreshServerSession()` **뒤에** 열었다.
+                // 그 한 줄이 서버 왕복 하나라, 앱을 켜고 바로 거울로 들어가면 그동안
+                // guest 서랍(= 비어 있음)이 보였다 — 마지막에 쓰던 거울이 사라졌다가
+                // 잠시 뒤 되살아나는 것처럼 보인 이유가 정확히 이것이다.
+                //
+                // Keychain 세션은 `AuthSession.init`이 이미 동기로 읽어 뒀고,
+                // `MirrorLibrary.live`도 지난 실행의 주인으로 이미 열려 있다.
+                // 여기서는 그 둘이 어긋날 때만 곧바로 맞춘다 — **파일 읽기 하나**이고
+                // network가 아니다. 확인은 그 뒤에 하고, 결과가 다르면 그때 다시 맞춘다.
+                if let restored = session.server?.userID {
+                    activateLibraries(owner: .user(restored))
+                }
                 Task {
                     // 세션 확인 → 그 결과로 지갑/AI/복구. 이 셋은 순서가 의미 있다.
                     await session.refreshServerSession()
-                    // **세션이 확정된 뒤에 서랍을 연다.** `onChange`만 믿으면 시작할 때
-                    // 이미 복구돼 있던 세션에서는 변화가 없어 guest로 남는다.
-                    let owner = MirrorLibraryOwner(userID: session.server?.userID)
-                    library.activate(owner: owner)
-                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
-                    StickerLibrary.live.activate(owner: owner)
+                    // **서버가 답한 뒤 다시 맞춘다.** 세션이 거절됐으면 여기서 guest로
+                    // 돌아가고, 그대로면 주인이 같아 아무 일도 일어나지 않는다.
+                    activateLibraries(owner: MirrorLibraryOwner(userID: session.server?.userID))
                     await mirrorCapacity.refresh(session: session.server, library: library)
                     await shards.refresh(session: session.server)
                     await aiStickers.refresh(session: session.server)
@@ -231,6 +239,15 @@ struct RootView: View {
                     }
                 }
             }
+    }
+
+    /// 거울과 스티커 서랍을 **같은 순간에** 같은 주인으로 맞춘다.
+    ///
+    /// 계정 privacy는 둘을 구분하지 않는다 — 따로 부르면 언젠가 한쪽만 바뀐다.
+    /// 주인이 이미 같으면 `activate`가 아무 일도 하지 않는다.
+    private func activateLibraries(owner: MirrorLibraryOwner) {
+        library.activate(owner: owner)
+        StickerLibrary.live.activate(owner: owner)
     }
 
     /// 거울 화면으로 보낸다. **이미 거울이면 아무것도 쓰지 않는다.**

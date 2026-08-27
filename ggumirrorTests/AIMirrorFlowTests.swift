@@ -48,7 +48,7 @@ private func generatedPNG() -> Data {
 private nonisolated final class FakeAIBackend: AIMirrorBackend, @unchecked Sendable {
     var calls = 0
     var failure: AIMirrorFailure?
-    var config = AIMirrorConfig(available: true, price: 10, dailyLimit: 3, remaining: 3)
+    var config = AIMirrorConfig(available: true, price: 10)
 
     func aiMirrorConfig(accessToken: String) async throws -> AIMirrorConfig { config }
 
@@ -96,22 +96,34 @@ struct AIMirrorMakerTests {
         let backend = FakeAIBackend()
         let maker = AIMirrorMaker(backend: backend)
         await maker.generate(prompt: "   ", session: session())
-        // 고칠 수 있는 실패다 — 하루 몫을 쓰지 않는다.
+        // 고칠 수 있는 실패다 — 서버를 부르지 않는다.
         #expect(backend.calls == 0)
     }
 
-    @Test("하루 몫을 다 쓰면 그렇게 말한다")
-    func quotaFailureIsExplained() async {
+    @Test("하루 횟수 제한이 없다 — 연속 생성이 막히지 않는다")
+    func generationIsNeverBlockedByADailyQuota() async {
         let backend = FakeAIBackend()
-        backend.failure = .quotaExceeded
         let maker = AIMirrorMaker(backend: backend)
-        await maker.generate(prompt: "핑크 리본", session: session())
 
-        guard case .failed(let message) = maker.state else {
-            Issue.record("실패 상태가 아니다"); return
+        // 예전 상한(3)을 넘겨야 상한이 사라진 것이 보인다.
+        for _ in 0..<5 {
+            await maker.generate(prompt: "핑크 리본", session: session())
+            #expect(maker.artwork != nil, "\(maker.state)")
+            maker.reset()
         }
-        #expect(message.contains("내일"))
-        #expect(maker.artwork == nil)
+        #expect(backend.calls == 5)
+    }
+
+    @Test("남은 횟수를 말하는 자리가 어디에도 없다")
+    func nothingCountsDownTheDay() throws {
+        let view = try source("ggumirror/MyMirrors/AIMirrorView.swift")
+        let api = try source("ggumirror/Backend/BackendClient+AIMirror.swift")
+        for gone in ["번 남았어요", "remaining", "dailyLimit", "quotaExceeded", "내일 다시"] {
+            #expect(!view.contains(gone), "view: \(gone)")
+            #expect(!api.contains(gone), "api: \(gone)")
+        }
+        // 429를 하루 몫으로 해석하던 분기도 없다.
+        #expect(!api.contains("case 429"))
     }
 
     @Test("거절당하면 다른 표현을 권한다")
@@ -254,7 +266,7 @@ struct AIMirrorSecurityTests {
 
     @Test("내부 오류를 그대로 보여 주지 않는다")
     func providerErrorsAreTranslated() {
-        for failure in [AIMirrorFailure.quotaExceeded, .safetyRejected, .unavailable, .network] {
+        for failure in [AIMirrorFailure.insufficientShards, .safetyRejected, .unavailable, .network] {
             let message = failure.message
             #expect(!message.isEmpty)
             for leak in ["openai", "provider", "500", "http"] {
@@ -292,12 +304,13 @@ struct AIMirrorPriceTests {
 
     @Test("옛 서버 응답에는 값이 없다")
     func legacyConfigDecodes() throws {
+        // 모르는 값이 더 실려 와도 읽힌다 — 값만 없으면 0이다.
         let json = """
         {"available":true,"dailyLimit":3,"remaining":2}
         """
         let config = try JSONDecoder.backend.decode(AIMirrorConfig.self, from: Data(json.utf8))
         #expect(config.price == 0)
-        #expect(config.dailyLimit == 3)
+        #expect(config.available)
     }
 
     @Test("잔액이 모자라면 서버를 부르지 않는다")
@@ -344,8 +357,8 @@ struct AIMirrorPriceTests {
     @Test("조각 부족을 사용자 말로 알린다")
     func insufficientHasItsOwnMessage() {
         #expect(AIMirrorFailure.insufficientShards.message.contains("조각"))
-        // 하루 몫과 다른 실패다 — 뭉치면 "내일 다시"라고 잘못 안내한다.
-        #expect(AIMirrorFailure.insufficientShards != AIMirrorFailure.quotaExceeded)
+        // 서버가 닿지 않은 것과 다른 실패다 — 뭉치면 잘못 안내한다.
+        #expect(AIMirrorFailure.insufficientShards != AIMirrorFailure.unavailable)
     }
 
     @Test("서버가 409로 조각 부족을 알린다")

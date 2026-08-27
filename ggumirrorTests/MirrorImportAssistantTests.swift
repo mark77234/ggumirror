@@ -381,16 +381,16 @@ struct ImportAssistantFlowTests {
     }
 
     @Test("다시 수정하면 고치기 전으로 돌아간다")
-    func startOverUndoesTheRepair() async {
+    func goingBackUndoesTheRepair() async {
         let assistant = MirrorImportAssistant()
         await assistant.begin(data: png(cgImage(from: makePixels(outside: RED, inside: RED))))
         await assistant.repairOpening()
         #expect(assistant.step == .preview)
 
-        await assistant.startOver()
+        assistant.backToCrop()
 
-        // 지운 것이 되돌아왔다 — 다시 물어보는 자리로 온다.
-        #expect(assistant.step == .openingRepair(.fullyOpaque))
+        // 지운 것이 되돌아왔다 — 판정을 물려받지 않는다.
+        #expect(assistant.step == .crop)
         #expect(assistant.normalized == nil)
     }
 
@@ -408,12 +408,190 @@ struct ImportAssistantFlowTests {
         #expect(alpha(shown, x: (rect.minX + rect.maxX) / 2, y: (rect.minY + rect.maxY) / 2) == 0)
     }
 
+    @Test("자를 자리를 기억한다")
+    func theLastCropWindowIsRemembered() async {
+        let assistant = MirrorImportAssistant()
+        await assistant.begin(data: png(photo(width: 1200, height: 1200)))
+        #expect(assistant.lastCropWindow == nil)
+
+        let window = MirrorImportCrop.centeredWindow(imageSize: CGSize(width: 1200, height: 1200))
+        await assistant.applyCrop(window: window)
+
+        #expect(assistant.lastCropWindow == window)
+    }
+
     @Test("무거운 일을 main thread에서 하지 않는다")
     func heavyWorkIsOffTheMainThread() throws {
         let code = try source("ggumirror/Shared/MirrorImportAssistant.swift")
         // 디코드 · 자르기 · 지우기 · 판정 전부 detached다.
         #expect(code.components(separatedBy: "Task.detached").count - 1 >= 4)
         #expect(code.contains("isWorking"))
+    }
+}
+
+// MARK: - 최종 미리보기에서 되돌아가기
+
+/// **막다른 길을 하나 더 없앤다.**
+///
+/// 마지막 확인까지 와서 "자른 자리가 별로다"라고 느낀 사용자에게 남은 길이
+/// `취소`뿐이었다 — 사진 고르기부터 다시였다. 이제 자를 자리만 다시 정한다.
+@Suite("가져오기 — 뒤로")
+@MainActor
+struct MirrorImportBackNavigationTests {
+
+    private func png(_ image: CGImage) -> Data {
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(
+            data, UTType.png.identifier as CFString, 1, nil
+        )!
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
+
+    /// 규격 비율이 아닌 그림 → 자르기 → (불투명하므로) 거울 영역 지정 → 미리보기.
+    private func atFinalPreview() async throws -> (MirrorImportAssistant, CGSize) {
+        let size = CGSize(width: 1200, height: 1200)
+        let assistant = MirrorImportAssistant()
+        await assistant.begin(data: png(photo(width: 1200, height: 1200)))
+        #expect(assistant.step == .crop)
+
+        await assistant.applyCrop(window: MirrorImportCrop.centeredWindow(imageSize: size))
+        #expect(assistant.step == .openingRepair(.fullyOpaque))
+        await assistant.repairOpening()
+        #expect(assistant.step == .preview)
+        return (assistant, size)
+    }
+
+    @Test("자르기 → 미리보기 → 뒤로 → 자르기")
+    func backReturnsToTheCropStep() async throws {
+        let (assistant, _) = try await atFinalPreview()
+
+        assistant.backToCrop()
+
+        #expect(assistant.step == .crop)
+    }
+
+    @Test("뒤로 가도 흐름이 끝나지 않고 원본을 다시 고르지 않는다")
+    func backKeepsTheWorkingImage() async throws {
+        let (assistant, size) = try await atFinalPreview()
+
+        assistant.backToCrop()
+
+        // 다루던 그림이 그대로 있다 — 사진 고르기로 돌아가지 않는다.
+        let working = try #require(assistant.working)
+        #expect(working.width == Int(size.width))
+        #expect(working.height == Int(size.height))
+        // 실패 상태로 빠지지도 않는다(흐름이 끝나지 않았다).
+        #expect(assistant.step == .crop)
+    }
+
+    @Test("뒤로가 화면을 닫지 않는다")
+    func backDoesNotDismissTheFlow() throws {
+        let view = try source("ggumirror/MyMirrors/MirrorImportAssistantView.swift")
+        let start = try #require(view.range(of: "private var finalPreview: some View {"))
+        // 마지막 확인 화면 **하나만** 본다 — 다음 화면의 `확인` 버튼까지 읽지 않는다.
+        let end = try #require(
+            view.range(of: "private func failed(", range: start.upperBound..<view.endIndex)
+        )
+        let body = String(view[start.upperBound..<end.lowerBound])
+
+        let back = try #require(body.range(of: "\"뒤로\""))
+        // 그 버튼 **한 줄**만 본다. 뒤에 오는 다른 버튼까지 읽으면 판정이 흐려진다.
+        let line = String(body[back.lowerBound...].prefix { $0 != "\n" })
+        // 닫지도(dismiss) 않고 사진을 다시 고르게 하지도 않는다 — 자르기로만 간다.
+        #expect(!line.contains("dismiss"), "\(line)")
+        #expect(line.contains("backToCrop"), "\(line)")
+    }
+
+    @Test("지난 자리에서 다시 시작한다")
+    func theCropEditorResumesWhereItWasLeft() async throws {
+        let size = CGSize(width: 1200, height: 1200)
+        let assistant = MirrorImportAssistant()
+        await assistant.begin(data: png(photo(width: 1200, height: 1200)))
+
+        // 가운데가 아닌 자리를 골랐다.
+        var window = MirrorImportCrop.centeredWindow(imageSize: size)
+        window.origin.y = 0
+        await assistant.applyCrop(window: window)
+        await assistant.repairOpening()
+        assistant.backToCrop()
+
+        // 화면이 그 자리를 다시 세울 수 있어야 한다.
+        #expect(assistant.lastCropWindow == window)
+        let view = try source("ggumirror/MyMirrors/MirrorImportAssistantView.swift")
+        #expect(view.contains("initialWindow: assistant.lastCropWindow"))
+    }
+
+    @Test("자르기를 바꾸면 판정을 처음부터 다시 한다")
+    func aNewCropIsJudgedAgain() async throws {
+        let (assistant, size) = try await atFinalPreview()
+        let repaired = try #require(assistant.normalized)
+
+        assistant.backToCrop()
+        // **지운 결과를 물려받지 않는다.** 새 자르기는 새 판정을 받는다.
+        #expect(assistant.normalized == nil)
+
+        var window = MirrorImportCrop.centeredWindow(imageSize: size)
+        window.origin.x = 0
+        await assistant.applyCrop(window: window)
+
+        // 다시 불투명한 그림이므로 다시 물어본다 — preview로 건너뛰지 않는다.
+        #expect(assistant.step == .openingRepair(.fullyOpaque))
+        #expect(assistant.normalized == nil)
+
+        await assistant.repairOpening()
+        #expect(assistant.step == .preview)
+        let again = try #require(assistant.normalized)
+        // 새로 만든 그림이다 — 예전 bitmap을 그대로 쓰지 않는다.
+        #expect(again !== repaired)
+    }
+
+    @Test("자르기는 언제나 원본에서 한다 — 자른 것을 또 자르지 않는다")
+    func croppingNeverStacks() async throws {
+        let size = CGSize(width: 1200, height: 1200)
+        let assistant = MirrorImportAssistant()
+        await assistant.begin(data: png(photo(width: 1200, height: 1200)))
+        let original = try #require(assistant.working)
+
+        await assistant.applyCrop(window: MirrorImportCrop.centeredWindow(imageSize: size))
+        await assistant.repairOpening()
+        assistant.backToCrop()
+
+        // 자를 대상이 원본 크기 그대로다. 잘린 그림 위에서 다시 자르면
+        // 사용자가 고른 그림이 볼 때마다 줄어든다.
+        let working = try #require(assistant.working)
+        #expect(working.width == original.width)
+        #expect(working.height == original.height)
+    }
+
+    @Test("저장되는 것은 마지막 미리보기 그대로다")
+    func theSavedAssetIsTheLastPreview() async throws {
+        let (assistant, size) = try await atFinalPreview()
+        assistant.backToCrop()
+        var window = MirrorImportCrop.centeredWindow(imageSize: size)
+        window.origin.x = 0
+        await assistant.applyCrop(window: window)
+        await assistant.repairOpening()
+
+        let shown = try #require(assistant.normalized)
+        #expect(shown.width == W)
+        #expect(shown.height == H)
+        // 화면이 넘기는 것도 그 값 하나다 — 저장 직전에 다시 만들지 않는다.
+        let view = try source("ggumirror/MyMirrors/MirrorImportAssistantView.swift")
+        #expect(view.contains("guard let image = assistant.normalized else { return }"))
+        #expect(view.contains("onUse(image)"))
+    }
+
+    @Test("이미지 처리 경로를 새로 만들지 않는다")
+    func normalizationStaysTheSoleAuthority() throws {
+        let code = try source("ggumirror/Shared/MirrorImportAssistant.swift")
+        let start = try #require(code.range(of: "func backToCrop()"))
+        let body = String(code[start.upperBound...].prefix(220))
+        // 되돌아가는 것은 **상태 전이 하나**다. 픽셀을 만지지 않는다.
+        for forbidden in ["cropped(", "clearingCameraOpening", "normalize(", "CGContext"] {
+            #expect(!body.contains(forbidden), "\(forbidden)")
+        }
     }
 }
 

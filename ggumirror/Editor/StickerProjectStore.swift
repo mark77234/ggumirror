@@ -220,11 +220,17 @@ final class StickerLibrary {
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
     private var isReadOnly: Bool
 
-    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 남의 스티커를 보여 주지 않는다.
-    static let live = StickerLibrary(store: .store(for: .guest))
+    /// **거울과 같은 서랍에서 시작한다**(`LastActiveUser`). 계정 privacy는 거울과
+    /// 스티커를 구분하지 않으므로 둘이 같은 순간에 같은 주인을 본다 —
+    /// 한쪽만 미리 열면 Editor의 스티커 목록만 잠시 비어 있게 된다.
+    static let live = {
+        let owner = LastActiveUser.shared.owner
+        return StickerLibrary(store: .store(for: owner), owner: owner)
+    }()
 
-    init(store: StickerProjectStore? = nil) {
+    init(store: StickerProjectStore? = nil, owner: MirrorLibraryOwner = .guest) {
         self.store = store
+        self.owner = owner
         guard let store else {
             isReadOnly = false
             return

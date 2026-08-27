@@ -306,7 +306,8 @@ struct StoreActionsTests {
     func storeShowsSortPicker() throws {
         let source = try Self.source("Store/StoreView.swift")
         #expect(source.contains("InkFilterBar(items: StoreSort.allCases"))
-        #expect(source.contains("sort.sorted("), "목록에 정렬이 적용되지 않는다")
+        // 거울 탭은 내장 목록과 사용자 상품을 **한 목록**으로 정렬한다(`ordered`).
+        #expect(source.contains("sort.ordered("), "목록에 정렬이 적용되지 않는다")
         #expect(source.contains("StoreSort = .default"), "기본값이 최신 순이 아니다")
     }
 

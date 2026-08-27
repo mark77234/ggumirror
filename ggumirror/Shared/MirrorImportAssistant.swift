@@ -44,8 +44,11 @@ final class MirrorImportAssistant {
     /// 무거운 일을 하는 중인가. CTA를 잠그는 데 쓴다.
     private(set) var isWorking = false
 
-    /// 잘라내기 전의 그림. `다시 수정`이 여기로 돌아온다.
+    /// 잘라내기 전의 그림. `뒤로`가 여기로 돌아온다.
     private var original: CGImage?
+    /// 마지막으로 확정한 잘라내기 창(원본 픽셀 좌표). `뒤로`가 이 자리에서 다시 시작한다 —
+    /// 처음부터 자리를 다시 잡게 하지 않는다.
+    private(set) var lastCropWindow: CGRect?
 
     // MARK: - 진입
 
@@ -84,6 +87,7 @@ final class MirrorImportAssistant {
             return
         }
         working = cropped
+        lastCropWindow = window
         await evaluate(cropped)
     }
 
@@ -106,12 +110,20 @@ final class MirrorImportAssistant {
         await evaluate(repaired)
     }
 
-    /// `다시 수정`. 고치기 전으로 돌아간다 — 지운 것도 자른 것도 되돌린다.
-    func startOver() async {
+    /// `뒤로`. 최종 미리보기에서 **자르기 단계로** 돌아간다.
+    ///
+    /// 흐름을 끝내지도, 사진을 다시 고르게 하지도 않는다. 지금 다루던 그림
+    /// 그대로 자를 자리만 다시 잡는다.
+    ///
+    /// **정규화된 그림을 다시 자르지 않는다.** 자르기는 언제나 `original`에서
+    /// 시작한다 — 자른 것 위에 또 자르면 사용자가 고른 그림이 두 번 줄어든다.
+    /// 지운 것(opening repair)도 함께 버린다. 새 자르기 결과는 새 판정을
+    /// 받아야 하고, 지난 판정을 물려받으면 안 된다.
+    func backToCrop() {
         guard let original else { return }
         working = original
         normalized = nil
-        await evaluate(original)
+        step = .crop
     }
 
     // MARK: - 판정

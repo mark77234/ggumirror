@@ -16,6 +16,12 @@ import SwiftUI
 struct MirrorImportCropEditor: View {
     let image: CGImage
     var isBusy: Bool = false
+    /// 지난번에 확정한 창. 최종 미리보기에서 `뒤로`로 돌아왔을 때 **그 자리에서**
+    /// 다시 시작한다 — 자리를 처음부터 다시 잡게 하지 않는다.
+    var initialWindow: CGRect?
+    /// 마지막 확인을 보고 돌아온 길인가. 문구가 달라진다 —
+    /// 비율이 맞는 그림을 두고 "비율이 맞지 않아요"라고 말하지 않는다.
+    var isRevisiting = false
     let onConfirm: (CGRect) -> Void
     let onCancel: () -> Void
 
@@ -33,11 +39,11 @@ struct MirrorImportCropEditor: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("이 이미지는 거울 비율과 맞지 않아요.")
+            Text(isRevisiting ? "자를 자리를 다시 정해 주세요." : "이 이미지는 거울 비율과 맞지 않아요.")
                 .font(InkFont.cardTitle)
                 .foregroundStyle(PaperTheme.ink)
                 .multilineTextAlignment(.center)
-            Text("꾸미러에 맞게 잘라볼까요? 손가락으로 옮기고 크기를 바꿀 수 있어요.")
+            Text("손가락으로 옮기고 크기를 바꿀 수 있어요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
                 .multilineTextAlignment(.center)
@@ -91,6 +97,12 @@ struct MirrorImportCropEditor: View {
             }
         }
         .onAppear { reset() }
+        // 창 크기는 layout 뒤에야 알 수 있다. 지난 자리를 되살리려면 그 값이 필요하다.
+        .onChange(of: currentWindowSize) { _, size in
+            guard !didRestore, size.width > 0, let initialWindow else { return }
+            didRestore = true
+            restore(initialWindow, window: size)
+        }
     }
 
     // MARK: - 제스처
@@ -140,9 +152,30 @@ struct MirrorImportCropEditor: View {
         committedOffset = .zero
     }
 
+    /// 지난번 창을 화면의 배율/이동량으로 되돌린다. `window(in:)`의 역이다 —
+    /// **좌표 규칙을 두 벌 만들지 않는다.**
+    private func restore(_ rect: CGRect, window: CGSize) {
+        let base = MirrorImportCrop.minimumScale(imageSize: imageSize, windowSize: window)
+        let effective = window.width / max(rect.width, 1)
+        guard base > 0, rect.width > 0, rect.height > 0 else { return }
+        scale = max(1, effective / base)
+        committedScale = scale
+        offset = clampedOffset(
+            CGSize(
+                width: (imageSize.width / 2 - rect.midX) * effective,
+                height: (imageSize.height / 2 - rect.midY) * effective
+            ),
+            window: window
+        )
+        committedOffset = offset
+    }
+
     // MARK: - 창 계산
 
     @State private var currentWindowSize: CGSize = .zero
+    /// 지난 자리를 되살리는 것은 **한 번뿐이다.** 매 layout마다 하면 사용자가
+    /// 그 뒤에 움직인 것을 되돌려 버린다.
+    @State private var didRestore = false
 
     private func windowSize(in available: CGSize) -> CGSize {
         let ratio = MirrorImportCrop.aspectRatio

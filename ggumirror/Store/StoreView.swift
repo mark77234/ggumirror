@@ -43,10 +43,22 @@ struct StoreView: View {
     @State private var path = NavigationPath()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var templates: [MirrorTemplate] {
-        // 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
-        // 필터와 정렬은 독립이다 — `무료 + 인기 순`이 그대로 성립한다.
-        sort.sorted(StoreCatalog.samples.filter { priceFilter.includes(price: $0.price) })
+    /// 거울 탭에 보이는 **하나의 목록**. 내장 템플릿과 사용자 상품이 섞여 있다.
+    ///
+    /// 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
+    /// 필터와 정렬은 독립이다 — `무료 + 인기 순`이 그대로 성립한다.
+    ///
+    /// 가격 필터가 **두 출처 모두**에 걸린다. 예전에는 내장 목록에만 걸려서
+    /// `무료`를 골라도 유료 사용자 상품이 남았다 — 한 grid에서는 그게 보인다.
+    private var mirrorItems: [StoreMirrorItem] {
+        let builtIn = StoreCatalog.samples
+            .filter { priceFilter.includes(price: $0.price) }
+            .map(StoreMirrorItem.builtIn)
+        // 공개 목록은 서버가 준 그대로다 — 내려간 · 가려진 상품은 애초에 오지 않는다.
+        let listings = marketplace.listings
+            .filter { $0.contentType == "mirror" && priceFilter.includes(price: $0.priceShards) }
+            .map(StoreMirrorItem.marketplace)
+        return sort.ordered(builtIn + listings)
     }
 
     var body: some View {
@@ -215,22 +227,12 @@ struct StoreView: View {
     /// 거울 상점의 상품 부분. **자기 ScrollView를 갖지 않는다** —
     /// 상단 제어부와 같은 scroll 안에 있어야 함께 밀려 올라간다.
     ///
-    /// 순서: 내 상점 상품 → 사용자 상품 → 내장 템플릿.
-    /// 판매자가 자기 것을 먼저 찾을 수 있어야 한다.
+    /// **grid 하나다.** 내장 템플릿과 사용자 상품이 구획으로 나뉘어 있지 않다 —
+    /// 나뉘어 있으면 앞 구획이 홀수 개일 때 마지막 줄에 빈 칸이 남는다.
+    /// 판매자 관리는 여기 없다(`내 판매` 탭).
     private var mirrorContent: some View {
         VStack(spacing: 0) {
-            // **판매자 관리는 여기 없다.** `내 판매` 탭으로 갔다 —
-            // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는 중인지 알 수 없다.
-            MarketplaceSection(
-                contentType: "mirror",
-                store: marketplace,
-                sort: sort,
-                session: session.server,
-                onSelect: { path.append($0) },
-                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
-            )
-
-            if templates.isEmpty {
+            if mirrorItems.isEmpty {
                 Text("이 조건에 맞는 거울이 아직 없어요.")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.secondaryInk)
@@ -238,16 +240,8 @@ struct StoreView: View {
                     .padding(.top, 60)
             } else {
                 LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
-                    ForEach(templates) { template in
-                        NavigationLink(value: template) {
-                            // **서버가 센 값**을 넘긴다. 모르면 nil이고 카드가 숫자를
-                            // 만들어내지 않는다.
-                            StoreGalleryItem(
-                                template: template,
-                                downloadCount: catalogStats.downloadCount(template.id)
-                            )
-                        }
-                        .buttonStyle(InkPressStyle())
+                    ForEach(mirrorItems) { item in
+                        mirrorCell(item)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -259,6 +253,46 @@ struct StoreView: View {
             await marketplace.refresh(
                 contentType: "mirror", sort: sort, session: session.server
             )
+        }
+    }
+
+    /// 칸 하나. **출처에 따라 원래 흐름 그대로다** — 합친 것은 자리와 순서뿐이다.
+    @ViewBuilder
+    private func mirrorCell(_ item: StoreMirrorItem) -> some View {
+        switch item {
+        case .builtIn(let template):
+            NavigationLink(value: template) {
+                // **서버가 센 값**을 넘긴다. 모르면 nil이고 카드가 숫자를
+                // 만들어내지 않는다.
+                StoreGalleryItem(
+                    template: template,
+                    downloadCount: catalogStats.downloadCount(template.id)
+                )
+            }
+            .buttonStyle(InkPressStyle())
+        case .marketplace(let listing):
+            Button {
+                path.append(listing)
+            } label: {
+                MarketplaceGalleryItem(
+                    listing: listing,
+                    preview: marketplace.previews[listing.id],
+                    isLiked: marketplace.likedListingIDs.contains(listing.id),
+                    isMine: marketplace.myListing(id: listing.id) != nil,
+                    isLiking: marketplace.isBusy(.like(listing.id)),
+                    onToggleLike: {
+                        Task {
+                            // 로그인 전이면 요청을 보내지 않고 안내한다.
+                            let sent = await marketplace.toggleLike(
+                                listingID: listing.id, session: session.server
+                            )
+                            if !sent { _ = session.requireSignIn(for: .shardTransaction) }
+                        }
+                    }
+                )
+            }
+            .buttonStyle(InkPressStyle())
+            .task { await marketplace.loadPreview(listing.id) }
         }
     }
 }

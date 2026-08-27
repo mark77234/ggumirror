@@ -1547,8 +1547,8 @@ struct StoreScrollHierarchyTests {
         #expect(code.components(separatedBy: "contentMargins(.bottom").count - 1 == 1)
     }
 
-    @Test("공개 거울 탭은 사용자 상품 → 내장 목록 순서다")
-    func publicMirrorOrder() throws {
+    @Test("공개 거울 탭은 grid 하나다 — 구획으로 나뉘지 않는다")
+    func publicMirrorGridIsUnified() throws {
         // **판매자 관리는 여기 없다** — `내 판매` 탭으로 갔다(Marketplace UX hardening).
         // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는지 알 수 없었다.
         let code = codeOnly(try source("Store/StoreView.swift"))
@@ -1556,10 +1556,11 @@ struct StoreScrollHierarchyTests {
         let body = String(code[start.upperBound...])
 
         #expect(!body.contains("MyListingsSection"), "공개 목록에 판매자 관리가 섞였다")
-
-        let others = try #require(body.range(of: "MarketplaceSection"))
-        let builtIn = try #require(body.range(of: "LazyVGrid"))
-        #expect(others.lowerBound < builtIn.lowerBound, "사용자 상품이 내장 목록보다 뒤에 있다")
+        // 구획을 따로 그리면 앞 구획이 홀수 개일 때 빈 칸이 남는다.
+        #expect(!body.contains("MarketplaceSection"), "사용자 상품이 따로 그려진다")
+        // grid는 하나뿐이고 두 출처가 같은 목록에서 나온다.
+        #expect(body.components(separatedBy: "LazyVGrid").count - 1 == 1)
+        #expect(body.contains("ForEach(mirrorItems)"))
     }
 
     @Test("제어부 순서가 요구대로다")

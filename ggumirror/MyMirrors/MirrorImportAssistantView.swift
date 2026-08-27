@@ -24,7 +24,13 @@ struct MirrorImportAssistantView: View {
                 working("거울 이미지를 준비하고 있어요…")
             case .crop:
                 if let image = assistant.working {
-                    MirrorImportCropEditor(image: image, isBusy: assistant.isWorking) { window in
+                    MirrorImportCropEditor(
+                        image: image,
+                        isBusy: assistant.isWorking,
+                        // 돌아왔다면 지난 자리에서 다시 시작한다.
+                        initialWindow: assistant.lastCropWindow,
+                        isRevisiting: assistant.lastCropWindow != nil
+                    ) { window in
                         Task { await assistant.applyCrop(window: window) }
                     } onCancel: {
                         dismiss()
@@ -119,7 +125,9 @@ struct MirrorImportAssistantView: View {
                 onUse(image)
                 dismiss()
             }
-            secondary("다시 수정") { Task { await assistant.startOver() } }
+            // **흐름을 끝내지 않는다.** 자를 자리만 다시 정하러 간다 —
+            // 사진을 다시 고르지도, 창을 닫지도 않는다.
+            secondary("뒤로") { assistant.backToCrop() }
         }
     }
 

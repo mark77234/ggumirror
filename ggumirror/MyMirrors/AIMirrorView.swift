@@ -34,7 +34,6 @@ final class AIMirrorMaker {
     }
 
     var isGenerating: Bool { state == .generating }
-    var remaining: Int { config?.remaining ?? 0 }
 
     func refresh(session: ServerSession?) async {
         guard let token = session?.accessToken else {
@@ -54,7 +53,7 @@ final class AIMirrorMaker {
         return balance >= price
     }
 
-    /// 만든다. **한 번에 하나만** — 연타로 두 번 요청하면 하루 몫이 두 번 빠진다.
+    /// 만든다. **한 번에 하나만** — 연타로 두 번 요청하면 조각이 두 번 빠진다.
     ///
     /// `requestID`는 이 시도를 가리키는 멱등 키다. 같은 시도를 다시 보내면
     /// 서버가 조각을 다시 빼지 않는다.
@@ -159,16 +158,12 @@ struct AIMirrorView: View {
                             .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.8))
                     }
 
-                if let config = maker.config, config.available {
+                // **값이 곧 제한이다.** 하루 횟수 제한이 없으므로 남은 횟수를 말하지 않는다.
+                if let config = maker.config, config.available, config.price > 0 {
                     HStack(spacing: 8) {
                         // **값은 서버가 준 것을 그대로 보여 준다.** 조각 아이콘은
                         // 상점·지갑이 쓰는 것과 같은 컴포넌트다.
-                        if config.price > 0 {
-                            ShardAmount(amount: config.price, font: InkFont.caption, iconSize: 14)
-                        }
-                        Text("오늘 \(config.remaining)번 남았어요.")
-                            .font(InkFont.caption)
-                            .foregroundStyle(PaperTheme.secondaryInk)
+                        ShardAmount(amount: config.price, font: InkFont.caption, iconSize: 14)
                         Spacer(minLength: 0)
                     }
                 }

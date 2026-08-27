@@ -95,7 +95,12 @@ struct ServerAuthTests {
             store: identities,
             sessions: sessions,
             credentials: StubCredentials(),
-            backend: backend
+            backend: backend,
+            // **실제 사용자 설정을 건드리지 않는다** — 테스트가 다음 실행의 서랍을
+            // 정해 버리면 안 된다.
+            lastActiveUser: LastActiveUser(
+                defaults: UserDefaults(suiteName: "ggumirror.tests.\(UUID().uuidString)")!
+            )
         )
         return (auth, identities, sessions, backend)
     }

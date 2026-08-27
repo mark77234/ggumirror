@@ -201,6 +201,68 @@ extension MirrorTemplate {
     var uploadedAtKey: Date { uploadedAt ?? .distantPast }
 }
 
+// MARK: - 거울 탭의 상품 하나
+
+/// 내장 템플릿과 사용자 상품을 **화면에서만** 하나로 본다.
+///
+/// 예전에는 두 목록이 각자 grid를 그렸다. 사용자 상품이 홀수 개면 그 grid의 마지막
+/// 줄에 빈 칸이 남고 그 아래에서 내장 목록이 새로 시작했다 — 같은 상점의 같은 물건인데
+/// 경계가 보였다. 이제 칸 하나에 상품 하나씩 이어 붙는다.
+///
+/// **서버 domain · 소유권 · 구매 model을 합치지 않는다.** 여기서 합치는 것은 정렬과
+/// 배치뿐이고, 어디서 왔는지는 case가 그대로 들고 있어서 탭한 뒤에는 각자 원래
+/// 흐름(내장 상세 / 사용자 상품 상세)으로 간다.
+enum StoreMirrorItem: Identifiable, Hashable {
+    case builtIn(MirrorTemplate)
+    case marketplace(MarketplaceListing)
+
+    /// **출처가 id에 들어간다.** 두 목록의 id가 우연히 같아도 서로를 밀어내지 않고,
+    /// 값이 모두 같을 때의 마지막 tie-breaker도 여기서 결정적이 된다.
+    var id: String {
+        switch self {
+        case .builtIn(let template): "builtIn:\(template.id)"
+        case .marketplace(let listing): "marketplace:\(listing.id)"
+        }
+    }
+
+    /// 가격 필터가 보는 값. **내장 목록과 사용자 상품이 같은 함수를 지난다.**
+    var price: Int {
+        switch self {
+        case .builtIn(let template): template.price
+        case .marketplace(let listing): listing.priceShards
+        }
+    }
+}
+
+/// 정렬은 **두 목록이 이미 쓰던 그 규칙**을 그대로 쓴다.
+/// 없는 값을 지어내지 않는다 — 내장 템플릿의 좋아요는 여전히 0이고 저장되지 않으며,
+/// 올라온 적 없는 날짜는 비교할 때만 `distantPast`다.
+extension StoreMirrorItem: StoreSortable {
+    var likeCount: Int {
+        switch self {
+        case .builtIn(let template): template.likeCount
+        case .marketplace(let listing): listing.likeCount
+        }
+    }
+
+    var downloadCount: Int {
+        switch self {
+        case .builtIn(let template): template.downloadCount
+        case .marketplace(let listing): listing.downloadCount
+        }
+    }
+
+    var uploadedAtKey: Date {
+        switch self {
+        case .builtIn(let template): template.uploadedAtKey
+        case .marketplace(let listing): listing.uploadedAtKey
+        }
+    }
+
+    var priceKey: Int { price }
+    var sortIdentity: String { id }
+}
+
 extension MirrorTemplate {
     /// 카드/상세가 함께 쓰는 표시 문자열. **0도 감추지 않는다** —
     /// 감추면 상품마다 metadata 폭이 달라져 목록이 들쭉날쭉해진다.

@@ -220,17 +220,26 @@ final class MirrorLibrary {
     /// 앱이 쓰는 하나뿐인 목록. SwiftUI가 View를 다시 만들어도 파일은 한 번만 읽고,
     /// 안 쓰는 사진 정리도 실행당 한 번만 돈다.
     ///
-    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 아무의 거울도 보여 주지
-    /// 않는다 — 세션이 복구되면 `activate(owner:)`가 그 계정 서랍으로 갈아 끼운다.
-    static let live = MirrorLibrary(store: .store(for: .guest))
+    /// **지난 실행에서 쓰던 서랍을 곧바로 연다**(`LastActiveUser`). network도 세션도
+    /// 기다리지 않는다 — 거울 화면은 로그인 복구보다 먼저 쓸 수 있어야 한다.
+    /// 기억해 둔 사용자가 없으면(첫 실행 · 명시적 로그아웃 뒤) guest다.
+    ///
+    /// 세션이 확정되면 `activate(owner:)`가 맞춰 준다. 같은 사용자면 아무 일도
+    /// 일어나지 않고(`next != owner` guard), 다른 사용자면 그 자리에서 갈아 끼운다.
+    static let live = {
+        let owner = LastActiveUser.shared.owner
+        return MirrorLibrary(store: .store(for: owner), owner: owner)
+    }()
 
     init(
         store: MirrorStore? = nil,
+        owner: MirrorLibraryOwner = .guest,
         assets: PhotoStickerAssetStore? = nil,
         artworks: ImportedArtworkAssetStore? = nil,
         accountsBase: URL? = nil
     ) {
         self.accountsBase = accountsBase
+        self.owner = owner
         let assets = assets ?? .shared
         let artworks = artworks ?? .shared
         self.store = store
@@ -266,9 +275,7 @@ final class MirrorLibrary {
             currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
                 ? saved.currentMirrorID
                 : Self.defaultMirror.id
-            // 렌더러가 그리다가 파일을 읽지 않도록 미리 올린다.
-            assets.preload(saved.referencedAssetIDs(.photoSticker))
-            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
+            preloadCurrentMirrorAssets()
         }
 
         guard !isReadOnly else { return }
@@ -311,6 +318,18 @@ final class MirrorLibrary {
     /// 지금 어떤 거울이든 참조하는 asset. 종류별로 따로 센다.
     func referencedAssetIDs(_ kind: MirrorAssetKind) -> Set<UUID> {
         mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.assetIDs(kind)) }
+    }
+
+    /// **지금 보여 줄 거울의 그림만** 미리 올린다.
+    ///
+    /// 렌더러가 그리는 도중 파일을 읽지 않게 하려는 것이고, 시작하자마자 그려지는 것은
+    /// 현재 거울 하나뿐이다. 예전에는 서랍에 있는 **모든** 거울의 PNG를 여기서
+    /// 해독했다 — 거울이 스무 개면 스무 장을 main actor에서 풀고 나서야 첫 화면이
+    /// 떴다. 나머지는 필요할 때 `image(for:)`가 그때 읽는다(원래 그렇게 만들어져 있다).
+    private func preloadCurrentMirrorAssets() {
+        let mirror = currentMirror
+        assets.preload(mirror.assetIDs(.photoSticker))
+        artworks.preload(mirror.assetIDs(.importedArtwork))
     }
 
     /// 아무 거울도 참조하지 않는 이미지 파일을 지운다. 종류마다 자기 폴더에서만.
@@ -371,8 +390,7 @@ final class MirrorLibrary {
             currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
                 ? saved.currentMirrorID
                 : Self.defaultMirror.id
-            assets.preload(saved.referencedAssetIDs(.photoSticker))
-            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
+            preloadCurrentMirrorAssets()
         }
         guard !isReadOnly else { return }
         publishDrafts = store.loadDrafts().filter { draft in
