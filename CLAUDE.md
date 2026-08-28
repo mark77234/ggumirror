@@ -300,10 +300,23 @@ Mirror Decoration Text는 별도 multi-font library를 사용한다.
 | | 상수 | 값 |
 |---|---|---|
 | 거울 | `MirrorPublishPolicy.feeInShards` | **10 조각** |
-| 스티커 | `StickerPublishPolicy.feeInShards` | **5 조각** |
+| 스티커 | `StickerPublishPolicy.feeInShards` | **10 조각** |
 
 과거 20조각 정책은 제거했다. B-7 backend도 이 값을 최종 정책으로 쓴다 —
-`mirror_publish_fee = 10` · `sticker_publish_fee = 5`.
+`mirror_publish_fee = 10` · `sticker_publish_fee = 10`.
+
+**등록비는 AI 생성값(5조각)과 다른 축이다.** 숫자가 겹쳐 보여도 한 상수로 묶지 않는다.
+
+### 등록하면 내 콘텐츠 이름도 그 이름이 된다
+
+사용자가 상점에 올리면서 붙인 상품명이 **그 거울/스티커의 이름**이다.
+등록에 **성공한 뒤에만** 기존 이름 바꾸기 통로(`MirrorLibrary.rename` ·
+`StickerLibrary.rename`)로 local 이름을 맞춘다 — id로 찾고, 그 안에서 디스크까지 저장된다.
+
+- 실패하면 이름을 바꾸지 않는다. 올리지도 못한 이름이 내 거울에 남으면 안 된다
+- 화면에서 listing title로 **덮어 그리지 않는다** — 실제 model과 persistence를 바꾼다
+- 서버로 가는 값과 local에 남길 값은 **같은 변수**에서 나온다(갈라질 수 없다)
+- 이름으로 콘텐츠를 찾지 않는다. `MyMirror.id` / `StickerProject.id`가 열쇠다
 
 **정렬은 `StoreSort` 하나를 거울/스티커 상점이 공유한다.** 기본값은 최신 순이고
 선택은 저장하지 않는다(로컬 목록 정렬이라 네트워크를 다시 부르지 않는다).
@@ -839,7 +852,8 @@ Actual Publish는 Backend phase 이후 구현한다.
   client가 아는 주소는 꾸미러 backend 하나이고, provider 호출은 전부 서버가 한다.
   `Config/*.xcconfig` · `Info.plist`에도 provider 관련 값을 넣지 않는다
 - **가격을 앱에 적지 않는다.** 몇 조각인지는 `GET /ai/stickers/config`가 알려주고
-  화면은 받은 값을 그대로 보여준다. 코드에 `6`을 적으면 서버가 값을 바꿀 때 거짓말이 된다
+  화면은 받은 값을 그대로 보여준다. 코드에 숫자를 적으면 서버가 값을 바꿀 때 거짓말이 된다
+  (1.1.0에서 실제로 6 → 5가 됐다)
 - **잔액을 client가 계산하지 않는다.** `balance -= 6`을 쓰지 않고,
   서버가 응답에 담아준 `balance`를 `ShardWallet.apply(balance:)`로 옮겨 적기만 한다.
   실패했을 때의 **환불도 서버가 한다** — client에 되돌리는 코드가 없다
@@ -850,7 +864,7 @@ Actual Publish는 Backend phase 이후 구현한다.
   새 segmentation engine을 만들지 않았고 서버에 배경제거 API도 붙이지 않았다
 - **배경제거가 실패해도 AI를 다시 부르지 않는다.** 그림은 서버에 남아 있으므로
   "다시 시도"는 같은 generation을 다시 받아 컷아웃만 재시도한다 —
-  provider 재호출도, 추가 6조각 차감도 없다
+  provider 재호출도, 추가 조각 차감도 없다
 - 결과는 **새 `StickerSource` case를 만들지 않고** `.photo`로 들어간다 —
   이미 "id로 참조하는 불변 bitmap + 비율"이라 저장 형식 · GC · 렌더 · 크기 조절 · 레이어가
   그대로 동작한다. 사진 cutout이 지나는 `PhotoStickerAssetStore.register`와 같은 자리다
@@ -1238,7 +1252,8 @@ UMP consent flow도 SDK와 함께 들어온다.
   로그인 뒤 결제를 자동으로 이어가지 않는다(사용자가 상품을 다시 고른다).
   임의의 pending purchase 저장소를 만들지 않았다
 
-`AIStickerPromptSheet`의 "6조각이 필요해요 (지금 2조각)" 문구는 **그대로 두고** CTA만 더했다.
+`AIStickerPromptSheet`의 "N조각이 필요해요 (지금 2조각)" 문구는 **그대로 두고** CTA만 더했다.
+값은 서버가 준 `price`라 정책이 바뀌면 문구가 따라간다.
 
 #### Xcode StoreKit 테스트 ≠ Apple Sandbox (acceptance 구분)
 

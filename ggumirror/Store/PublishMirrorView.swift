@@ -250,20 +250,33 @@ struct PublishMirrorView: View {
         }
         defer { marketplace.onListingCreated = nil }
 
+        // **상품명은 한 번만 정한다.** 서버로 가는 값과 내 거울에 남길 값이
+        // 같은 변수에서 나와야 둘이 갈라질 수 없다.
+        let title = MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name
+
         let result = await marketplace.publish(
             package: package,
-            title: MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name,
+            title: title,
             description: MirrorPublishPolicy.normalizedDescription(draft.description),
             priceShards: draft.priceInShards,
             session: session.server,
             wallet: wallet
         )
         guard let result else {
+            // **실패하면 이름을 바꾸지 않는다.** 올리지도 못한 이름이 내 거울에
+            // 남으면 사용자는 상점에 없는 이름을 보게 된다.
             didPublish = false
             publishNotice = marketplace.failure?.message
             return
         }
         didPublish = true
+        // **등록에 성공한 뒤에** 내 거울 이름도 그 이름으로 맞춘다.
+        //
+        // 사용자가 등록하면서 붙인 이름이 이 거울의 이름이다 — 상점에서는
+        // `짱구 거울`인데 내 거울에서는 `AI 거울`로 남아 있으면 같은 물건이
+        // 두 이름을 갖는다. 기존 이름 바꾸기 통로를 그대로 쓰고(id로 찾는다),
+        // 그 안에서 디스크까지 저장된다.
+        _ = library.rename(mirror.id, to: title)
         // id는 publish **전에** 이미 남겼다(`onListingCreated`). 여기서는 서버가
         // 돌려준 값과 같은지만 확인한다 — 다르면 우리가 잘못된 listing을 올린 것이다.
         assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")

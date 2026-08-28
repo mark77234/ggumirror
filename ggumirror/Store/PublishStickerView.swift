@@ -5,7 +5,7 @@
 //  스티커 **등록 준비**. 실제 등록도, 조각 차감도, 상점 노출도 없다.
 //  "등록됐다" / "판매 중"처럼 보이는 문구를 쓰지 않는다 — 서버가 없기 때문이다.
 //
-//  등록 비용은 5 조각이다(거울 10보다 싸다). 값은 StickerPublishPolicy 하나에서만 온다.
+//  등록 비용은 거울과 같은 10 조각이다. 값은 StickerPublishPolicy 하나에서만 온다.
 //
 
 import SwiftUI
@@ -277,20 +277,27 @@ struct PublishStickerView: View {
         }
         defer { marketplace.onListingCreated = nil }
 
+        // **상품명은 한 번만 정한다.** 서버로 가는 값과 내 스티커에 남길 값이
+        // 같은 변수에서 나와야 둘이 갈라질 수 없다(거울과 같은 규칙이다).
+        let title = StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name
+
         let result = await marketplace.publish(
             package: package,
-            title: StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name,
+            title: title,
             description: StickerPublishPolicy.normalizedDescription(draft.description),
             priceShards: draft.priceInShards,
             session: session.server,
             wallet: wallet
         )
         guard let result else {
+            // **실패하면 이름을 바꾸지 않는다.**
             didPublish = false
             publishNotice = marketplace.failure?.message
             return
         }
         didPublish = true
+        // 등록에 성공한 뒤에 내 스티커 이름도 그 이름으로 맞춘다.
+        _ = library.rename(project.id, to: title)
         assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")
         publishNotice = result.feeCharged
             ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."
