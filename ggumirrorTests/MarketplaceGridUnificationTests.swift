@@ -241,13 +241,15 @@ struct MySalesGridTests {
         #expect(code.contains("count: listing.likeCount"))
         // 판매 상태는 배지와 통계 줄 양쪽에 온다.
         #expect(code.contains("status: listing.statusLabel"))
-        #expect(code.contains("footnote: listing.statusLabel"))
+        // 등록에 실패했으면 그 자리에 **이유**가 온다 — `등록 미완료`만으로는
+        // 무엇을 고쳐야 할지 알 수 없다.
+        #expect(code.contains("store.publishFailure(for: listing.id)?.message ?? listing.statusLabel"))
     }
 
     @Test("상태 구획이 그대로다")
     func statusGroupsAreKept() throws {
         let code = try gridSource(salesPath)
-        for group in ["판매 중", "등록 미완료", "이전 판매 중지"] {
+        for group in ["판매 중", "등록 미완료", "운영 정책으로 내려감", "판매 중지"] {
             #expect(code.contains(group), "\(group)")
         }
     }

@@ -112,6 +112,14 @@ nonisolated extension MarketplaceOwnedListing {
     /// 운영자가 내렸다. **판매자가 되돌릴 수 없다** — 다시 올리기 버튼을 주지 않는다.
     var isModerated: Bool { moderationStatus == "removed" }
 
+    /// **지금 공개 상점에서 볼 수 있는가.**
+    ///
+    /// `AdminListing.isPubliclyVisible`과 **같은 조건**이고, 운영 화면과 판매자
+    /// 화면이 같은 것을 말하게 하는 자리다. `status == "published"`만 보면
+    /// 운영자가 내린 상품이 판매자에게는 계속 `판매 중`으로 보인다
+    /// (실기기에서 그랬다 — 판매자는 왜 상점에 없는지 알 수 없었다).
+    var isPubliclyVisible: Bool { isPublished && !isModerated }
+
     /// 판매자에게 보일 상태 문구.
     ///
     /// `draft`를 "등록 준비"라고 했는데, **등록 도중 실패해 남은 것도 같은 상태**다
@@ -119,12 +127,15 @@ nonisolated extension MarketplaceOwnedListing {
     /// 실패했다). "준비"라고 하면 사용자가 자기가 안 올린 줄 안다.
     /// "등록 미완료"는 두 경우 모두 맞고, 이어서 올려야 한다는 것도 전한다.
     var statusLabel: String {
+        // **운영자가 내린 것이 먼저다.** 상태는 여전히 `published`이지만
+        // 상점에는 없다 — `판매 중`이라고 말하면 거짓말이다.
+        if isModerated, status != "deleted" { return "운영 정책으로 내려감" }
         switch status {
-        case "published": "판매 중"
-        case "unlisted": "판매 중지"
-        case "draft": "등록 미완료"
-        case "deleted": "삭제됨"
-        default: "알 수 없음"
+        case "published": return "판매 중"
+        case "unlisted": return "판매 중지"
+        case "draft": return "등록 미완료"
+        case "deleted": return "삭제됨"
+        default: return "알 수 없음"
         }
     }
 }

@@ -40,6 +40,8 @@ final class MarketplaceStore {
     private(set) var isLoading = false
     /// 마지막 실패. 화면이 그대로 보여 준다. **HTTP 오류를 성공처럼 삼키지 않는다.**
     var failure: MarketplaceFailure?
+    /// listing id → 마지막 등록 실패 이유. `publishFailure(for:)`로 읽는다.
+    private var publishFailures: [String: MarketplaceFailure] = [:]
 
     /// 진행 중인 mutation. 같은 상품에 같은 동작을 두 번 보내지 않는다.
     private(set) var inFlight: Set<InFlight> = []
@@ -299,11 +301,13 @@ final class MarketplaceStore {
                 failure = .invalidPackage
                 return nil
             }
+            lastCreatedListingID = draft.id
 
             let result = try await backend.publish(listingID: draft.id, accessToken: token)
             // **서버가 말해 준 잔액만** 넣는다. 앱이 10을 빼지 않는다.
             wallet?.apply(balance: result.balance)
             failure = nil
+            publishFailures[draft.id] = nil
             // 방금 올린 것이 판매자 목록에 보여야 한다. 서버가 authority다.
             invalidatePublicFeed()
             await refreshMyListings(session: session)
@@ -312,15 +316,30 @@ final class MarketplaceStore {
             failure = error
             // publish가 실패했어도 **목록은 새로 받는다** — 서버에 draft가 남아 있고,
             // 그것이 "등록 미완료"로 보여야 사용자가 이어서 올릴 수 있다.
+            //
+            // **왜 못 올렸는지도 함께 남긴다.** draft만 남고 이유가 없으면
+            // 판매자는 `등록 미완료`라는 말만 보고 무엇을 고쳐야 할지 모른다.
+            rememberPublishFailure(error)
             invalidatePublicFeed()
             await refreshMyListings(session: session)
             return nil
         } catch {
             failure = .network
+            rememberPublishFailure(.network)
             invalidatePublicFeed()
             await refreshMyListings(session: session)
             return nil
         }
+    }
+
+    /// 방금 만든 draft에 실패 이유를 붙인다.
+    ///
+    /// **id는 호출부가 이미 저장한 값**(`onListingCreated`)이다 — 그것을 여기서
+    /// 다시 만들지 않는다. snapshot 단계에서 실패했다면 draft 자체가 없으므로
+    /// 붙일 자리도 없고, 그때는 화면이 그 자리에서 바로 이유를 보여 준다.
+    private func rememberPublishFailure(_ reason: MarketplaceFailure) {
+        guard let listingID = lastCreatedListingID else { return }
+        publishFailures[listingID] = reason
     }
 
     /// listing이 만들어진 직후, **publish를 보내기 전에** 불린다.
@@ -328,6 +347,9 @@ final class MarketplaceStore {
     /// 호출부가 id를 지역에 저장한다. `false`를 돌려주면 publish를 보내지 않는다 —
     /// 저장하지 못한 id로 publish를 보내면 실패했을 때 그 listing을 다시 찾을 수 없다.
     var onListingCreated: ((String) -> Bool)?
+
+    /// 이번 등록 시도가 만든 listing id. 실패 이유를 그 draft에 붙이는 데만 쓴다.
+    private var lastCreatedListingID: String?
 
     /// 이미 서버에 있는 listing의 등록을 **이어서** 마친다.
     ///
@@ -419,16 +441,32 @@ final class MarketplaceStore {
             let result = try await backend.publish(listingID: listingID, accessToken: token)
             wallet?.apply(balance: result.balance)
             failure = nil
+            publishFailures[listingID] = nil
             invalidatePublicFeed()
             await refreshMyListings(session: session)
             return result
         } catch let error as MarketplaceFailure {
             failure = error
+            publishFailures[listingID] = error
             return nil
         } catch {
             failure = .network
+            publishFailures[listingID] = .network
             return nil
         }
+    }
+
+    /// 왜 등록을 마치지 못했는가. **listing id → 마지막 실패 이유.**
+    ///
+    /// 서버 draft 문서에는 실패 이유를 적는 자리가 없고, 그것 하나 때문에 경제
+    /// 전체가 쓰는 schema를 넓히지 않는다(원장 `note`와 같은 판단이다).
+    /// 그래서 이 session 동안만 기억한다 — 앱을 껐다 켜면 사라지지만, 그때는
+    /// `다시 상점에 올리기`를 눌러 **서버에게 직접 물어보면** 같은 답이 온다.
+    ///
+    /// 이 값이 없으면 화면이 말할 수 있는 것은 `등록 미완료`뿐이고, 판매자는
+    /// 이름이 겹친 것인지 조각이 모자란 것인지 알 수 없다(실기기 문제).
+    func publishFailure(for listingID: String) -> MarketplaceFailure? {
+        publishFailures[listingID]
     }
 
     // MARK: - 구매

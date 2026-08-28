@@ -64,6 +64,10 @@ struct MarketplaceListingCard: View {
     var like: StoreMirrorCardLike?
     /// 관리 동작. 공개 상점은 `nil`이다(카드 전체가 이미 상세로 가는 버튼이다).
     var action: MarketplaceCardAction?
+    /// 되돌릴 수 없는 동작(삭제). **주 동작과 나란히 두지 않는다** — 판매자가
+    /// "잠깐 내리려고" 삭제를 누른 일이 실기기에서 실제로 있었다.
+    /// 글자만 있는 작은 자리이고 tap target은 그대로 44pt다.
+    var destructive: MarketplaceCardAction?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -81,6 +85,9 @@ struct MarketplaceListingCard: View {
             if let action {
                 actionButton(action)
             }
+            if let destructive {
+                destructiveButton(destructive)
+            }
         }
     }
 
@@ -97,6 +104,20 @@ struct MarketplaceListingCard: View {
                     UnevenRoundedRectangle.ink(14, 12, 15, 13)
                         .stroke(PaperTheme.ink, lineWidth: 1.6)
                 }
+                .contentShape(.rect)
+        }
+        .buttonStyle(InkPressStyle())
+        .disabled(!action.isEnabled)
+    }
+
+    /// 테두리 없는 글자 하나. **주 동작보다 눈에 덜 띈다** — 그것이 요점이다.
+    private func destructiveButton(_ action: MarketplaceCardAction) -> some View {
+        Button(action: action.run) {
+            Text(action.title)
+                .font(InkFont.caption)
+                .foregroundStyle(PaperTheme.secondaryInk)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: InkTapTarget.minimum)
                 .contentShape(.rect)
         }
         .buttonStyle(InkPressStyle())

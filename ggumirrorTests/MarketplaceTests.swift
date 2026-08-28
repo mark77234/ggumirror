@@ -2106,9 +2106,11 @@ struct MarketplaceDeleteTests {
         let code = codeWithoutComments(try String(
             contentsOf: root.appending(path: "Store/MySalesSection.swift"), encoding: .utf8
         ))
-        // 새 UI는 "내리기"를 쓰지 않는다.
-        #expect(!code.contains("상점에서 내리기"))
+        // **내리기와 삭제는 다른 동작이고 둘 다 있다.** 삭제 확인 문구가
+        // 되돌릴 수 있는 쪽을 가리켜 준다 — 그래야 잘못 누르지 않는다.
+        #expect(code.contains("\"상점에서 내리기\""))
         #expect(code.contains("\"삭제\""))
+        #expect(code.contains("되돌릴 수 없어요"))
         // 확인 문구에 환불 없음과 기존 구매자 보존이 들어 있다.
         #expect(code.contains("환불되지 않아요"))
         #expect(code.contains("이미 받은 사용자는 계속 사용할 수 있어요"))
@@ -2272,7 +2274,7 @@ struct StoreIAHardeningTests {
         let code = try source("Store/MySalesSection.swift")
         #expect(code.contains("\"판매 중\""))
         #expect(code.contains("\"등록 미완료\""))
-        #expect(code.contains("filter(\\.isPublished)"))
+        #expect(code.contains("filter(\\.isPubliclyVisible)"))
         #expect(code.contains("filter(\\.isDraft)"))
         // 서버가 authority다.
         #expect(code.contains("refreshMyListings"))

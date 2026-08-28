@@ -136,7 +136,11 @@ struct AIMirrorMakerTests {
         guard case .failed(let message) = maker.state else {
             Issue.record("실패 상태가 아니다"); return
         }
-        #expect(message.contains("다른 표현"))
+        // **저작권이라고 단정하지 않는다** — provider는 이유를 나누지 않는다.
+        // 대신 무엇을 바꾸면 되는지 말한다.
+        #expect(message.contains("이미지 생성 정책"))
+        #expect(message.contains("색상"))
+        #expect(!message.contains("저작권"))
     }
 
     @Test("실패하면 거울이 남지 않는다")

@@ -35,6 +35,11 @@ nonisolated enum AIMirrorFailure: Error, Equatable {
     /// 조각이 모자라다. **서버가 provider를 부르기 전에 거절한 것이다** —
     /// 요금이 발생하지 않았다.
     case insufficientShards
+    /// provider가 **입력 단계에서** 거절했다(OpenAI `moderation_blocked`).
+    ///
+    /// **저작권이라고 단정하지 않는다.** provider가 돌려주는 것은
+    /// `code=moderation_blocked` 하나이고 이유를 나누지 않는다 —
+    /// 우리가 `저작권 문제`라고 적으면 우리가 모르는 것을 아는 척하는 것이다.
     case safetyRejected
     case unavailable
     case network
@@ -43,7 +48,11 @@ nonisolated enum AIMirrorFailure: Error, Equatable {
         switch self {
         case .notSignedIn: "로그인이 필요해요."
         case .insufficientShards: "조각이 부족해요."
-        case .safetyRejected: "이 내용으로는 거울을 만들기 어려워요. 다른 표현으로 다시 시도해 주세요."
+        case .safetyRejected:
+            """
+            이 요청은 이미지 생성 정책에 따라 처리하기 어려워요.
+            특정 캐릭터나 브랜드 이름은 제한될 수 있어요. 이름 대신 원하는 색상, 분위기, 패턴을 적어 주세요.
+            """
         case .unavailable: "지금은 AI 거울을 만들 수 없어요. 잠시 뒤 다시 시도해 주세요."
         case .network: "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요."
         }
