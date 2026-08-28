@@ -323,7 +323,7 @@ struct RenameTouchesNothingElseTests {
     func publishStillOnlyReadsServerEconomy(path: String) throws {
         let code = try nameSyncSource(path)
         let publish = try #require(code.range(of: "private func publish() async {"))
-        let body = String(code[publish.upperBound...].prefix(2000))
+        let body = String(code[publish.upperBound...].prefix(2400))
         // 조각은 여전히 서버가 옮기고 앱은 다시 읽기만 한다.
         #expect(body.contains("wallet.refresh(session:"))
         for banned in ["balance -=", "balance +=", "feeInShards)"] {

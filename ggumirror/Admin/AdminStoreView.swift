@@ -25,7 +25,12 @@ import SwiftUI
 /// 종류(거울/스티커) 필터와 **다른 축이다** — 하나로 합치면 "스티커이면서
 /// 내려간 것"을 고를 수 없다.
 nonisolated enum AdminStatusFilter: String, CaseIterable, Sendable {
-    /// 지금 상점에 있거나 판매자가 손볼 수 있는 것. **기본값.**
+    /// **지금 공개 상점에 실제로 걸려 있는 것.** 기본값.
+    ///
+    /// 예전에는 "운영자가 안 내렸고 판매자가 안 지운 것"이었다 — 그래서 `draft`와
+    /// `unlisted`가 **`판매 중`이라는 이름 아래** 섞여 있었다. 공개 상점에는 없는
+    /// 상품이 운영 화면에는 판매 중으로 보였고(`찬찡`), 운영자가 무엇을 조치해야
+    /// 하는지 알 수 없었다. 이제 공개 노출 조건과 **같은 것**을 본다.
     case live
     /// 운영자가 내린 것. 복구할지 판단하는 화면이다.
     case removed
@@ -44,8 +49,9 @@ nonisolated enum AdminStatusFilter: String, CaseIterable, Sendable {
         switch self {
         case .all: true
         case .removed: listing.isRemoved && !listing.isDeletedBySeller
-        // 판매자가 삭제한 것은 끝 상태라 여기 오지 않는다.
-        case .live: !listing.isRemoved && !listing.isDeletedBySeller
+        // **공개 상점과 같은 조건이다.** `published`이면서 운영자가 내리지 않은 것 —
+        // `draft` · `unlisted` · `deleted`는 공개 상점에 없으므로 여기에도 없다.
+        case .live: listing.isPubliclyVisible
         }
     }
 }
@@ -255,12 +261,14 @@ struct AdminStoreView: View {
                 set: { if !$0 { pendingRestore = nil } }
             )
         ) {
-            [
+            // **대상을 지금 붙잡는다.** 창을 만들 때의 값을 closure에 담는다 —
+            // 눌린 뒤에 `pendingRestore`를 읽으면 이미 `nil`이다(아래 참고).
+            let target = pendingRestore
+            return [
                 InkDialogAction("취소", role: .secondary),
                 InkDialogAction("다시 공개하기", role: .primary) {
-                    if let listing = pendingRestore {
-                        Task { await restore(listing) }
-                    }
+                    guard let target else { return }
+                    Task { await restore(target) }
                 },
             ]
         }
@@ -274,12 +282,18 @@ struct AdminStoreView: View {
     }
 
     /// 사유를 고르는 것이 곧 확인이다 — 확인창을 두 번 띄우지 않는다.
+    ///
+    /// **대상을 지금 붙잡아 둔다.** `InkDialog`는 버튼을 누르면 `onAction()`(창 닫기)을
+    /// **먼저** 부르고 그다음에 `handler()`를 부른다. 창이 닫히면서 binding setter가
+    /// `pendingTakedown = nil`을 쓰므로, handler 안에서 그 값을 다시 읽으면 언제나 비어 있다 —
+    /// 버튼을 눌러도 아무 요청이 나가지 않았던 이유가 정확히 이것이다.
+    /// 값은 창을 만드는 지금 알고 있으니 그때 closure에 담는다.
     private var takedownActions: [InkDialogAction] {
-        AdminModerationReason.allCases.map { reason in
+        let target = pendingTakedown
+        return AdminModerationReason.allCases.map { reason in
             InkDialogAction(reason.label) {
-                if let listing = pendingTakedown {
-                    Task { await takedown(listing, reason: reason) }
-                }
+                guard let target else { return }
+                Task { await takedown(target, reason: reason) }
             }
         } + [InkDialogAction("취소", role: .secondary)]
     }

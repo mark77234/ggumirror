@@ -85,8 +85,16 @@ final class MirrorCamera {
 
     let role: Role
 
-    init(role: Role = .viewfinder) {
+    init(role: Role = .viewfinder, preferences: UserDefaults = .standard) {
         self.role = role
+        self.preferences = preferences
+        self.frontFraming = Self.storedFraming(in: preferences) ?? .default
+    }
+
+    /// 저장된 선택. 고른 적이 없거나 모르는 값이면 `nil`이고 기본값으로 간다.
+    nonisolated static func storedFraming(in preferences: UserDefaults) -> Framing? {
+        guard let raw = preferences.string(forKey: framingKey) else { return nil }
+        return Framing(rawValue: raw)
     }
 
     /// 전환 버튼을 쓸 수 있는가.
@@ -197,8 +205,16 @@ final class MirrorCamera {
         /// 화면을 꽉 채운다. 좌우가 잘린다. (기존 동작)
         case fill
 
-        /// 전면 첫 진입은 언제나 넓게 본다.
-        static let initial: Framing = .wide
+        /// 아무것도 고른 적이 없을 때. **화면을 꽉 채운다.**
+        ///
+        /// 처음에는 `wide`였다 — 잘라낸 화각은 되돌릴 수 없으니 자르지 않는 쪽을
+        /// 기본으로 두는 것이 안전하다고 봤다. 실기기 QA에서 뒤집혔다: 거울을 보는
+        /// 사람은 위아래에 남는 검은 띠보다 **화면을 채운 거울**을 기대한다.
+        /// 고르는 기능은 그대로다 — 기본값만 바뀐다.
+        static let `default`: Framing = .fill
+
+        /// 예전 이름. 기본값을 가리키던 호출부가 그대로 동작한다.
+        static var initial: Framing { .default }
 
         var previewGravity: AVLayerVideoGravity {
             self == .wide ? .resizeAspect : .resizeAspectFill
@@ -208,9 +224,16 @@ final class MirrorCamera {
         var accessibilityTitle: String { self == .wide ? "넓게 보기" : "화면 채우기" }
     }
 
-    /// 전면에서 고른 방법. **이 session 동안만 유지된다** — 저장하지 않는다.
-    /// 후면으로 갔다 돌아와도 고른 값이 살아 있다.
-    var frontFraming: Framing = .initial
+    /// 전면에서 고른 방법. 후면으로 갔다 돌아와도 살아 있다.
+    ///
+    /// **사용자가 고른 값은 앱을 다시 켜도 남는다.** 매번 다시 고르게 하면 그건
+    /// 설정이 아니라 매번 묻는 질문이다. 고른 적이 없으면 `Framing.default`다 —
+    /// 기본값이 바뀌어도 **이미 고른 사람의 선택을 덮지 않는다.**
+    var frontFraming: Framing
+
+    /// 고른 값을 적어 두는 곳. 기기 하나의 표시 설정이라 서버에 보내지 않는다.
+    @ObservationIgnored private let preferences: UserDefaults
+    private static let framingKey = "ggumirror.camera.frontFraming"
 
     /// 지금 실제로 쓰는 방법. **후면은 언제나 꽉 채운다** — 후면 UX는 그대로다.
     var framing: Framing { position == .front ? frontFraming : .fill }
@@ -259,6 +282,9 @@ final class MirrorCamera {
     func setFrontFraming(_ next: Framing) {
         guard canChooseFraming else { return }
         frontFraming = next
+        // **명시적으로 고른 것만 적는다.** 기본값을 미리 적어 두면 나중에 기본값을
+        // 바꿔도 "이미 고른 사람"으로 취급되어 아무도 새 기본값을 받지 못한다.
+        preferences.set(next.rawValue, forKey: Self.framingKey)
         CameraLog.event("front framing \(next.rawValue)")
     }
 

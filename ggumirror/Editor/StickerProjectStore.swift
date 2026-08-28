@@ -368,9 +368,18 @@ final class StickerLibrary {
     func rename(_ projectID: String, to raw: String) -> MirrorRenameOutcome {
         guard let name = StickerProjectPolicy.normalizedName(raw) else { return .invalidName }
         guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return .notFound }
+        // 거울과 **같은 규칙**이다 — 한 서랍에 같은 이름을 두 개 두지 않는다.
+        guard isNameAvailable(name, excluding: projectID) else { return .duplicateName }
         projects[index].name = name
         persist()
         return .renamed(name)
+    }
+
+    /// 이 서랍에서 쓸 수 있는 이름인가. 비교 규칙은 `ContentNameKey` 하나다.
+    func isNameAvailable(_ raw: String, excluding projectID: String? = nil) -> Bool {
+        let key = ContentNameKey.canonical(raw)
+        guard !key.isEmpty else { return false }
+        return !projects.contains { $0.id != projectID && ContentNameKey.canonical($0.name) == key }
     }
 
     /// 복제. **새 id · 새 완성 PNG**를 만든다. 원본은 그대로 둔다.

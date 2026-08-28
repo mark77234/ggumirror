@@ -84,15 +84,18 @@ struct StickerRenameTests {
         }
     }
 
-    @Test("같은 이름을 여러 개 허용한다")
-    func duplicateNamesAreAllowed() throws {
+    @Test("같은 이름을 두 개 두지 않는다")
+    func duplicateNamesAreRefused() throws {
         try withLibrary { library, _ in
             let first = try #require(seed(library, name: "하나"))
             let second = try #require(seed(library, name: "둘"))
-            _ = library.rename(first.id, to: "같은 이름")
-            _ = library.rename(second.id, to: "같은 이름")
-            // 이름은 identity가 아니다 — id가 authority다.
-            #expect(library.projects.filter { $0.name == "같은 이름" }.count == 2)
+
+            #expect(library.rename(first.id, to: "같은 이름") == .renamed("같은 이름"))
+            #expect(library.rename(second.id, to: "같은 이름") == .duplicateName)
+            #expect(library.projects.filter { $0.name == "같은 이름" }.count == 1)
+            // 거절된 쪽은 이름이 그대로다.
+            #expect(library.projects.first { $0.id == second.id }?.name == "둘")
+            // 이름은 여전히 identity가 아니다 — id가 authority다.
             #expect(first.id != second.id)
         }
     }

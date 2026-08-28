@@ -155,15 +155,20 @@ struct MirrorNamingTests {
         #expect(name.count == MirrorStoragePolicy.maxNameLength)
     }
 
-    @Test("같은 이름을 여러 개 허용한다")
-    func duplicateNamesAreAllowed() {
+    @Test("같은 이름을 두 개 두지 않는다")
+    func duplicateNamesAreRefused() {
         let library = library()
         let first = library.mirrors[0].id
         let second = library.mirrors[1].id
-        _ = library.rename(first, to: "같은 이름")
-        _ = library.rename(second, to: "같은 이름")
-        // 이름은 identity가 아니다 — id가 authority다.
-        #expect(library.mirrors.filter { $0.name == "같은 이름" }.count == 2)
+        let before = library.mirrors.first { $0.id == second }?.name
+
+        #expect(library.rename(first, to: "같은 이름") == .renamed("같은 이름"))
+        // **실기기 QA**: 같은 이름이 여럿이면 내 거울에서 어느 것인지 알 수 없었다.
+        #expect(library.rename(second, to: "같은 이름") == .duplicateName)
+        #expect(library.mirrors.filter { $0.name == "같은 이름" }.count == 1)
+        // 거절된 쪽은 이름이 그대로다.
+        #expect(library.mirrors.first { $0.id == second }?.name == before)
+        // 이름은 여전히 identity가 아니다 — id가 authority다.
         #expect(first != second)
     }
 

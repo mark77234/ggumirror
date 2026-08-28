@@ -92,6 +92,9 @@ final class ProfileSession {
         do {
             profile = try await backend.setDisplayName(name, accessToken: token)
             return nil
+        } catch let error as DisplayNameFailure {
+            // **generic 오류로 숨기지 않는다.** 겹친 이름은 다시 시도해도 같은 답이다.
+            return error.message
         } catch let error as BackendError {
             return error.message
         } catch {

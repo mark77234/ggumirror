@@ -235,6 +235,9 @@ nonisolated enum MarketplaceFailure: Error, Equatable, Sendable {
     /// 운영자가 내렸다(409). **다시 올려서 풀 수 없다** — `cannotPublish`와
     /// 뭉치면 판매자가 계속 다시 시도하게 된다.
     case moderated
+    /// 그 상품 이름을 이미 누가 쓰고 있다(409). **이름만 바꾸면 된다** —
+    /// generic 오류로 뭉치면 사용자가 무엇을 고쳐야 할지 알 수 없다.
+    case titleTaken
     /// 우리가 만든 package가 서버 규칙에 맞지 않다(400 · 413).
     /// **사용자 잘못이 아니라 앱 잘못이다.**
     case invalidPackage
@@ -254,6 +257,7 @@ nonisolated enum MarketplaceFailure: Error, Equatable, Sendable {
         case .notFound: "상품을 찾지 못했어요."
         case .cannotPublish: "지금은 상점에 올릴 수 없어요."
         case .moderated: "운영자에 의해 판매가 중지된 상품이에요. 다시 올릴 수 없어요."
+        case .titleTaken: "이미 사용 중인 상품 이름이에요."
         case .invalidPackage: "상점에 올릴 준비를 마치지 못했어요."
         case .storageUnavailable, .network: "지금은 서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요."
         // **연결은 됐고 서버가 처리하지 못한 것이다.** 둘을 같은 말로 뭉개면
@@ -267,7 +271,7 @@ nonisolated enum MarketplaceFailure: Error, Equatable, Sendable {
         switch self {
         case .network, .storageUnavailable, .server: true
         case .notSignedIn, .insufficientShards, .selfPurchase, .selfLike,
-             .notFound, .cannotPublish, .moderated, .invalidPackage: false
+             .notFound, .cannotPublish, .moderated, .invalidPackage, .titleTaken: false
         }
     }
 
@@ -284,6 +288,7 @@ nonisolated enum MarketplaceFailure: Error, Equatable, Sendable {
         case (409, "not enough shards"): return .insufficientShards
         case (409, "listing cannot be published"): return .cannotPublish
         case (409, "listing was removed by an operator"): return .moderated
+        case (409, "listing title is already taken"): return .titleTaken
         case (400, "cannot buy your own listing"): return .selfPurchase
         case (400, "cannot like your own listing"): return .selfLike
         case (503, _): return .storageUnavailable

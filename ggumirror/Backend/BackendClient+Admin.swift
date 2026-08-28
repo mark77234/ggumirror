@@ -35,6 +35,14 @@ nonisolated struct AdminListing: Decodable, Hashable, Identifiable, Sendable {
     let sellerDisplayName: String?
 
     var isRemoved: Bool { moderationStatus == "removed" }
+    /// 판매자 축에서 실제로 상점에 올라가 있는가.
+    var isPublished: Bool { status == "published" }
+    /// **지금 공개 상점에서 볼 수 있는가.**
+    ///
+    /// 공개 목록의 조건과 같다 — 서버가 `published`만 내보내고, 운영자가 내린 것은
+    /// 제외한다. 운영 화면이 이것과 다른 기준으로 "판매 중"을 말하면
+    /// 공개 상점에 없는 상품이 판매 중으로 보인다(실기기에서 그랬다).
+    var isPubliclyVisible: Bool { isPublished && !isRemoved }
     var isMirror: Bool { contentType == "mirror" }
     /// 판매자가 삭제했다. **되살릴 수 없다** — 서버가 409로 거절한다.
     var isDeletedBySeller: Bool { status == "deleted" }

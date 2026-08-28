@@ -102,4 +102,42 @@ enum MirrorRenameOutcome: Equatable {
     case invalidName
     /// 그 거울이 없다.
     case notFound
+    /// 이 서랍에 **사실상 같은 이름**이 이미 있다(`ContentNameKey`).
+    case duplicateName
+
+    /// 사용자에게 보여 줄 말. 성공이면 할 말이 없다.
+    func message(for kind: RenameableAssetKind) -> String? {
+        switch self {
+        case .renamed: nil
+        case .invalidName: "이름을 입력해 주세요."
+        case .notFound: "\(kind.subject) 찾지 못했어요."
+        case .duplicateName: "이미 있는 이름이에요. 다른 이름을 지어 주세요."
+        }
+    }
+}
+
+/// **같은 이름인지 판단하는 규칙 하나.**
+///
+/// 사람이 보기에 같은 이름은 같은 이름이어야 한다. `Pink` · ` pink ` · `PINK`가
+/// 서랍에 나란히 있으면 어느 것이 어느 것인지 알 수 없다.
+///
+/// 이것은 **비교용 열쇠일 뿐이다** — 표시용 이름은 사용자가 적은 그대로 저장한다.
+/// 한글은 자모 조합이 두 가지로 표현될 수 있어(`NFC`/`NFD`) 눈에 같아 보여도
+/// 문자열이 다르다. 그래서 먼저 하나의 형태로 모은다.
+///
+/// **이름은 identity가 아니다.** 이 열쇠로 콘텐츠를 찾지 않는다 — id가 그 일을 한다.
+nonisolated enum ContentNameKey {
+    /// 비교에 쓰는 canonical form.
+    static func canonical(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 한글 자모 조합을 한 가지로 모은다(NFC).
+            .precomposedStringWithCanonicalMapping
+            // Latin 대소문자 차이를 없앤다. 한글에는 영향이 없다.
+            .lowercased()
+    }
+
+    /// 사람이 보기에 같은 이름인가.
+    static func matches(_ one: String, _ other: String) -> Bool {
+        canonical(one) == canonical(other)
+    }
 }

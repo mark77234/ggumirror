@@ -79,12 +79,13 @@ struct PreviewFramingAuthorityTests {
     }
 }
 
-@Suite("기본값은 넓게 보기")
+@Suite("기본값은 화면 채우기")
 struct PreviewFramingDefaultTests {
 
-    @Test("첫 진입은 넓게다")
-    func defaultIsWide() throws {
-        #expect(MirrorCamera.Framing.initial == .wide)
+    @Test("첫 진입은 채우기다")
+    func defaultFills() throws {
+        // 실제 거울과 **같은 상수**를 읽으므로 거울 기본값이 바뀌면 함께 바뀐다.
+        #expect(MirrorCamera.Framing.initial == .fill)
         // 미리보기가 자기 기본값을 따로 적지 않는다 — 같은 상수를 읽는다.
         #expect(try source(previewPath).contains("MirrorCamera.Framing.initial"))
     }

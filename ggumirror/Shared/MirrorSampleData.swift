@@ -515,9 +515,21 @@ final class MirrorLibrary {
     func rename(_ mirrorID: String, to raw: String) -> MirrorRenameOutcome {
         guard let name = MirrorStoragePolicy.normalizedName(raw) else { return .invalidName }
         guard let index = mirrors.firstIndex(where: { $0.id == mirrorID }) else { return .notFound }
+        // **한 서랍에 같은 이름을 두 개 두지 않는다.** 자기 자신은 세지 않는다 —
+        // 대소문자만 바꾸는 것도 정상적인 이름 바꾸기다.
+        guard isNameAvailable(name, excluding: mirrorID) else { return .duplicateName }
         mirrors[index].name = name
         persist()
         return .renamed(name)
+    }
+
+    /// 이 서랍에서 쓸 수 있는 이름인가. **비교 규칙은 `ContentNameKey` 하나다.**
+    ///
+    /// 계정 안에서만 본다 — 상점의 전체 이름 겹침과는 다른 질문이다.
+    func isNameAvailable(_ raw: String, excluding mirrorID: String? = nil) -> Bool {
+        let key = ContentNameKey.canonical(raw)
+        guard !key.isEmpty else { return false }
+        return !mirrors.contains { $0.id != mirrorID && ContentNameKey.canonical($0.name) == key }
     }
 
     /// 이 저장이 새 거울을 만들지.

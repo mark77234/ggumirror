@@ -124,6 +124,9 @@ struct AIMirrorView: View {
     @State private var maker = AIMirrorMaker()
     @State private var prompt = ""
     @State private var showsStorageFull = false
+    /// 이름을 받는 중인 결과물. **여기 있는 동안 그림은 살아 있다** —
+    /// 시트를 닫아도 결과는 사라지지 않고 미리보기로 돌아간다.
+    @State private var naming: ImportedArtworkObject?
     @State private var insufficientNotice: String?
     @State private var notice: String?
     @Environment(AuthSession.self) private var session
@@ -198,6 +201,23 @@ struct AIMirrorView: View {
         // 그래서 안전한 취소를 줄 수 없고, 대신 실수로 닫히지 않게 막는다.
         .inkSheetDismissDisabled(maker.isGenerating)
         .inkMirrorStorageFullDialog("저장하려면", isPresented: $showsStorageFull, library: library)
+        // **이름을 받고 나서 저장한다.** 시트를 닫으면 미리보기로 돌아갈 뿐이고
+        // 그림도 이미 낸 조각도 잃지 않는다 — 다시 `내 거울에 저장`을 누르면 된다.
+        .inkBottomSheet(item: $naming, size: .fraction(0.5)) { artwork in
+            MirrorNameSheet(
+                isNewMirror: true,
+                title: "거울 이름을 정하세요",
+                detail: "내 거울에서 알아보기 쉬운 이름을 입력해 주세요.",
+                // 판단은 서랍이 한다 — 화면이 규칙을 다시 적지 않는다.
+                validate: { candidate in
+                    library.isNameAvailable(candidate)
+                        ? nil
+                        : "이미 있는 이름이에요. 다른 이름을 지어 주세요."
+                }
+            ) { name in
+                save(artwork, named: name)
+            }
+        }
         .inkDialog(
             "조각이 부족해요",
             message: insufficientNotice,
@@ -290,7 +310,9 @@ struct AIMirrorView: View {
             .disabled(maker.isGenerating)
 
             Button {
-                save(artwork)
+                // **여기서 저장하지 않는다.** 이름을 먼저 받는다 —
+                // 저장하고 나서 고치게 하면 모두 `AI 거울`로 쌓인다.
+                beginNaming(artwork)
             } label: {
                 Text("내 거울에 저장")
                     .font(InkFont.body)
@@ -323,24 +345,48 @@ struct AIMirrorView: View {
         await wallet?.refresh(session: session.server)
     }
 
-    private func save(_ artwork: ImportedArtworkObject) {
-        // 만드는 동안 자리가 찼을 수 있다. 저장 직전에 다시 본다.
+    /// 이름을 받으러 간다. **자리부터 본다** — 이름을 다 적고 나서 못 담는다고
+    /// 하면 사용자가 두 번 일한다.
+    private func beginNaming(_ artwork: ImportedArtworkObject) {
         guard library.hasFreeMirrorSlot else {
             showsStorageFull = true
             return
         }
+        naming = artwork
+    }
+
+    /// 사용자가 정한 이름으로 저장한다.
+    ///
+    /// **여기서 생성을 다시 부르지 않는다.** 그림은 이미 손에 있고 조각도 이미 냈다 —
+    /// 이름은 저장 직전의 마지막 한 걸음일 뿐이다.
+    private func save(_ artwork: ImportedArtworkObject, named raw: String) {
+        // 만드는 동안 자리가 찼을 수 있다. 저장 직전에 다시 본다.
+        guard library.hasFreeMirrorSlot else {
+            naming = nil
+            showsStorageFull = true
+            return
+        }
+        // 시트가 이미 걸렀지만 서랍이 마지막 판단을 한다 — 규칙은 한 곳이다.
+        guard let name = MirrorStoragePolicy.normalizedName(raw),
+              library.isNameAvailable(name)
+        else {
+            notice = "이미 있는 이름이에요. 다른 이름을 지어 주세요."
+            return
+        }
         var design = MirrorDesign.blank
-        design.name = "AI 거울"
+        design.name = name
         design.importedArtworks = [artwork]
         // **어떻게 만들었는지 남긴다.** 나중에 이름이나 파일로 추측하지 않기 위해서다.
         switch library.save(
-            design, name: design.name, context: .createNew, creationSource: .aiGenerated
+            design, name: name, context: .createNew, creationSource: .aiGenerated
         ) {
         case .created, .updated:
+            naming = nil
             maker.reset()
             onSaved()
             dismiss()
         case .needsMoreSlots:
+            naming = nil
             showsStorageFull = true
         }
     }
