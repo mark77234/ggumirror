@@ -2,7 +2,7 @@
 //  SettingsA2Tests.swift
 //  ggumirrorTests
 //
-//  설정 화면의 세 가지: **구매 복원 · 법적 링크 · 리뷰 요청.**
+//  설정 화면의 세 가지: **소모품 복원 제거 · 법적 링크 · 리뷰 요청.**
 //
 //  셋 다 잘못 만들면 조용히 해로운 종류다 —
 //  복원이 조각을 다시 주면 결제 없이 조각이 생기고,
@@ -28,110 +28,52 @@ private func legalDoc(_ name: String) throws -> String {
     return try String(contentsOf: root.appending(path: "docs/legal/\(name)"), encoding: .utf8)
 }
 
-// MARK: - 구매 복원
+// MARK: - 소모품 복원 제거 (App Store 3.1.1)
 
-private nonisolated final class FakeSync: AppStoreSyncing, @unchecked Sendable {
-    var calls = 0
-    var failure: Error?
-    func sync() async throws {
-        calls += 1
-        if let failure { throw failure }
+/// 조각은 consumable이다. **Apple의 구매 복원으로 되돌리지 않는다** —
+/// 소모품은 그렇게 복원되지 않고, Apple도 그런 UI를 금지한다(Guideline 3.1.1).
+/// 잔액의 authority는 서버 원장이고, 같은 계정으로 로그인하면 그대로 다시 읽어 온다.
+@Suite("소모품 복원 UI와 StoreKit restore 경로가 없다")
+struct ConsumableRestoreRemovalTests {
+
+    @Test("설정에 구매 복원 항목이 없다")
+    func settingsHasNoRestoreRow() throws {
+        let settings = try source("ggumirror/Home/SettingsView.swift")
+        for forbidden in ["구매 복원", "PurchaseRestore", "restoreState"] {
+            #expect(!settings.contains(forbidden), "설정에 \(forbidden)이 남아 있다")
+        }
+        // Apple 로그인은 그대로다 — 이쪽이 서버 잔액을 되찾는 정상 경로다.
+        #expect(settings.contains("AccountSection(session: session)"))
+    }
+
+    @Test("앱 코드 어디에도 StoreKit restore 호출이 없다")
+    func noStoreKitRestoreAnywhere() throws {
+        for forbidden in ["AppStore.sync", "restoreCompletedTransactions", "currentEntitlements"] {
+            #expect(!appSources().contains { $0.contains(forbidden) }, "\(forbidden) 호출이 남아 있다")
+        }
+    }
+
+    @Test("정상 구매 처리는 그대로 있다")
+    func purchaseProcessingSurvives() throws {
+        let store = try source("ggumirror/IAP/StoreKitShardStore.swift")
+        // 미완료 거래 되찾기는 복원이 아니라 **결제 완결**이다. 없애지 않는다.
+        #expect(store.contains("Transaction.unfinished"))
+        #expect(store.contains("Transaction.updates"))
     }
 }
 
-private struct SyncFailed: Error {}
-
-@Suite("구매 복원은 조각을 만들지 않는다")
-@MainActor
-struct PurchaseRestoreTests {
-
-    private func session() -> ServerSession {
-        ServerSession(accessToken: "t", expiresAt: .distantFuture, userID: "user-1")
-    }
-
-    @Test("Apple 상태를 동기화한다")
-    func callsAppStoreSync() async {
-        let sync = FakeSync()
-        let state = await PurchaseRestore.run(
-            session: session(), wallet: nil, purchases: nil,
-            marketplace: nil, capacity: nil, profile: nil, storeKit: sync
-        )
-        #expect(sync.calls == 1)
-        #expect(state == .finished)
-    }
-
-    @Test("로그인하지 않으면 아무것도 하지 않는다")
-    func guestDoesNothing() async {
-        let sync = FakeSync()
-        let state = await PurchaseRestore.run(
-            session: nil, wallet: nil, purchases: nil,
-            marketplace: nil, capacity: nil, profile: nil, storeKit: sync
-        )
-        // 서버에 보내지도, Apple을 부르지도 않는다.
-        #expect(sync.calls == 0)
-        #expect(state == .failed)
-    }
-
-    @Test("동기화가 실패해도 알려 주기만 한다")
-    func syncFailureIsReported() async {
-        let sync = FakeSync()
-        sync.failure = SyncFailed()
-        let state = await PurchaseRestore.run(
-            session: session(), wallet: nil, purchases: nil,
-            marketplace: nil, capacity: nil, profile: nil, storeKit: sync
-        )
-        #expect(state == .failed)
-        #expect(state.message?.contains("확인하지 못했어요") == true)
-    }
-
-    @Test("성공 문구가 조각을 준다고 말하지 않는다")
-    func successCopyDoesNotPromiseShards() {
-        let message = PurchaseRestoreState.finished.message ?? ""
-        #expect(message == "구매 정보를 확인했어요.")
-        // "10조각을 복원했어요" 같은 말은 사실이 아니고, 사용자가 잔액이 늘기를 기대하게 만든다.
-        for misleading in ["조각", "복원했", "지급"] {
-            #expect(!message.contains(misleading), "오해를 만드는 문구: \(misleading)")
-        }
-    }
-
-    @Test("복원 경로에 잔액을 바꾸는 코드가 없다")
-    func neverMutatesTheWallet() throws {
-        let code = try source("ggumirror/IAP/PurchaseRestore.swift")
-        for forbidden in ["balance +=", "balance -=", "apply(balance:", "credit("] {
-            #expect(!code.contains(forbidden), "복원이 \(forbidden)를 한다")
-        }
-        // 하는 일은 **다시 읽는 것**뿐이다.
-        #expect(code.contains("wallet?.refresh(session:"))
-    }
-
-    @Test("멱등은 서버 것을 그대로 쓴다")
-    func idempotencyIsTheServers() throws {
-        let code = try source("ggumirror/IAP/PurchaseRestore.swift")
-        // 못 끝낸 결제는 기존 경로로 다시 낸다 — 서버가 한 번만 지급한다.
-        #expect(code.contains("recoverUnfinished(session:"))
-        // 복원이 자기만의 지급 규칙을 만들지 않는다.
-        #expect(!code.contains("processed"))
-    }
-
-    @Test("산 것을 자동으로 내려받지 않는다")
-    func doesNotBulkDownloadLibrary() throws {
-        let code = try source("ggumirror/IAP/PurchaseRestore.swift")
-        // `내 거울에 추가`는 그대로 사용자가 누른다.
-        for forbidden in ["importMirror", "importSticker", "adopt(", "acquire("] {
-            #expect(!code.contains(forbidden), "복원이 \(forbidden)를 한다")
-        }
-    }
-
-    @Test("연타로 여러 번 돌지 않는다")
-    func doubleTapIsBlocked() throws {
-        let settings = try source("ggumirror/Home/SettingsView.swift")
-        #expect(settings.contains("disabled(restoreState == .restoring)"))
-    }
-
-    @Test("로그아웃 상태에서는 로그인 안내로 간다")
-    func guestGoesToTheSignInGate() throws {
-        let settings = try source("ggumirror/Home/SettingsView.swift")
-        #expect(settings.contains("requireSignIn(for: .shardTransaction)"))
+/// 앱 target의 Swift 소스 전부(주석 제거). 테스트 코드는 보지 않는다.
+private func appSources() -> [String] {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appending(path: "ggumirror")
+    guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+    else { return [] }
+    return walker.compactMap { entry in
+        guard let url = entry as? URL, url.pathExtension == "swift",
+              let text = try? String(contentsOf: url, encoding: .utf8)
+        else { return nil }
+        return codeWithoutComments(text)
     }
 }
 
@@ -212,8 +154,9 @@ struct LegalLinkTests {
         #expect(terms.contains("이미 그 상품을 구매한 이용자는 계속 이용할 수 있습니다"))
         #expect(terms.contains("30일에 한 번"))
         #expect(terms.contains("현금성 자산이 아닙니다"))
-        // 복원이 조각을 다시 준다고 쓰지 않았다.
-        #expect(terms.contains("이미 사용한 거울조각을 다시 지급하지 않습니다"))
+        // Apple 복원으로 소모품이 돌아온다고 쓰지 않았다 — 그런 기능은 없다.
+        #expect(terms.contains("Apple의 구매 복원으로 되돌릴 수 없습니다"))
+        #expect(terms.contains("같은 계정으로 다시 로그인하면 서버에 기록된 잔액이 그대로 보입니다"))
     }
 
     @Test("아직 없는 기능을 있다고 쓰지 않았다")
