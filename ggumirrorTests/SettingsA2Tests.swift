@@ -53,6 +53,23 @@ struct ConsumableRestoreRemovalTests {
         }
     }
 
+    /// iPad(Apple 심사 기기가 iPad Air 11" M3였다)에서만 다른 설정 화면이 뜨는 길이 없어야
+    /// 한다. **설정은 구현이 하나뿐이고**, 기기·size class로 갈라지지 않는다 —
+    /// 갈라지는 순간 한쪽에만 복원 항목이 남아도 다른 쪽 테스트는 초록으로 통과한다.
+    @Test("기기별로 다른 설정 화면이 없다")
+    func settingsHasNoDeviceSpecificVariant() throws {
+        for forbidden in ["horizontalSizeClass", "verticalSizeClass", "userInterfaceIdiom"] {
+            #expect(!appSources().contains { $0.contains(forbidden) }, "\(forbidden) 분기가 생겼다")
+        }
+        // `#if DEBUG` 말고 다른 조건부 컴파일이 없다 — Release에서만 살아나는 길도 없다.
+        for line in appSources().flatMap({ $0.split(separator: "\n") }) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#if") {
+                #expect(trimmed == "#if DEBUG", "예상 못 한 조건부 컴파일: \(trimmed)")
+            }
+        }
+    }
+
     @Test("정상 구매 처리는 그대로 있다")
     func purchaseProcessingSurvives() throws {
         let store = try source("ggumirror/IAP/StoreKitShardStore.swift")
