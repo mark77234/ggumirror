@@ -47,7 +47,13 @@ final class FakeAuthBackend: AuthBackend, @unchecked Sendable {
         self.verifyOutcome = signInOutcome
     }
 
-    func signIn(identityToken: String, nonce: String) async throws -> ServerSession {
+    /// 마지막 로그인 요청에 담긴 이름. Apple이 준 값이 실제로 실려 가는지 본다.
+    var sawDisplayName: String?
+
+    func signIn(
+        identityToken: String, nonce: String, displayName: String? = nil
+    ) async throws -> ServerSession {
+        sawDisplayName = displayName
         receivedIdentityTokens.append(identityToken)
         receivedNonces.append(nonce)
         switch signInOutcome {
@@ -89,7 +95,12 @@ struct ServerAuthTests {
             store: identities,
             sessions: sessions,
             credentials: StubCredentials(),
-            backend: backend
+            backend: backend,
+            // **실제 사용자 설정을 건드리지 않는다** — 테스트가 다음 실행의 서랍을
+            // 정해 버리면 안 된다.
+            lastActiveUser: LastActiveUser(
+                defaults: UserDefaults(suiteName: "ggumirror.tests.\(UUID().uuidString)")!
+            )
         )
         return (auth, identities, sessions, backend)
     }

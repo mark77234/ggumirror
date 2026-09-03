@@ -25,6 +25,13 @@ enum PaperTheme {
     static let disabled = Color(red: 0.659, green: 0.643, blue: 0.608)      // #A8A49B
     /// 눌린 상태의 종이 면.
     static let pressed = Color(red: 0.969, green: 0.957, blue: 0.929)       // #F7F4ED
+
+    /// **목록 썸네일의 카메라 자리.** 실제 카메라가 없는 정지 그림에서만 쓴다.
+    ///
+    /// 예전에는 어두운 유리색이라 검은 글씨·검은 그림·어두운 장식이 그 위에서
+    /// 보이지 않았다. 종이 계열의 밝은 중간톤이라 검은 요소가 드러난다.
+    /// **실제 Mirror Camera와 저장되는 사진에는 쓰지 않는다** — 거기는 진짜 카메라다.
+    static let thumbnailGlass = Color(red: 0.933, green: 0.925, blue: 0.898)  // #EEECE5
 }
 
 // MARK: - Typography

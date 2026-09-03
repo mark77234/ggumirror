@@ -71,7 +71,9 @@ private nonisolated struct AppleSignInResponse: Decodable {
 
 /// 테스트가 실제 network 없이 흐름을 확인할 수 있도록 protocol을 하나 둔다.
 nonisolated protocol AuthBackend: Sendable {
-    func signIn(identityToken: String, nonce: String) async throws -> ServerSession
+    func signIn(
+        identityToken: String, nonce: String, displayName: String?
+    ) async throws -> ServerSession
     func verify(accessToken: String) async throws -> String
     func logout(accessToken: String) async throws
 }
@@ -90,15 +92,25 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
 
     // MARK: 로그인
 
-    func signIn(identityToken: String, nonce: String) async throws -> ServerSession {
+    /// - Parameter displayName: Apple이 **최초 authorization에서만** 줄 수 있는 이름.
+    ///   없으면 보내지 않는다 — 서버에서 optional이라 예전 모양 그대로 통한다.
+    ///   이 값은 서명된 claim이 아니므로 서버도 신원 판단에 쓰지 않고, 아직 이름이
+    ///   없을 때 첫 값을 채우는 데만 쓴다.
+    func signIn(
+        identityToken: String, nonce: String, displayName: String? = nil
+    ) async throws -> ServerSession {
         struct Body: Encodable {
             let identityToken: String
             let nonce: String
+            /// `nil`이면 JSON에서 아예 빠진다(`JSONEncoder` 기본 동작).
+            let displayName: String?
         }
         let data = try await send(
             "auth/apple",
             method: "POST",
-            body: JSONEncoder.backend.encode(Body(identityToken: identityToken, nonce: nonce))
+            body: JSONEncoder.backend.encode(
+                Body(identityToken: identityToken, nonce: nonce, displayName: displayName)
+            )
         )
         do {
             let response = try JSONDecoder.backend.decode(AppleSignInResponse.self, from: data)

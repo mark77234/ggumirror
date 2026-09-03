@@ -43,10 +43,22 @@ struct StoreView: View {
     @State private var path = NavigationPath()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var templates: [MirrorTemplate] {
-        // 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
-        // 필터와 정렬은 독립이다 — `무료 + 인기 순`이 그대로 성립한다.
-        sort.sorted(StoreCatalog.samples.filter { priceFilter.includes(price: $0.price) })
+    /// 거울 탭에 보이는 **하나의 목록**. 내장 템플릿과 사용자 상품이 섞여 있다.
+    ///
+    /// 걸러낸 뒤 정렬한다. 정렬은 **로컬 목록 기준**이라 네트워크를 다시 부르지 않는다.
+    /// 필터와 정렬은 독립이다 — `무료 + 인기 순`이 그대로 성립한다.
+    ///
+    /// 가격 필터가 **두 출처 모두**에 걸린다. 예전에는 내장 목록에만 걸려서
+    /// `무료`를 골라도 유료 사용자 상품이 남았다 — 한 grid에서는 그게 보인다.
+    private var mirrorItems: [StoreMirrorItem] {
+        let builtIn = StoreCatalog.samples
+            .filter { priceFilter.includes(price: $0.price) }
+            .map(StoreMirrorItem.builtIn)
+        // 공개 목록은 서버가 준 그대로다 — 내려간 · 가려진 상품은 애초에 오지 않는다.
+        let listings = marketplace.listings
+            .filter { $0.contentType == "mirror" && priceFilter.includes(price: $0.priceShards) }
+            .map(StoreMirrorItem.marketplace)
+        return sort.ordered(builtIn + listings)
     }
 
     var body: some View {
@@ -80,7 +92,7 @@ struct StoreView: View {
             }
             .scrollIndicators(.hidden)
             // UI-P2 그대로 — tab bar가 마지막 상품을 덮지 않게 한다.
-            .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+            .inkTabBarSafeContent()
             // 내장 템플릿 다운로드 수는 **한 번에** 받는다(카드마다 부르지 않는다).
             .task {
                 await catalogStats.refresh()
@@ -215,42 +227,27 @@ struct StoreView: View {
     /// 거울 상점의 상품 부분. **자기 ScrollView를 갖지 않는다** —
     /// 상단 제어부와 같은 scroll 안에 있어야 함께 밀려 올라간다.
     ///
-    /// 순서: 내 상점 상품 → 사용자 상품 → 내장 템플릿.
-    /// 판매자가 자기 것을 먼저 찾을 수 있어야 한다.
+    /// **grid 하나다.** 내장 템플릿과 사용자 상품이 구획으로 나뉘어 있지 않다 —
+    /// 나뉘어 있으면 앞 구획이 홀수 개일 때 마지막 줄에 빈 칸이 남는다.
+    /// 판매자 관리는 여기 없다(`내 판매` 탭).
     private var mirrorContent: some View {
         VStack(spacing: 0) {
-            // **판매자 관리는 여기 없다.** `내 판매` 탭으로 갔다 —
-            // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는 중인지 알 수 없다.
-            MarketplaceSection(
-                contentType: "mirror",
-                store: marketplace,
-                sort: sort,
-                session: session.server,
-                onSelect: { path.append($0) },
-                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
-            )
-
-            if templates.isEmpty {
+            if mirrorItems.isEmpty {
                 Text("이 조건에 맞는 거울이 아직 없어요.")
                     .font(InkFont.secondary)
                     .foregroundStyle(PaperTheme.secondaryInk)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
             } else {
-                LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
-                    ForEach(templates) { template in
-                        NavigationLink(value: template) {
-                            // **서버가 센 값**을 넘긴다. 모르면 nil이고 카드가 숫자를
-                            // 만들어내지 않는다.
-                            StoreGalleryItem(
-                                template: template,
-                                downloadCount: catalogStats.downloadCount(template.id)
-                            )
-                        }
-                        .buttonStyle(InkPressStyle())
+                LazyVGrid(
+                    columns: GalleryLayout.columns(for: dynamicTypeSize),
+                    spacing: GalleryLayout.spacing
+                ) {
+                    ForEach(mirrorItems) { item in
+                        mirrorCell(item)
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, GalleryLayout.horizontalPadding)
             }
         }
         // **공개 목록은 여기서 받아온다.** 상품 구획 안에 두면 목록이 비었을 때
@@ -259,6 +256,46 @@ struct StoreView: View {
             await marketplace.refresh(
                 contentType: "mirror", sort: sort, session: session.server
             )
+        }
+    }
+
+    /// 칸 하나. **출처에 따라 원래 흐름 그대로다** — 합친 것은 자리와 순서뿐이다.
+    @ViewBuilder
+    private func mirrorCell(_ item: StoreMirrorItem) -> some View {
+        switch item {
+        case .builtIn(let template):
+            NavigationLink(value: template) {
+                // **서버가 센 값**을 넘긴다. 모르면 nil이고 카드가 숫자를
+                // 만들어내지 않는다.
+                StoreGalleryItem(
+                    template: template,
+                    downloadCount: catalogStats.downloadCount(template.id)
+                )
+            }
+            .buttonStyle(InkPressStyle())
+        case .marketplace(let listing):
+            Button {
+                path.append(listing)
+            } label: {
+                MarketplaceGalleryItem(
+                    listing: listing,
+                    preview: marketplace.previews[listing.id],
+                    isLiked: marketplace.likedListingIDs.contains(listing.id),
+                    isMine: marketplace.myListing(id: listing.id) != nil,
+                    isLiking: marketplace.isBusy(.like(listing.id)),
+                    onToggleLike: {
+                        Task {
+                            // 로그인 전이면 요청을 보내지 않고 안내한다.
+                            let sent = await marketplace.toggleLike(
+                                listingID: listing.id, session: session.server
+                            )
+                            if !sent { _ = session.requireSignIn(for: .shardTransaction) }
+                        }
+                    }
+                )
+            }
+            .buttonStyle(InkPressStyle())
+            .task { await marketplace.loadPreview(listing.id) }
         }
     }
 }
@@ -270,70 +307,23 @@ private struct StoreGalleryItem: View {
     /// 받아오기 전에 0을 보여 주면 "아무도 안 받았다"는 거짓말이 된다.
     var downloadCount: Int?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            MirrorPreview(template: template)
-                .padding(.bottom, 6)
-
-            Text(template.name)
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            HStack(spacing: 6) {
-                Text(template.creator)
-                    .font(InkFont.caption)
-                    .foregroundStyle(PaperTheme.secondaryInk)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                ShardAmount(amount: template.price)
-            }
-
-            metadata
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            """
-            \(template.name), \(template.creator), \
-            \(template.price == 0 ? "무료" : "\(template.price) 조각"), \
-            \(downloadCount.map { "다운로드 \($0), " } ?? "")\
-            \(template.uploadedAt == nil ? "업로드 날짜 없음" : "\(template.uploadedAtLabel) 업로드")
-            """
-        )
-    }
-
-    /// 한 줄짜리 작은 metadata.
+    /// 사용자 상품과 **같은 카드**를 쓴다(`StoreMirrorCard`). 이 카드가 기준이었고,
+    /// 사용자 상품을 여기에 맞췄다 — 모양이 다시 갈라지지 않게 컴포넌트를 공유한다.
     ///
-    /// **서버가 세지 않는 값은 숫자로 말하지 않는다.** 내장 템플릿은 다운로드가
-    /// 순수 로컬 동작이라 서버 기록이 없다 — `0`을 보여 주면 "아무도 안 받았다"는
-    /// 거짓말이 된다. 그래서 통계 자리를 아예 비운다(빈 자리도 정직한 표현이다).
-    @ViewBuilder
-    private var metadata: some View {
-        HStack(spacing: 8) {
-            // 서버 값을 받은 뒤에만 보여 준다. 실제 0이면 `0`을 보여 주는 것이 맞다.
-            if let downloadCount {
-                Label("\(downloadCount)", systemImage: "arrow.down")
-            }
-            // 좋아요는 내장 템플릿에 서버 domain이 없다 — 숫자를 만들지 않는다.
-            Spacer(minLength: 2)
-            Text(template.uploadedAtLabel)
+    /// 하트를 넘기지 않는다: 내장 템플릿에는 좋아요를 세는 서버 domain이 없다.
+    /// 똑같아 보이게 하려고 `♡ 0`을 지어내지 않는다.
+    var body: some View {
+        StoreMirrorCard(
+            model: StoreMirrorCardModel(
+                title: template.name,
+                subtitle: template.creator,
+                price: template.price,
+                downloadCount: downloadCount,
+                footnote: template.uploadedAtLabel
+            )
+        ) {
+            MirrorPreview(template: template)
         }
-        .font(InkFont.caption)
-        .foregroundStyle(PaperTheme.secondaryInk)
-        .labelStyle(.titleAndIcon)
-        .imageScale(.small)
-        .lineLimit(1)
-        // 작은 화면에서 줄이 깨지기보다 줄어들게 한다.
-        .minimumScaleFactor(0.8)
-    }
-}
-
-/// Gallery는 2열이 기본. 큰 글씨 설정에서는 이름이 뭉개지지 않게 1열로 바꾼다.
-enum GalleryLayout {
-    static func columns(for size: DynamicTypeSize) -> [GridItem] {
-        let count = size.isAccessibilitySize ? 1 : 2
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
     }
 }
 

@@ -37,6 +37,7 @@ private final class FakeCatalogBackend: CatalogBackend, @unchecked Sendable {
     var stats: [String: Int] = [:]
     var failure: Error?
     var calls: [String] = []
+    var purchased: Set<String> = []
     var sawToken = false
     /// 서버 쪽 기록. 멱등을 실제로 흉내 낸다.
     var recorded: Set<String> = []
@@ -67,6 +68,22 @@ private final class FakeCatalogBackend: CatalogBackend, @unchecked Sendable {
         sawToken = !accessToken.isEmpty
         try check()
         return try await ids.asyncMap { try await acquireTemplate(id: $0, accessToken: accessToken) }
+    }
+
+    /// 유료 구매. **가격을 받지 않는다** — 서버 표가 값을 정한다.
+    func purchaseTemplate(id: String, accessToken: String) async throws -> CatalogAcquisition {
+        calls.append("purchase(\(id))")
+        sawToken = !accessToken.isEmpty
+        try check()
+        purchased.insert(id)
+        return try await acquireTemplate(id: id, accessToken: accessToken)
+    }
+
+    func ownedTemplateIDs(accessToken: String) async throws -> [String] {
+        calls.append("owned")
+        sawToken = !accessToken.isEmpty
+        try check()
+        return purchased.sorted()
     }
 }
 
@@ -377,8 +394,9 @@ struct CatalogDisplayRuleTests {
     func cardUsesServerValue() throws {
         let code = try source("Store/StoreView.swift")
         #expect(code.contains("catalogStats.downloadCount(template.id)"))
-        // 모르면 안 보여 준다.
-        #expect(code.contains("if let downloadCount"))
+        // 모르면 안 보여 준다 — 판단은 공통 카드가 한다.
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("if let downloadCount = model.downloadCount"))
         // 옛 하드코딩 경로가 남아 있지 않다.
         #expect(!code.contains("Label(\"\\(template.downloadCount)\""))
     }
@@ -447,31 +465,35 @@ struct RetiredListingsTests {
         return try String(contentsOf: root.appending(path: path), encoding: .utf8)
     }
 
-    @Test("내 판매에 이전 판매 중지 구획이 있다")
+    @Test("내 판매에 판매 중지 구획이 있다")
     func sectionExists() throws {
         let code = codeWithoutComments(try source("Store/MySalesSection.swift"))
-        #expect(code.contains("\"이전 판매 중지\""))
+        #expect(code.contains("\"판매 중지\""))
         #expect(code.contains("filter(\\.isUnlisted)"))
     }
 
-    @Test("세 구획이 상태별로 나뉜다")
-    func threeSections() throws {
+    @Test("네 구획이 상태별로 나뉜다")
+    func fourSections() throws {
         let code = codeWithoutComments(try source("Store/MySalesSection.swift"))
-        #expect(code.contains("filter(\\.isPublished)"))
+        // **공개 여부가 authority다** — `published`만 보면 운영자가 내린 것이
+        // 판매 중에 남는다(실기기 문제).
+        #expect(code.contains("filter(\\.isPubliclyVisible)"))
         #expect(code.contains("filter(\\.isDraft)"))
         #expect(code.contains("filter(\\.isUnlisted)"))
+        #expect(code.contains("$0.isModerated && !$0.isDeleted"))
         // deleted는 어디에도 없다.
         #expect(!code.contains("filter(\\.isDeleted)"))
     }
 
-    @Test("이전 판매 중지에는 삭제만 있고 다시 판매가 없다")
-    func onlyDeleteForRetired() throws {
+    @Test("판매 중지는 다시 올릴 수 있다")
+    func retiredCanBeRepublished() throws {
         let code = codeWithoutComments(try source("Store/MySalesSection.swift"))
-        let start = try #require(code.range(of: "if listing.isUnlisted {"))
-        let block = String(code[start.upperBound...].prefix(240))
-        #expect(block.contains("pendingDelete"))
-        #expect(!block.contains("다시 판매"))
-        #expect(!block.contains("republish"))
+        // **판매자가 내린 것과 삭제한 것은 다르다.** 예전에는 둘 다 삭제였고,
+        // "잠깐 내려 두려고" 누른 판매자가 다시 올릴 수 없었다.
+        #expect(code.contains("\"다시 상점에 올리기\""))
+        #expect(code.contains("\"상점에서 내리기\""))
+        // 운영자가 내린 것은 여전히 판매자가 되돌릴 수 없다.
+        #expect(code.contains("if listing.isModerated && !listing.isDeleted { return nil }"))
     }
 
     @Test("삭제 문구가 종류별 등록비를 말한다")

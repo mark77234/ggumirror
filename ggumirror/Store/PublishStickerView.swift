@@ -5,7 +5,7 @@
 //  스티커 **등록 준비**. 실제 등록도, 조각 차감도, 상점 노출도 없다.
 //  "등록됐다" / "판매 중"처럼 보이는 문구를 쓰지 않는다 — 서버가 없기 때문이다.
 //
-//  등록 비용은 5 조각이다(거울 10보다 싸다). 값은 StickerPublishPolicy 하나에서만 온다.
+//  등록 비용은 거울과 같은 10 조각이다. 값은 StickerPublishPolicy 하나에서만 온다.
 //
 
 import SwiftUI
@@ -20,6 +20,10 @@ struct PublishStickerView: View {
     @Environment(AuthSession.self) private var session
     @Environment(ShardWallet.self) private var wallet
     @Environment(MarketplaceStore.self) private var marketplace
+    /// 판매자 이름. **상점에 올리려면 먼저 있어야 한다** — 상품에 이 이름이 보인다.
+    @Environment(ProfileSession.self) private var profile: ProfileSession?
+    /// 이름을 정하러 가는 중.
+    @State private var isNamingSeller = false
     @State private var publishNotice: String?
     @State private var didPublish = false
 
@@ -81,9 +85,13 @@ struct PublishStickerView: View {
         ) {
             [InkDialogAction("확인", role: .primary) { if didPublish { dismiss() } }]
         }
+        // 이름을 정하고 오면 그대로 이어서 올릴 수 있다 — 등록 정보는 그대로 남는다.
+        .inkBottomSheet(isPresented: $isNamingSeller, size: .fraction(0.8)) {
+            SellerNameSheet()
+        }
         .inkDialog(
             "등록 준비를 저장했어요",
-            message: "실제 상점 등록은 준비 중이에요. 지금은 조각이 차감되지 않고, 아직 아무도 이 스티커를 볼 수 없어요.",
+            message: "아직 상점에 올라가지 않았어요. 조각도 차감되지 않았어요.",
             isPresented: $savedNotice
         ) {
             [InkDialogAction("확인", role: .primary) { dismiss() }]
@@ -92,10 +100,10 @@ struct PublishStickerView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("스티커 등록 준비")
+            Text("상점에 올리기")
                 .font(InkFont.title)
                 .foregroundStyle(PaperTheme.ink)
-            Text("판매 정보를 미리 채워 둬요. 실제 등록은 다음 업데이트에서 열려요.")
+            Text("판매 정보를 채우고 상점에 올려 보세요.")
                 .font(InkFont.secondary)
                 .foregroundStyle(PaperTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -220,12 +228,12 @@ struct PublishStickerView: View {
     private var feeNotice: some View {
         HStack(spacing: 8) {
             ShardAmount(amount: StickerPublishPolicy.feeInShards, font: InkFont.caption, iconSize: 16)
-            Text("상점 공개 등록 비용이에요. 지금은 차감되지 않아요.")
+            Text("상점에 올릴 때 차감되는 등록 비용이에요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("상점 공개 등록 비용 \(StickerPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
+        .accessibilityLabel("상점 공개 등록 비용 \(StickerPublishPolicy.feeInShards) 조각")
     }
 
     /// 실제 등록. 등록비는 **서버가** 차감한다.
@@ -249,6 +257,12 @@ struct PublishStickerView: View {
     private func publish() async {
         guard session.server != nil else {
             _ = session.requireSignIn(for: .shardTransaction)
+            return
+        }
+        // **이름 없이 올리지 않는다.** 상품에 판매자 이름이 보이는데 비어 있으면
+        // 사는 사람은 누가 올린 것인지 알 수 없다. 서버에 보내기 전에 받는다.
+        guard profile?.profile?.hasName == true else {
+            isNamingSeller = true
             return
         }
         let package: SnapshotPackage
@@ -277,20 +291,27 @@ struct PublishStickerView: View {
         }
         defer { marketplace.onListingCreated = nil }
 
+        // **상품명은 한 번만 정한다.** 서버로 가는 값과 내 스티커에 남길 값이
+        // 같은 변수에서 나와야 둘이 갈라질 수 없다(거울과 같은 규칙이다).
+        let title = StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name
+
         let result = await marketplace.publish(
             package: package,
-            title: StickerPublishPolicy.normalizedTitle(draft.title) ?? project.name,
+            title: title,
             description: StickerPublishPolicy.normalizedDescription(draft.description),
             priceShards: draft.priceInShards,
             session: session.server,
             wallet: wallet
         )
         guard let result else {
+            // **실패하면 이름을 바꾸지 않는다.**
             didPublish = false
             publishNotice = marketplace.failure?.message
             return
         }
         didPublish = true
+        // 등록에 성공한 뒤에 내 스티커 이름도 그 이름으로 맞춘다.
+        _ = library.rename(project.id, to: title)
         assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")
         publishNotice = result.feeCharged
             ? "등록비 \(result.feeShards) 조각이 차감됐어요. 남은 조각 \(result.balance)개."

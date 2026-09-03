@@ -65,7 +65,7 @@ Camera Area:
 - 본앱 Mirror는 **0.5x / 1x / 2x preset + pinch**를 지원한다 (아래 참고).
   잠금화면 Quick Mirror(`.viewfinder`)는 여전히 **1x 고정**이다
 - 시작 배율은 언제나 **1x**이고 저장하지 않는다
-- **전면에는 framing 선택(`넓게` / `채우기`)이 있고 기본값은 `넓게`다** (아래 참고).
+- **전면에는 framing 선택(`넓게` / `채우기`)이 있고 기본값은 `채우기`다** (아래 참고).
   후면은 언제나 화면을 꽉 채운다
 - Camera framing 문제를 해결하기 위해 Mirror frame geometry를 변경하지 않는다
 
@@ -82,8 +82,12 @@ Camera Area:
 
 | | |
 |---|---|
-| `넓게` (`.wide`, **기본값**) | 센서 화각을 하나도 자르지 않는다. 위아래가 남는다 |
-| `채우기` (`.fill`) | 화면을 꽉 채운다. 좌우가 잘린다 (기존 동작) |
+| `넓게` (`.wide`) | 센서 화각을 하나도 자르지 않는다. 위아래가 남는다 |
+| `채우기` (`.fill`, **기본값**) | 화면을 꽉 채운다. 좌우가 잘린다 |
+
+**기본값은 실기기 QA에서 `넓게` → `채우기`로 바뀌었다.** 넓게는 위아래에 검은 자리가
+남아서, 거울을 처음 연 사람에게는 화면이 비어 보였다. 화각을 지키는 선택지는 그대로
+있고 기본값만 옮겼다 — 없앤 기능이 아니다.
 
 ### crop이 걸리는 자리는 딱 두 곳이고 짝을 이룬다
 
@@ -112,8 +116,13 @@ Camera Area:
 
 - **전면에서만** 고를 수 있다(`canChooseFraming`). 후면 UX는 그대로다 —
   `framing`은 `position == .front ? frontFraming : .fill`
-- 선택은 **이 session 동안만** 산다. `UserDefaults`에 저장하지 않는다.
-  후면에 갔다 전면으로 돌아오면 고른 값이 살아 있다(전환이 `frontFraming`을 건드리지 않는다)
+- **사용자가 고른 값은 앱을 다시 켜도 남는다**(`UserDefaults` · `ggumirror.camera.frontFraming`).
+  `setFrontFraming`이 유일한 쓰기 자리다. 후면에 갔다 전면으로 돌아와도 살아 있다
+- **기본값은 미리 적어 두지 않는다.** 시작할 때는 읽기만 한다 — 적어 두면 나중에
+  기본값을 바꿔도 그 사용자는 "이미 고른 사람"으로 취급돼 따라오지 못한다.
+  모르는 값이 저장돼 있으면 기본값으로 떨어진다
+- 미리보기(`MirrorLivePreviewView`)는 여전히 **저장하지 않는다** — 자기 카메라
+  인스턴스를 갖고 `setFrontFraming`을 부르지 않는다. 상점에서 고른 것이 홈 거울을 바꾸지 않는다
 - 잠금화면 `.viewfinder`는 role guard에 막혀 언제나 예전 동작(`fill`)이다.
   `compose(framing:)` 기본값도 `.fill`이라 모르는 호출부는 그대로 동작한다
 
@@ -300,10 +309,69 @@ Mirror Decoration Text는 별도 multi-font library를 사용한다.
 | | 상수 | 값 |
 |---|---|---|
 | 거울 | `MirrorPublishPolicy.feeInShards` | **10 조각** |
-| 스티커 | `StickerPublishPolicy.feeInShards` | **5 조각** |
+| 스티커 | `StickerPublishPolicy.feeInShards` | **10 조각** |
 
 과거 20조각 정책은 제거했다. B-7 backend도 이 값을 최종 정책으로 쓴다 —
-`mirror_publish_fee = 10` · `sticker_publish_fee = 5`.
+`mirror_publish_fee = 10` · `sticker_publish_fee = 10`.
+
+**등록비는 AI 생성값(5조각)과 다른 축이다.** 숫자가 겹쳐 보여도 한 상수로 묶지 않는다.
+
+### 한 서랍에 같은 이름을 두 개 두지 않는다
+
+`MirrorLibrary.rename` · `StickerLibrary.rename`이 겹치는 이름을 `.duplicateName`으로
+거절한다. 실기기에서 같은 이름이 여럿이면 내 거울에서 어느 것인지 고를 수 없었다.
+
+- 비교는 **`ContentNameKey.canonical`** 하나다 — 앞뒤 공백 제거 · NFC 정규화 · 소문자.
+  `Pink` · ` pink ` · `PINK`가 같은 이름이고, 자모가 풀린 한글도 같은 이름이다
+- **계정 안의 규칙**이다. 다른 계정 서랍과 상점 전체 이름 겹침은 다른 질문이다
+- 자기 자신은 세지 않는다(`excluding:`) — 대소문자만 바꾸는 것도 정상적인 이름 바꾸기다
+- **기존에 겹쳐 있던 이름을 자동으로 바꾸지 않는다.** 새로 겹치는 것만 막는다
+
+### AI 거울도 **같은 통로로** 상점에 올라간다
+
+AI 전용 marketplace 통로를 만들지 않았다. `PublishMirrorView` · `MarketplaceStore` ·
+`MirrorPublishDraft` 어디에도 `aiGenerated` · `creationSource` 분기가 없다 —
+갈라지면 한쪽만 고쳐진다.
+
+AI 거울은 `origin == .made`이고(등록 자격이 있다) 생성 결과는
+`ImportedArtworkObject` **한 장**으로 들어간다. 손으로 만든 거울의 외부 디자인과
+같은 자리이고, manifest는 그 `assetID`를 그대로 참조한다. 등록비도 같은 10조각이다.
+
+⚠️ **실기기에서 "AI 거울만 등록이 안 된다"고 보고됐지만 AI와 무관했다.**
+그 거울의 제목이 판매자 자신이 **이미 올린 상품과 같은 이름**이어서 서버가
+`TitleTaken`(409)으로 거절한 것이다. 손으로 만든 거울도 같은 이름이면 똑같이
+거절된다. 고친 것은 등록 경로가 아니라 **실패 이유를 말하는 방식**이다.
+
+### AI 거울도 이름을 정하고 저장한다
+
+예전에는 전부 `AI 거울`로 저장돼 내 거울에 같은 이름이 쌓였다. 이제 `내 거울에 저장`이
+**이름 시트를 먼저 연다**(`MirrorNameSheet` — 이름 바꾸기·새 거울 저장과 같은 component).
+
+**이름 단계는 생성을 다시 부르지 않는다.** 이미 낸 조각으로 이미 받은 그림이라
+`maker.generate` · wallet · shard가 그 경로에 없다. 시트를 닫아도 결과는 남는다.
+
+### 등록하면 내 콘텐츠 이름도 그 이름이 된다
+
+사용자가 상점에 올리면서 붙인 상품명이 **그 거울/스티커의 이름**이다.
+등록에 **성공한 뒤에만** 기존 이름 바꾸기 통로(`MirrorLibrary.rename` ·
+`StickerLibrary.rename`)로 local 이름을 맞춘다 — id로 찾고, 그 안에서 디스크까지 저장된다.
+
+- 실패하면 이름을 바꾸지 않는다. 올리지도 못한 이름이 내 거울에 남으면 안 된다
+- 화면에서 listing title로 **덮어 그리지 않는다** — 실제 model과 persistence를 바꾼다
+- 서버로 가는 값과 local에 남길 값은 **같은 변수**에서 나온다(갈라질 수 없다)
+- 이름으로 콘텐츠를 찾지 않는다. `MyMirror.id` / `StickerProject.id`가 열쇠다
+
+### 이름 없이 상점에 올릴 수 없다
+
+상품 카드에는 판매자 이름이 보인다. 비어 있으면 사는 사람은 누가 올린 것인지 알 수 없다.
+그래서 `상점에 올리기`가 **서버에 보내기 전에** 이름을 받는다(`SellerNameSheet`).
+
+- Apple 계정 이름이 아니라 **꾸미러 안의 판매자 표시 이름**이고,
+  authority는 서버다(`ProfileSession` → `PATCH /users/me/profile`)
+- **겹치는 이름은 서버 transaction이 거절한다.** 화면이 "찾아보니 없더라"로 정하지 않는다.
+  겹침(`이미 사용 중인 이름이에요.`)과 30일 규칙을 **다른 말로** 알린다
+- 상품 이름도 상점 전체에서 겹치지 않는다 — 서버가 거절하면 `이미 사용 중인 상품 이름이에요.`
+- 저장에 성공한 뒤에만 시트가 닫히고, 등록 정보는 그대로 남아 이어서 올릴 수 있다
 
 **정렬은 `StoreSort` 하나를 거울/스티커 상점이 공유한다.** 기본값은 최신 순이고
 선택은 저장하지 않는다(로컬 목록 정렬이라 네트워크를 다시 부르지 않는다).
@@ -332,6 +400,110 @@ Mirror Decoration Text는 별도 multi-font library를 사용한다.
 `Date.now`를 채우면 거짓말이 된다. 표시는 `—`이고 정렬에서는 맨 뒤로 간다.
 
 좋아요도 같다 — 실제 multi-user like backend가 없으므로 **표시와 정렬 계약까지만** 있다.
+
+### 내 거울로 미리보기 (Marketplace Mirror Preview)
+
+**받기 전에 · 로그인 없이 · 아무것도 사지 않고** 실제 카메라 위에 얹어 본다.
+내장 템플릿과 사용자 상품이 **같은 버튼 · 같은 문구 · 같은 화면**을 쓴다.
+
+`내 거울로 미리보기`는 상세의 **1순위 CTA**이고 받기보다 위에 있다.
+
+| 출처 | 얹는 것 |
+|---|---|
+| 내장 템플릿 | `MirrorDesign(template:)` → 실제 거울과 **같은 renderer** |
+| 사용자 상품 | 이미 받아 둔 **공개 미리보기 PNG**에서 카메라 자리를 도려낸 것 |
+
+#### 미리보기는 경제 동작이 아니다
+
+소유권 생성 ❌ `downloadCount` 증가 ❌ buyer debit ❌ seller credit ❌
+`내 거울` 저장 ❌. `MirrorLivePreview.swift`에는 그런 것을 부르는 코드가 **없고**
+`PreviewIsNotAnEconomicActionTests`가 소스 레벨로 고정한다.
+
+로그아웃 상태에서도 열린다 — `openPreview()`에 로그인 관문이 없다.
+`받기`를 누를 때만 기존 안내 창이 뜨고, **로그인 성공 직후 자동 구매/획득은 없다.**
+
+#### 사기 전에 원본을 주지 않는다
+
+미리보기가 읽는 것은 **`store.previews[listing.id]` 하나**다 — 카드가 이미 보여 주는
+그 공개 그림이다. manifest · 원본 asset · 판매자 전용 경로를 새로 부르지 않고,
+public raw object 권한을 추가하지도 않는다. 새 endpoint도 없다 —
+**backend 변경 없음.**
+
+#### 카메라 자리를 도려낸다
+
+`preview.png`는 카메라 자리까지 **불투명하게 구워져** 있어 그대로 얹으면
+자기 얼굴이 안 보인다. `MirrorThumbnailNormalizer.cameraOpeningRemoved(png:)`가
+`MirrorFrameInsets.standard.mirrorArea` 안에서 **바탕색 픽셀만** 알파 0으로 바꾼다.
+
+- 바탕색은 **카메라 자리의 최빈 불투명 색**이다. 구운 시점마다 값이 다르므로
+  (예전 어두운 유리색 · 지금 `PaperTheme.thumbnailGlass`) 하나로 적어 두지 않는다.
+  장식이 카메라 자리를 전부 덮는 일은 없어 최빈색이 곧 바탕이다
+- 밝게 되돌리기(`normalized`)와 **같은 pass를 공유한다.** 새 hex를 하드코딩하지 않는다
+- 프레임 밴드와 카메라 자리 위 장식은 **한 픽셀도** 바뀌지 않는다
+- 반투명 경계는 손대지 않으므로 장식이 카메라 자리에 닿는 곳에 아주 옅은 테가 남는다.
+  얼굴을 가리는 것보다 낫다는 판단이다
+- 도려낼 수 없으면 **열지 않는다**(안내만 띄운다). 얼굴이 가려진 화면은 미리보기가 아니다
+- 기존 GCS object를 다시 쓰지 않으므로 **예전에 등록된 상품도 그대로 동작한다.**
+  re-publish도 일괄 rewrite도 없다
+
+#### 미리보기에서도 넓게 / 채우기를 고른다
+
+실제 거울과 **같은 authority**를 쓴다 — `MirrorCamera.Framing`(`wide` · `fill`)과
+그 `previewGravity` 매핑, 그리고 같은 칩 component(`MirrorFramingSelector`)다.
+미리보기 전용 비율 계산은 **없다**(`resizeAspect` · `videoGravity` · `4:3`이
+`MirrorLivePreview.swift`에 없다는 것을 테스트가 고정한다).
+
+칩은 예전에 `MirrorControls` 안 private이었다. 미리보기에도 필요해져서 **꺼냈다** —
+사본을 만들면 두 화면의 생김새와 44pt tap 규칙이 반드시 갈라진다.
+
+- 기본값은 `Framing.initial`(= `채우기`)이다. 미리보기가 자기 기본값을 따로 적지 않는다
+- **`setFrontFraming(_:)`을 부르지 않는다.** 그것은 실제 거울 화면의 사용자 설정이고,
+  상점에서 `채우기`를 골랐다고 홈 거울까지 따라 바뀌면 안 된다.
+  미리보기의 선택은 그 화면 하나 동안만 살고 `UserDefaults`에 저장하지 않는다
+  (`MirrorLivePreviewView`는 자기 `MirrorCamera` 인스턴스를 갖는다 —
+  `frontFraming`을 공유하는 구조가 애초에 아니다)
+- 자르는 방법은 **카메라 layer 하나**에만 걸린다. 프레임 · 글씨 · 그림 · 스티커 ·
+  사진 · Marketplace 납작 overlay의 자리와 크기는 움직이지 않는다 —
+  장식을 그리는 자리에 `framing`이 들어가지 않는다
+- 바꾸면 `AVCaptureVideoPreviewLayer.videoGravity` 하나만 바뀐다.
+  세션을 다시 시작하지도, 다시 붙이지도 않는다. 같은 값이면 아무 일도 하지 않아
+  연속으로 눌러도 깜빡이지 않는다
+- **도려내기를 다시 돌리지 않는다.** `cameraOpeningRemoved`는 상세 화면이 미리보기를
+  열기 전에 한 번 부르고, 미리보기 화면 안에는 부르는 자리가 없다.
+  납작 overlay도 `UIImage`로 **한 번만** 풀어 둔다 — 칩을 누를 때마다 1.66MB PNG를
+  다시 해독하지 않는다
+- 카메라 조작은 늘지 않았다 — 전환 · 플래시 · 촬영 · 배율 · pinch가 여전히 없다
+
+#### 미리보기 화면에는 촬영이 없다
+
+`MirrorCamera()` 기본 role은 `.viewfinder`다 — photo output · 전환 · 배율 · 플래시가
+**구조적으로 없다.** 사진이 나가거나 저장될 길이 아예 아니다.
+`fullScreenCover`인 이유는 거울이 화면 전체 좌표(1080 × 2340)로 그려지기 때문이다 —
+시트에 넣으면 장식과 카메라가 실제 거울과 다른 자리에 놓인다.
+
+스티커에는 미리보기가 없다 — 카메라 자리가 없고, 얹어 보는 것이 아니라 붙여 쓰는 것이다.
+
+`ggumirrorTests/MirrorPreviewFlowTests.swift`가 위 전부를 고정한다.
+
+### 운영 화면은 공개 상점과 같은 것을 말한다
+
+`판매 중`(`AdminStatusFilter.live`)이 **실제로 공개된 것만** 보여 준다.
+예전에는 draft까지 `판매 중`에 들어와서, 공개 상점에 없는 상품이 운영 화면에만
+보였다(실기기에서 `찬찡`으로 나타났다). **데이터가 깨진 것이 아니라 필터 문제였고,
+문서를 손으로 지우지 않았다.** 판단은 `AdminListing.isPubliclyVisible` 한 곳에서 나온다.
+
+`상점에서 내리기`가 눌러도 아무 일이 없던 원인은 `InkDialog`가 버튼을 누르면
+**`onAction()`(창 닫기)을 handler보다 먼저** 부르기 때문이다. 닫히면서 binding setter가
+`pendingTakedown = nil`을 써서 handler가 언제나 빈 값을 읽었다.
+이제 **창을 만들 때 대상을 붙잡는다**(`let target = pendingTakedown`) — handler가
+`@State`를 다시 읽지 않는다. 되살리기도 같은 모양이다.
+
+판매자가 삭제한 것은 여전히 되살릴 수 없고, 조치 뒤에는 그 항목만 **id로 찾아** 바꾼다.
+
+### 등록 화면은 사실을 말한다
+
+`지금은 차감되지 않아요`를 지웠다 — 등록비는 **실제로 차감된다.**
+`등록 준비 저장`은 정말로 차감하지 않으므로 그 안내는 남는다. 두 문장은 다른 사실이다.
 
 ### 사용자 action (UI-P3)
 
@@ -424,13 +596,53 @@ PNG는 늘어나 뭉개졌다. `ListingPreviewStyle`이 종류별로 정한다 �
 `거울` · `스티커`는 **공개 published 상품만** 보여 준다. 판매자 관리 UI를 여기에
 섞지 않는다 — 실기기에서 사용자가 draft와 실제 판매 중인 것을 바로 혼동했다.
 
-`내 판매`는 `GET /users/me/marketplace/listings`가 authority이고
-**판매 중**(`published`) / **등록 미완료**(`draft`)로 나눈다. 등록 도중 실패해 남은
-draft도 여기서 이어서 올릴 수 있다.
+`내 판매`는 `GET /users/me/marketplace/listings`가 authority이고 **네 구획**이다:
+
+| 구획 | 조건 | 할 수 있는 일 |
+|---|---|---|
+| 판매 중 | **`isPubliclyVisible`** | 상점에서 내리기 · 삭제 |
+| 등록 미완료 | `draft` | 이어서 올리기 · 삭제 |
+| 운영 정책으로 내려감 | `isModerated && !isDeleted` | 없음 |
+| 판매 중지 | `unlisted` | 다시 상점에 올리기 · 삭제 |
+
+**`status == "published"`만 보지 않는다.** 운영자가 내려도 status는 그대로라,
+그것만 보면 상점에 없는 상품이 판매자에게 계속 `판매 중`으로 보인다(실기기 문제).
+판단은 `MarketplaceOwnedListing.isPubliclyVisible` 하나이고
+`AdminListing.isPubliclyVisible`과 **같은 조건**이다 — 운영 화면과 판매자 화면이
+같은 것을 말한다. 삭제된 것은 어느 구획에도 없다(기존 그대로).
+
+### `등록 미완료`는 왜 미완료인지 말한다
+
+`등록 미완료`만 보여 주면 이름이 겹친 것인지 조각이 모자란 것인지 알 수 없다.
+`MarketplaceStore.publishFailure(for:)`가 listing id별 **마지막 실패 이유**를 들고
+있고, 카드의 footnote가 그것을 보여 준다.
+
+**서버 schema를 넓히지 않았다** — draft 문서에 실패 이유를 적는 자리를 만들지
+않는다(원장 `note`와 같은 판단이다). 이 session 동안만 기억하고, 앱을 껐다 켜면
+`다시 상점에 올리기`를 눌러 **서버에게 직접 물어보면** 같은 답이 온다.
+409 넷(`titleTaken` · `insufficientShards` · `moderated` · `cannotPublish`)이
+각각 다른 문구를 갖는다.
+
+### 내리기 · 삭제 · 운영 조치는 **서로 다른 것이다** (Device QA)
+
+한때 판매 중인 상품의 유일한 action이 `삭제`였다. "잠깐 내려 두려고" 그것을 누른
+판매자가 **다시 올릴 수 없게 됐다** — 실기기에서 "내린 상품이 다시 안 올라간다"로
+보고된 것이 정확히 이것이다. 셋을 분리했다:
+
+| 판매자 action | 결과 | 되돌리기 |
+|---|---|---|
+| `상점에서 내리기` | `unlisted` | **가능** — `다시 상점에 올리기`, 등록비 추가 없음 |
+| `삭제` | 끝 상태 | 불가 |
+| (운영자가 내림) | `published` + `removed` | 판매자는 불가 — 운영자 restore만 |
+
+- `삭제`는 **주 동작 자리가 아니다.** 카드 아래 테두리 없는 작은 글자 하나이고,
+  확인 창이 `잠시만 내려 두려면 상점에서 내리기를 눌러 주세요`로 다른 쪽을 가리킨다
+- 운영자가 내린 상품에는 **버튼을 아예 주지 않는다.** 서버가 409로 거절할 버튼을
+  보여 주지 않는다 — 그 판정이 다른 어떤 버튼보다 먼저다
+- 다시 올리기는 **같은 listing을 그대로** 올린다. 새 snapshot도 새 listing도 없다
 
 ### 삭제 — 되살릴 수 없지만 아무것도 지우지 않는다
 
-판매자 action은 `상점에서 내리기`가 아니라 **`삭제`**다. 누르면 바로 실행하지 않고
 확인을 받는다(등록비 환불 없음 · 이미 받은 사용자는 계속 사용 가능을 명시).
 
 서버는 `deleted` **끝 상태**로 표시만 한다 — snapshot · GCS object · 소유권 · 원장 ·
@@ -751,11 +963,23 @@ Actual Publish는 Backend phase 이후 구현한다.
 
 프롬프트 한 줄 → 투명 PNG 스티커. **앱은 AI provider가 무엇인지도 모른다.**
 
+#### 만들지 못한 이유를 **아는 만큼만** 말한다
+
+provider가 돌려주는 것은 `code=moderation_blocked` 하나이고 이유를 나누지 않는다.
+그래서 **`저작권`이라고 단정하지 않는다** — 우리가 모르는 것을 아는 척하는 일이다.
+문구는 `이 요청은 이미지 생성 정책에 따라 처리하기 어려워요.`이고,
+캐릭터·브랜드 이름 대신 색상·분위기·패턴을 적어 달라고 덧붙인다.
+
+**필터를 우회하지 않는다.** 앱에 금지어 목록도, 프롬프트를 몰래 바꾸는 치환도 없다
+(`AIMirrorPrompt.normalized`가 하는 일은 공백 정리와 길이 자르기뿐이다).
+거절과 일시 장애를 다르게 말한다 — 거절 문구에는 `잠시 뒤`가 없다.
+
 - **provider API key를 앱에 넣지 않는다.** bundle에 들어가는 것은 누구나 꺼낼 수 있다.
   client가 아는 주소는 꾸미러 backend 하나이고, provider 호출은 전부 서버가 한다.
   `Config/*.xcconfig` · `Info.plist`에도 provider 관련 값을 넣지 않는다
 - **가격을 앱에 적지 않는다.** 몇 조각인지는 `GET /ai/stickers/config`가 알려주고
-  화면은 받은 값을 그대로 보여준다. 코드에 `6`을 적으면 서버가 값을 바꿀 때 거짓말이 된다
+  화면은 받은 값을 그대로 보여준다. 코드에 숫자를 적으면 서버가 값을 바꿀 때 거짓말이 된다
+  (1.1.0에서 실제로 6 → 5가 됐다)
 - **잔액을 client가 계산하지 않는다.** `balance -= 6`을 쓰지 않고,
   서버가 응답에 담아준 `balance`를 `ShardWallet.apply(balance:)`로 옮겨 적기만 한다.
   실패했을 때의 **환불도 서버가 한다** — client에 되돌리는 코드가 없다
@@ -766,7 +990,7 @@ Actual Publish는 Backend phase 이후 구현한다.
   새 segmentation engine을 만들지 않았고 서버에 배경제거 API도 붙이지 않았다
 - **배경제거가 실패해도 AI를 다시 부르지 않는다.** 그림은 서버에 남아 있으므로
   "다시 시도"는 같은 generation을 다시 받아 컷아웃만 재시도한다 —
-  provider 재호출도, 추가 6조각 차감도 없다
+  provider 재호출도, 추가 조각 차감도 없다
 - 결과는 **새 `StickerSource` case를 만들지 않고** `.photo`로 들어간다 —
   이미 "id로 참조하는 불변 bitmap + 비율"이라 저장 형식 · GC · 렌더 · 크기 조절 · 레이어가
   그대로 동작한다. 사진 cutout이 지나는 `PhotoStickerAssetStore.register`와 같은 자리다
@@ -1154,7 +1378,8 @@ UMP consent flow도 SDK와 함께 들어온다.
   로그인 뒤 결제를 자동으로 이어가지 않는다(사용자가 상품을 다시 고른다).
   임의의 pending purchase 저장소를 만들지 않았다
 
-`AIStickerPromptSheet`의 "6조각이 필요해요 (지금 2조각)" 문구는 **그대로 두고** CTA만 더했다.
+`AIStickerPromptSheet`의 "N조각이 필요해요 (지금 2조각)" 문구는 **그대로 두고** CTA만 더했다.
+값은 서버가 준 `price`라 정책이 바뀌면 문구가 따라간다.
 
 #### Xcode StoreKit 테스트 ≠ Apple Sandbox (acceptance 구분)
 

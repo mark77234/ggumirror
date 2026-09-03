@@ -2,19 +2,38 @@
 //  ProfileView.swift
 //  ggumirror
 //
-//  프로필 편집. backend가 없어 UserDefaults에만 저장한다.
+//  프로필 편집. **이름 하나뿐이다.**
+//
+//  이름의 authority는 서버다 — 이 화면은 서버가 준 값을 보여 주고, 저장은 서버가
+//  받아 준 뒤에만 반영한다. 저장되지 않은 이름을 화면에 남기지 않는다.
+//
+//  태그는 없앴다. 크리에이터 프로필 계획에서 나온 것이었는데 실제로 쓰이는 곳이
+//  없었고, 사용자에게는 고르라고만 하고 아무 데도 보이지 않는 값이었다.
+//  **예전에 저장된 값은 지우지 않는다** — 그냥 읽지 않는다.
 //
 
 import SwiftUI
 
 struct ProfileView: View {
-    @AppStorage(ProfileStore.nameKey) private var storedName = ProfileStore.defaultName
-    @AppStorage(ProfileStore.tagsKey) private var storedTags = ""
+    @Environment(ProfileSession.self) private var profile: ProfileSession?
+    @Environment(AuthSession.self) private var session
 
     @State private var name = ""
-    @State private var tags: Set<String> = []
+    @State private var notice: String?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isNameFocused: Bool
+
+    /// 지금 이름을 바꿀 수 있는가. **서버가 판단한 값을 그대로 쓴다** —
+    /// 기기 시계로 30일을 세지 않는다.
+    private var canChange: Bool {
+        profile?.profile?.canChangeDisplayName ?? true
+    }
+
+    private var nextChangeLabel: String? {
+        profile?.profile?.nextDisplayNameChangeAt.map(DisplayNamePolicy.nextChangeLabel)
+    }
+
+    private var isFirstName: Bool { profile?.profile?.hasName != true }
 
     var body: some View {
         ScrollView {
@@ -22,13 +41,20 @@ struct ProfileView: View {
                 avatar
 
                 fieldLabel("이름")
-                TextField("이름", text: $name)
+                TextField(DisplayNamePolicy.placeholder, text: $name)
                     .font(InkFont.body)
                     .foregroundStyle(PaperTheme.ink)
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
                     .focused($isNameFocused)
                     .onSubmit { isNameFocused = false }
+                    .onChange(of: name) { _, value in
+                        // 지나치게 긴 이름은 입력 단계에서 막는다(서버도 막는다).
+                        if value.count > DisplayNamePolicy.maxLength {
+                            name = String(value.prefix(DisplayNamePolicy.maxLength))
+                        }
+                    }
+                    .disabled(!canChange)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 14)
                     .frame(minHeight: 44)
@@ -39,61 +65,77 @@ struct ProfileView: View {
                             .overlay(shape.stroke(PaperTheme.ink, lineWidth: 1.8))
                     }
 
-                fieldLabel("태그")
-                    .padding(.top, 24)
-
-                // 여러 개 고를 수 있다. 줄바꿈되어 긴 태그도 잘리지 않는다.
-                FlowLayout(spacing: 7) {
-                    ForEach(ProfileTag.allCases) { tag in
-                        InkToggleChip(label: tag.rawValue, isOn: tags.contains(tag.rawValue)) {
-                            if tags.contains(tag.rawValue) {
-                                tags.remove(tag.rawValue)
-                            } else {
-                                tags.insert(tag.rawValue)
-                            }
-                        }
-                    }
-                }
-
-                Text("태그는 나중에 크리에이터 프로필에서 내 거울 스타일을 소개할 때 쓰여요.")
+                Text(guidance)
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 18)
+                    .padding(.top, 12)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 40)
+            .padding(.bottom, 12)
             .inkDismissesKeyboardOnTap()
         }
         .scrollIndicators(.hidden)
+        // 탭 막대에 가리지 않게 아래를 띄운다. 숫자는 막대가 정한다.
+        .inkTabBarSafeContent()
         .scrollDismissesKeyboard(.interactively)
         .paperBackground()
         .navigationTitle("프로필")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("저장") {
-                    storedName = name.trimmingCharacters(in: .whitespaces)
-                    storedTags = ProfileStore.raw(from: tags)
-                    dismiss()
-                }
-                .font(InkFont.body.weight(.semibold))
-                .tint(PaperTheme.ink)
+                Button(isFirstName ? "설정" : "저장") { Task { await save() } }
+                    .font(InkFont.body.weight(.semibold))
+                    .tint(PaperTheme.ink)
+                    .disabled(!canChange || profile?.isSaving == true)
             }
         }
-        .onAppear {
-            name = storedName
-            tags = ProfileStore.tags(from: storedTags)
+        .inkDialog(
+            "이름",
+            message: notice,
+            isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+        ) {
+            [InkDialogAction("확인", role: .primary)]
         }
+        .task {
+            await profile?.refresh(session: session.server)
+            name = profile?.displayName ?? ""
+        }
+    }
+
+    /// 지금 상태를 한 줄로 설명한다. 30일 규칙을 숨기지 않는다.
+    private var guidance: String {
+        if !canChange, let next = nextChangeLabel {
+            return "이름은 30일에 한 번 변경할 수 있어요. 다음 변경 가능: \(next)"
+        }
+        return isFirstName
+            ? "상점에 올린 상품에 이 이름이 보여요. 한 번 정하면 30일에 한 번 바꿀 수 있어요."
+            : "이름을 바꾸면 30일 동안 다시 바꿀 수 없어요."
+    }
+
+    private func save() async {
+        // 서버가 거절할 요청을 보내지 않는다 — 이미 아는 사실이다.
+        guard canChange else {
+            notice = guidance
+            return
+        }
+        if let failure = await profile?.setDisplayName(name, session: session.server) {
+            notice = failure
+            return
+        }
+        dismiss()
     }
 
     private var avatar: some View {
         VStack(spacing: 10) {
             InkAvatar(size: 84)
-            Button("사진 변경") {}
-                .font(InkFont.secondary)
+            Button {} label: {
+                Text("사진 변경")
+                    .font(InkFont.secondary)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+            }
                 .tint(PaperTheme.ink)
-                .frame(minHeight: 44)
                 .disabled(true)   // 사진 선택은 다음 Phase
         }
         .frame(maxWidth: .infinity)

@@ -166,42 +166,13 @@ struct MirrorControls: View {
     }
 
     /// 전면에서만. 배율이 아니라 **자를지 말지**를 고른다.
-    @ViewBuilder
+    ///
+    /// 칩 자체는 `MirrorFramingSelector`가 그린다 — 상점 미리보기가 같은 것을 쓴다.
     private var framingSelector: some View {
-        if framingOptions.count > 1 {
-            HStack(spacing: 4) {
-                ForEach(framingOptions, id: \.self) { option in
-                    framingChip(option)
-                }
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 5)
-            .background(Color(white: 0.11).opacity(0.5), in: .capsule)
-        }
-    }
-
-    private func framingChip(_ option: MirrorCamera.Framing) -> some View {
-        let isSelected = framing == option
-        return Button {
-            onInteraction()
-            onSelectFraming(option)
-        } label: {
-            Text(option.title)
-                .font(InkFont.caption)
-                .foregroundStyle(isSelected ? Color(white: 0.11) : .white)
-                .padding(.horizontal, 10)
-                // 배율 칩과 같은 규칙 — 글자는 작아도 닿는 자리는 44pt다.
-                .frame(minHeight: 44)
-                .background(alignment: .center) {
-                    Capsule()
-                        .fill(isSelected ? Color.white.opacity(0.92) : .clear)
-                        .frame(height: 34)
-                }
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(option.accessibilityTitle)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        MirrorFramingSelector(
+            options: framingOptions, selected: framing,
+            onInteraction: onInteraction, onSelect: onSelectFraming
+        )
     }
 
     private func zoomChip(_ preset: CGFloat) -> some View {

@@ -29,6 +29,10 @@ struct RootView: View {
     @State private var aiStickers = AIStickerService.live
     /// 조각 충전. StoreKit 거래 수신은 앱 수명 동안 하나만 돈다.
     @State private var shardStore = ShardPurchaseController.live
+    /// 이름의 authority. 로그아웃하면 비운다 — A의 이름이 B에게 보이면 안 된다.
+    @State private var profile = ProfileSession()
+    /// 리뷰를 언제 물어볼지 아는 값. 기기 기준이라 서버에 아무것도 보내지 않는다.
+    @State private var reviewPrompt = ReviewPromptTracker()
     /// 상점 서버 상태. **하나만 둔다** — 화면마다 목록을 따로 받아오면
     /// 같은 상품의 좋아요 수가 화면마다 달라 보인다.
     @State private var marketplace = MarketplaceStore.live
@@ -36,6 +40,14 @@ struct RootView: View {
     @State private var catalogStats = CatalogStats.live
     /// 거울 보관 칸. **서버가 authority다** — 산 칸은 이 기기가 아니라 서버에 있다.
     @State private var mirrorCapacity = MirrorCapacityStore.live
+    /// 매일 저녁 알림. **서버가 관여하지 않는다** — 기기가 스스로 띄운다.
+    @State private var dailyReminder = DailyReminderScheduler()
+    /// 판매 알림을 받을 기기 등록. token과 로그인이 둘 다 갖춰졌을 때만 서버에 묶는다.
+    @State private var pushRegistration = PushRegistration()
+    /// 시스템 권한 창 앞에 나오는 우리 설명. **한 번만** 보여 준다.
+    @State private var notificationOnboarding = NotificationOnboarding()
+    /// 알림 종류별 설정. **서버가 authority다** — 계정이 바뀌면 비운다.
+    @State private var notificationPreferences = NotificationPreferenceSession()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Editor를 열 때 필요한 것: 무엇을 편집할지 + 어떤 의도로 들어왔는지.
@@ -59,9 +71,34 @@ struct RootView: View {
             .environment(adsConsent)
             .environment(aiStickers)
             .environment(shardStore)
+            .environment(profile)
+            .environment(reviewPrompt)
             .environment(marketplace)
             .environment(catalogStats)
             .environment(mirrorCapacity)
+            .environment(dailyReminder)
+            .environment(notificationPreferences)
+            // 첫 프레임에 던지지 않는다. 사용자가 거울을 보고 홈까지 온 뒤에 —
+            // 그때는 이 앱이 무엇인지 알고 있다.
+            .onChange(of: screen) { _, value in
+                guard value == .home else { return }
+                Task {
+                    await dailyReminder.refreshPermission()
+                    notificationOnboarding.presentIfNeeded(
+                        permission: dailyReminder.permission
+                    )
+                }
+            }
+            .inkBottomSheet(isPresented: $notificationOnboarding.isPresented) {
+                NotificationOnboardingSheet {
+                    // 허락하면 기존 등록 흐름을 그대로 탄다 — 새 경로를 만들지 않는다.
+                    await dailyReminder.enable()
+                    await pushRegistration.startIfAllowed()
+                    await pushRegistration.accountChanged(to: session.server)
+                } onLater: {
+                    // 시스템 창을 부르지 않는다. 설정에서 언제든 켤 수 있다.
+                }
+            }
             // 잠금화면 Quick Mirror에서 "꾸미러 열기"로 들어온 경우.
             // 첫 화면이 이미 Mirror이므로 **화면을 옮기지 않는다** — 홈/상점으로 끌고 가지 않는다.
             .onContinueUserActivity(QuickMirrorActivity.openMirrorType) { _ in
@@ -82,10 +119,7 @@ struct RootView: View {
                     // (서버 값은 그대로 남는다 — 이 기기의 표시만 바뀐다).
                     // **내 거울 서랍을 계정에 맞춘다.** 로그아웃하면 guest(비어 있음)로,
                     // 로그인하면 그 사용자 서랍으로 간다. 파일은 지우지 않는다.
-                    let owner = MirrorLibraryOwner(userID: server?.userID)
-                    library.activate(owner: owner)
-                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
-                    StickerLibrary.live.activate(owner: owner)
+                    activateLibraries(owner: MirrorLibraryOwner(userID: server?.userID))
                     if server == nil {
                         mirrorCapacity.clear(library: library)
                     } else {
@@ -108,6 +142,9 @@ struct RootView: View {
                     }
                     // 로그인이 준비되면 못 끝낸 결제를 되찾는다. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
                     await shardStore.recoverUnfinished(session: server, wallet: shards)
+                    // 이름도 계정을 따라간다. 로그아웃이면 `refresh`가 비운다.
+                    await profile.refresh(session: server)
+                    await catalogStats.refreshOwned(session: server)
                 }
             }
             // 앱을 켜 둔 채 KST 자정을 넘겨도 다음 날 출석이 열린다.
@@ -115,6 +152,14 @@ struct RootView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await shards.refresh(session: session.server) }
+                // 설정 앱에서 알림을 켜고 돌아왔을 수 있다. **창을 띄우지 않는다** —
+                // 지금 보낼 수 있는지만 다시 보고 다음 며칠치를 채운다.
+                Task { await dailyReminder.refresh() }
+            }
+            // 계정이 바뀌면 기기를 다시 묶는다. **로그아웃도 여기로 온다** —
+            // 떼어 내지 않으면 다음 사람의 판매 알림이 이 기기로 온다.
+            .onChange(of: session.server?.userID) { _, _ in
+                Task { await pushRegistration.accountChanged(to: session.server) }
             }
             // 현재 거울이 바뀌면(다른 거울 선택 · 꾸미기 저장) 잠금화면 프레임도 따라간다.
             // 사용자가 "동기화"를 누를 일은 없다.
@@ -141,24 +186,48 @@ struct RootView: View {
                 // 무엇도 거울 조작을 막지 않는다. 순서에 의존하는 것만 한 갈래로 묶는다.
                 Task { await session.refreshCredentialState() }
                 Task { await QuickMirrorSync.update(for: library.currentMirror) }
+                // **서랍은 network보다 먼저 연다.**
+                //
+                // 예전에는 `await session.refreshServerSession()` **뒤에** 열었다.
+                // 그 한 줄이 서버 왕복 하나라, 앱을 켜고 바로 거울로 들어가면 그동안
+                // guest 서랍(= 비어 있음)이 보였다 — 마지막에 쓰던 거울이 사라졌다가
+                // 잠시 뒤 되살아나는 것처럼 보인 이유가 정확히 이것이다.
+                //
+                // Keychain 세션은 `AuthSession.init`이 이미 동기로 읽어 뒀고,
+                // `MirrorLibrary.live`도 지난 실행의 주인으로 이미 열려 있다.
+                // 여기서는 그 둘이 어긋날 때만 곧바로 맞춘다 — **파일 읽기 하나**이고
+                // network가 아니다. 확인은 그 뒤에 하고, 결과가 다르면 그때 다시 맞춘다.
+                if let restored = session.server?.userID {
+                    activateLibraries(owner: .user(restored))
+                }
                 Task {
                     // 세션 확인 → 그 결과로 지갑/AI/복구. 이 셋은 순서가 의미 있다.
                     await session.refreshServerSession()
-                    // **세션이 확정된 뒤에 서랍을 연다.** `onChange`만 믿으면 시작할 때
-                    // 이미 복구돼 있던 세션에서는 변화가 없어 guest로 남는다.
-                    let owner = MirrorLibraryOwner(userID: session.server?.userID)
-                    library.activate(owner: owner)
-                    // 스티커도 같은 서랍이다. EditorView가 쓰는 그 하나를 바꾼다.
-                    StickerLibrary.live.activate(owner: owner)
+                    // **서버가 답한 뒤 다시 맞춘다.** 세션이 거절됐으면 여기서 guest로
+                    // 돌아가고, 그대로면 주인이 같아 아무 일도 일어나지 않는다.
+                    activateLibraries(owner: MirrorLibraryOwner(userID: session.server?.userID))
                     await mirrorCapacity.refresh(session: session.server, library: library)
                     await shards.refresh(session: session.server)
                     await aiStickers.refresh(session: session.server)
                     // StoreKit 거래 수신은 **한 번만** 시작한다(내부에서 보장).
+                    // 앱을 연 횟수. 반복 사용자에게만 리뷰를 묻기 위한 값이다.
+                    reviewPrompt.recordLaunch()
                     shardStore.startListening(session: { session.server }, wallet: shards)
                     // 못 끝낸 결제 되찾기. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
                     // **상품 조회(`Product.products`)는 여기서 하지 않는다** —
                     // 조각 상점을 열 때만 한다(거울 시작을 StoreKit에 묶지 않는다).
                     await shardStore.recoverUnfinished(session: session.server, wallet: shards)
+                    await profile.refresh(session: session.server)
+                    await catalogStats.refreshOwned(session: session.server)
+                    // 세션이 확정된 뒤에 기기를 묶는다. **여기서 권한 창을 띄우지
+                    // 않는다** — 이미 허락한 사람만 APNs 등록으로 간다.
+                    await pushRegistration.startIfAllowed()
+                    await pushRegistration.accountChanged(to: session.server)
+                }
+                Task {
+                    // 매일 알림 다시 채우기. 권한이 없으면 아무것도 하지 않는다.
+                    PushAppDelegate.registration = pushRegistration
+                    await dailyReminder.refresh()
                 }
                 Task {
                     // 광고는 가장 무겁고(UMP 양식 · SDK 초기화 · ad load) 가장 덜 급하다.
@@ -170,6 +239,15 @@ struct RootView: View {
                     }
                 }
             }
+    }
+
+    /// 거울과 스티커 서랍을 **같은 순간에** 같은 주인으로 맞춘다.
+    ///
+    /// 계정 privacy는 둘을 구분하지 않는다 — 따로 부르면 언젠가 한쪽만 바뀐다.
+    /// 주인이 이미 같으면 `activate`가 아무 일도 하지 않는다.
+    private func activateLibraries(owner: MirrorLibraryOwner) {
+        library.activate(owner: owner)
+        StickerLibrary.live.activate(owner: owner)
     }
 
     /// 거울 화면으로 보낸다. **이미 거울이면 아무것도 쓰지 않는다.**

@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- **Light 전용 앱이다.** Clean Pen Sketch는 종이 위의 잉크라 어두운 배경에서
+	     성립하지 않는다. system Dark Mode에서 배경만 검게 바뀌면 잉크 요소가 사라진다.
+	     화면마다 `.preferredColorScheme(.light)`를 뿌리지 않고 여기 한 곳에서 정한다.
+	     Apple이 소유한 화면(StoreKit · Sign in with Apple)은 건드리지 않는다. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<!-- xcconfig에서 온다. GENERATE_INFOPLIST_FILE이 나머지 키를 여기에 합친다. -->
 	<key>GGUMIRROR_APP_ENV</key>
 	<string>$(APP_ENV)</string>

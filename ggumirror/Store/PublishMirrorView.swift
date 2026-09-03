@@ -22,6 +22,10 @@ struct PublishMirrorView: View {
     @Environment(AuthSession.self) private var session
     @Environment(ShardWallet.self) private var wallet
     @Environment(MarketplaceStore.self) private var marketplace
+    /// 판매자 이름. **상점에 올리려면 먼저 있어야 한다** — 상품에 이 이름이 보인다.
+    @Environment(ProfileSession.self) private var profile: ProfileSession?
+    /// 이름을 정하러 가는 중.
+    @State private var isNamingSeller = false
     @State private var draft: MirrorPublishDraft
     @State private var savedNotice = false
     /// 등록 결과 안내. 성공/실패 모두 여기로 온다.
@@ -77,6 +81,10 @@ struct PublishMirrorView: View {
             .padding(.horizontal, 20)
             .padding(.top, 12)
         }
+        // 이름을 정하고 오면 그대로 이어서 올릴 수 있다 — 등록 정보는 그대로 남는다.
+        .inkBottomSheet(isPresented: $isNamingSeller, size: .fraction(0.8)) {
+            SellerNameSheet()
+        }
         .inkDialog(
             "등록 준비를 저장했어요",
             message: "아직 상점에 올라가지 않았어요. 조각도 차감되지 않았어요.",
@@ -101,7 +109,7 @@ struct PublishMirrorView: View {
             Text("상점에 올리기")
                 .font(InkFont.cardTitle)
                 .foregroundStyle(PaperTheme.ink)
-            Text("판매 정보를 미리 채워두세요. 지금은 저장만 되고 아직 상점에 올라가지 않아요.")
+            Text("판매 정보를 채우고 상점에 올려 보세요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -189,12 +197,12 @@ struct PublishMirrorView: View {
     private var feeNotice: some View {
         HStack(spacing: 8) {
             ShardAmount(amount: MirrorPublishPolicy.feeInShards, font: InkFont.caption, iconSize: 16)
-            Text("상점 공개 등록 비용이에요. 지금은 차감되지 않아요.")
+            Text("상점에 올릴 때 차감되는 등록 비용이에요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("상점 공개 등록 비용 \(MirrorPublishPolicy.feeInShards) 조각, 지금은 차감되지 않아요")
+        .accessibilityLabel("상점 공개 등록 비용 \(MirrorPublishPolicy.feeInShards) 조각")
     }
 
     /// 실제 등록. 꾸러미를 만들어 올리고 게시까지 한 번에 한다.
@@ -226,6 +234,12 @@ struct PublishMirrorView: View {
             _ = session.requireSignIn(for: .shardTransaction)
             return
         }
+        // **이름 없이 올리지 않는다.** 상품에 판매자 이름이 보이는데 비어 있으면
+        // 사는 사람은 누가 올린 것인지 알 수 없다. 서버에 보내기 전에 받는다.
+        guard profile?.profile?.hasName == true else {
+            isNamingSeller = true
+            return
+        }
         let package: SnapshotPackage
         do {
             package = try SnapshotPackager.package(mirror, store: library.assetStore)
@@ -250,20 +264,33 @@ struct PublishMirrorView: View {
         }
         defer { marketplace.onListingCreated = nil }
 
+        // **상품명은 한 번만 정한다.** 서버로 가는 값과 내 거울에 남길 값이
+        // 같은 변수에서 나와야 둘이 갈라질 수 없다.
+        let title = MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name
+
         let result = await marketplace.publish(
             package: package,
-            title: MirrorPublishPolicy.normalizedTitle(draft.title) ?? mirror.name,
+            title: title,
             description: MirrorPublishPolicy.normalizedDescription(draft.description),
             priceShards: draft.priceInShards,
             session: session.server,
             wallet: wallet
         )
         guard let result else {
+            // **실패하면 이름을 바꾸지 않는다.** 올리지도 못한 이름이 내 거울에
+            // 남으면 사용자는 상점에 없는 이름을 보게 된다.
             didPublish = false
             publishNotice = marketplace.failure?.message
             return
         }
         didPublish = true
+        // **등록에 성공한 뒤에** 내 거울 이름도 그 이름으로 맞춘다.
+        //
+        // 사용자가 등록하면서 붙인 이름이 이 거울의 이름이다 — 상점에서는
+        // `짱구 거울`인데 내 거울에서는 `AI 거울`로 남아 있으면 같은 물건이
+        // 두 이름을 갖는다. 기존 이름 바꾸기 통로를 그대로 쓰고(id로 찾는다),
+        // 그 안에서 디스크까지 저장된다.
+        _ = library.rename(mirror.id, to: title)
         // id는 publish **전에** 이미 남겼다(`onListingCreated`). 여기서는 서버가
         // 돌려준 값과 같은지만 확인한다 — 다르면 우리가 잘못된 listing을 올린 것이다.
         assert(draft.listingID == result.listing.id, "저장한 listing과 다른 것을 올렸다")

@@ -24,6 +24,8 @@ struct MyMirrorsView: View {
     @State private var wantsArtworkImport = false
     @State private var isChoosingCreateStyle = false
     @State private var isImportingArtwork = false
+    @State private var wantsAIMirror = false
+    @State private var isMakingAIMirror = false
     /// 상점 등록 준비 중인 거울. 실제 등록이 아니라 판매 정보 작성이다.
     @State private var publishTarget: MyMirror?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -36,6 +38,12 @@ struct MyMirrorsView: View {
 
     /// 확장 확인 창.
     @State private var isConfirmingExpand = false
+
+    /// 이름을 바꾸는 중인 거울. 열려 있는 동안 입력값을 들고 있다.
+    @State private var renameTarget: MyMirror?
+    @State private var renameText = ""
+    /// 이름을 바꿀 수 없는 이유. 알려 주고 끝난다.
+    @State private var renameNotice: String?
 
     private var mirrors: [MyMirror] {
         // **판매 중은 서버가 정한다.** `MirrorOrigin.listed`를 설정하는 코드가 없어서
@@ -109,13 +117,36 @@ struct MyMirrorsView: View {
                     wantsArtworkImport = false
                     isImportingArtwork = true
                 }
+                if wantsAIMirror {
+                    wantsAIMirror = false
+                    isMakingAIMirror = true
+                }
             }
         ) {
             [
                 InkDialogAction("꾸미러에서 만들기", role: .primary) { onCreateMirror(.blank) },
                 InkDialogAction("외부에서 만들기") { wantsArtworkImport = true },
+                InkDialogAction("AI로 만들기") { wantsAIMirror = true },
                 InkDialogAction("취소"),
             ]
+        }
+        .inkBottomSheet(isPresented: $isMakingAIMirror, size: .fraction(0.92)) {
+            NavigationStack {
+                AIMirrorView(library: library) {}
+            }
+        }
+        .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { mirror in
+            // 저장 때 쓰는 이름 시트를 그대로 쓴다 — 입력 규칙과 버튼 규칙이 같다.
+            MirrorNameSheet(initialName: renameText, isNewMirror: false) { commitRename(mirror, to: $0) }
+        }
+        .inkDialog(
+            "이름 변경",
+            message: renameNotice,
+            isPresented: Binding(
+                get: { renameNotice != nil }, set: { if !$0 { renameNotice = nil } }
+            )
+        ) {
+            [InkDialogAction("확인", role: .primary)]
         }
         .inkBottomSheet(item: $publishTarget, size: .fraction(0.92)) { mirror in
             PublishMirrorView(mirror: mirror, library: library)
@@ -190,11 +221,56 @@ struct MyMirrorsView: View {
         if OwnContentExportPolicy.canExport(mirror) {
             actions.append(InkDialogAction("사진에 저장") { save(mirror) })
         }
+        // 기본 제공 거울은 카탈로그의 것이라 이름을 바꾸지 않는다.
         if mirror.origin != .basic {
+            actions.append(InkDialogAction("이름 변경") { beginRename(mirror) })
             actions.append(InkDialogAction("삭제", role: .destructive) { library.delete(mirror) })
         }
         actions.append(InkDialogAction("닫기"))
         return actions
+    }
+
+    // MARK: - 이름 변경
+
+    /// 지금 이 거울의 이름을 바꿀 수 있는가. **판매 중인 원본만 잠근다.**
+    ///
+    /// 판단은 서버가 준 `sourceContentId`로 한다 — 제목이 닮았다고 잠그지 않는다.
+    private func renameAvailability(_ mirror: MyMirror) -> MirrorRenameAvailability {
+        MirrorRenamePolicy.availability(
+            isSignedIn: session.server != nil,
+            hasSellerLinkHint: library.publishDraft(for: mirror.id) != nil,
+            sellerListingsAreKnown: marketplace.myListingsAreKnown,
+            isPublishedOriginal: marketplace.sellingListing(
+                forContentID: mirror.id, contentType: "mirror"
+            ) != nil
+        )
+    }
+
+    private func beginRename(_ mirror: MyMirror) {
+        let availability = renameAvailability(mirror)
+        guard availability.isAllowed else {
+            renameNotice = availability.message
+            return
+        }
+        renameText = mirror.name
+        renameTarget = mirror
+    }
+
+    /// **저장 직전에 다시 확인한다.** 창을 열어 둔 사이에 등록이 끝났을 수 있다.
+    private func commitRename(_ mirror: MyMirror, to newName: String) {
+        let availability = renameAvailability(mirror)
+        guard availability.isAllowed else {
+            renameTarget = nil
+            renameNotice = availability.message
+            return
+        }
+        if case .invalidName = library.rename(mirror.id, to: newName) {
+            renameTarget = nil
+            renameNotice = "이름을 입력해 주세요."
+            return
+        }
+        // 성공은 목록이 바로 바뀌는 것으로 충분하다 — 창을 하나 더 띄우지 않는다.
+        renameTarget = nil
     }
 
     // MARK: - 내보내기
@@ -357,7 +433,7 @@ struct MyMirrorsView: View {
             }
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.bottom, InkTabBar.reservedHeight + 24, for: .scrollContent)
+        .inkTabBarSafeContent()
     }
 
     /// 처음 설치하면 내 거울은 비어 있다. 빈 화면 대신 다음에 할 일을 보여준다.
@@ -376,25 +452,35 @@ struct MyMirrorsView: View {
             }
 
             VStack(spacing: 10) {
-                Button("거울 만들기") { createMirror() }
-                    .font(InkFont.body.weight(.semibold))
-                    .foregroundStyle(PaperTheme.subtleSurface)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
-                    }
+                Button {
+                    createMirror()
+                } label: {
+                    Text("거울 만들기")
+                        .font(InkFont.body.weight(.semibold))
+                        .foregroundStyle(PaperTheme.subtleSurface)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(16, 13, 17, 12).fill(PaperTheme.ink)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
 
-                Button("상점 둘러보기") { onBrowseStore() }
-                    .font(InkFont.body)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 48)
-                    .background {
-                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                            .stroke(PaperTheme.ink, lineWidth: 1.6)
-                    }
+                Button {
+                    onBrowseStore()
+                } label: {
+                    Text("상점 둘러보기")
+                        .font(InkFont.body)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background {
+                            UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                                .stroke(PaperTheme.ink, lineWidth: 1.6)
+                        }
+                        .contentShape(.rect)
+                }
                     .buttonStyle(InkPressStyle())
             }
             .padding(.top, 2)

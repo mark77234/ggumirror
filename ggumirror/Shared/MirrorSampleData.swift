@@ -59,6 +59,20 @@ enum MirrorOrigin: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+/// 이 거울이 **어떻게 만들어졌는가.**
+///
+/// `MirrorOrigin`에 case를 더하지 않는다 — 그쪽은 "내가 만든 / 구매한 / 판매 중"이라
+/// 출처와 상점 상태가 섞여 있고, AI를 거기 넣으면 AI로 만든 거울이 `내가 만든`
+/// 목록에서 사라진다. 만든 방법은 **따로** 적는다.
+nonisolated enum MirrorCreationSource: String, Codable, Hashable {
+    /// 앱 안에서 사람이 꾸민 것.
+    case handmade
+    /// 바깥에서 만들어 가져온 것.
+    case imported
+    /// AI가 그려 준 것. **한 번 붙으면 떼지 않는다** — 기록이다.
+    case aiGenerated
+}
+
 enum MyMirrorFilter: String, CaseIterable, Identifiable {
     case all = "전체"
     case made = "내가 만든"
@@ -90,6 +104,9 @@ struct MyMirror: Identifiable, Hashable {
     var texts: [TextObject] = []
     /// 외부 그림 앱에서 가져온 전체 캔버스 디자인.
     var importedArtworks: [ImportedArtworkObject] = []
+    /// 어떻게 만들어졌는가. **없을 수 있다** — 이 값이 생기기 전에 만든 거울이 그렇다.
+    /// 이름이나 파일로 추측하지 않는다. 모르면 모르는 채로 둔다.
+    var creationSource: MirrorCreationSource?
 }
 
 /// 내 거울 보관 정책.
@@ -104,6 +121,10 @@ enum MirrorStoragePolicy {
     static let freeMirrorSlots = 5
     /// 이름 입력 제한.
     static let maxNameLength = 24
+
+    /// 이름이 없는 예전 파일을 읽을 때 쓰는 표시용 이름.
+    /// **지어낸 정보가 아니라 빈자리를 메우는 라벨이다.**
+    static let fallbackName = "내 거울"
 
     /// 홈에서 저장할 때 쓰는 자동 이름. 사용자에게 이름을 묻지 않는다.
     /// "나의 거울" → 이미 있으면 "나의 거울 2", "나의 거울 3" ...
@@ -199,17 +220,26 @@ final class MirrorLibrary {
     /// 앱이 쓰는 하나뿐인 목록. SwiftUI가 View를 다시 만들어도 파일은 한 번만 읽고,
     /// 안 쓰는 사진 정리도 실행당 한 번만 돈다.
     ///
-    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 아무의 거울도 보여 주지
-    /// 않는다 — 세션이 복구되면 `activate(owner:)`가 그 계정 서랍으로 갈아 끼운다.
-    static let live = MirrorLibrary(store: .store(for: .guest))
+    /// **지난 실행에서 쓰던 서랍을 곧바로 연다**(`LastActiveUser`). network도 세션도
+    /// 기다리지 않는다 — 거울 화면은 로그인 복구보다 먼저 쓸 수 있어야 한다.
+    /// 기억해 둔 사용자가 없으면(첫 실행 · 명시적 로그아웃 뒤) guest다.
+    ///
+    /// 세션이 확정되면 `activate(owner:)`가 맞춰 준다. 같은 사용자면 아무 일도
+    /// 일어나지 않고(`next != owner` guard), 다른 사용자면 그 자리에서 갈아 끼운다.
+    static let live = {
+        let owner = LastActiveUser.shared.owner
+        return MirrorLibrary(store: .store(for: owner), owner: owner)
+    }()
 
     init(
         store: MirrorStore? = nil,
+        owner: MirrorLibraryOwner = .guest,
         assets: PhotoStickerAssetStore? = nil,
         artworks: ImportedArtworkAssetStore? = nil,
         accountsBase: URL? = nil
     ) {
         self.accountsBase = accountsBase
+        self.owner = owner
         let assets = assets ?? .shared
         let artworks = artworks ?? .shared
         self.store = store
@@ -245,9 +275,7 @@ final class MirrorLibrary {
             currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
                 ? saved.currentMirrorID
                 : Self.defaultMirror.id
-            // 렌더러가 그리다가 파일을 읽지 않도록 미리 올린다.
-            assets.preload(saved.referencedAssetIDs(.photoSticker))
-            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
+            preloadCurrentMirrorAssets()
         }
 
         guard !isReadOnly else { return }
@@ -290,6 +318,18 @@ final class MirrorLibrary {
     /// 지금 어떤 거울이든 참조하는 asset. 종류별로 따로 센다.
     func referencedAssetIDs(_ kind: MirrorAssetKind) -> Set<UUID> {
         mirrors.reduce(into: Set<UUID>()) { $0.formUnion($1.assetIDs(kind)) }
+    }
+
+    /// **지금 보여 줄 거울의 그림만** 미리 올린다.
+    ///
+    /// 렌더러가 그리는 도중 파일을 읽지 않게 하려는 것이고, 시작하자마자 그려지는 것은
+    /// 현재 거울 하나뿐이다. 예전에는 서랍에 있는 **모든** 거울의 PNG를 여기서
+    /// 해독했다 — 거울이 스무 개면 스무 장을 main actor에서 풀고 나서야 첫 화면이
+    /// 떴다. 나머지는 필요할 때 `image(for:)`가 그때 읽는다(원래 그렇게 만들어져 있다).
+    private func preloadCurrentMirrorAssets() {
+        let mirror = currentMirror
+        assets.preload(mirror.assetIDs(.photoSticker))
+        artworks.preload(mirror.assetIDs(.importedArtwork))
     }
 
     /// 아무 거울도 참조하지 않는 이미지 파일을 지운다. 종류마다 자기 폴더에서만.
@@ -350,8 +390,7 @@ final class MirrorLibrary {
             currentID = saved.mirrors.contains { $0.id == saved.currentMirrorID }
                 ? saved.currentMirrorID
                 : Self.defaultMirror.id
-            assets.preload(saved.referencedAssetIDs(.photoSticker))
-            artworks.preload(saved.referencedAssetIDs(.importedArtwork))
+            preloadCurrentMirrorAssets()
         }
         guard !isReadOnly else { return }
         publishDrafts = store.loadDrafts().filter { draft in
@@ -415,7 +454,10 @@ final class MirrorLibrary {
     func save(
         _ design: MirrorDesign,
         name rawName: String,
-        context: MirrorEditorContext
+        context: MirrorEditorContext,
+        /// 어떻게 만들었는가. **새로 만들 때만** 적힌다 — 기존 거울을 고칠 때
+        /// 출처가 바뀌면 안 된다(AI로 만든 거울을 손으로 고쳐도 AI 기록은 남는다).
+        creationSource: MirrorCreationSource? = nil
     ) -> MirrorSaveOutcome {
         if context == .editCurrent,
            let index = mirrors.firstIndex(where: { $0.id == design.id }) {
@@ -453,12 +495,41 @@ final class MirrorLibrary {
             // 사진 / 외부 디자인은 assetID만 참조하므로 이미지가 다시 복사되지 않는다.
             stickers: design.stickers,
             texts: design.texts,
-            importedArtworks: design.importedArtworks
+            importedArtworks: design.importedArtworks,
+            creationSource: creationSource
         )
         mirrors.append(copy)
         currentID = copy.id
         persist()
         return .created(id: copy.id, name: copy.name)
+    }
+
+    /// 거울 이름을 바꾼다. **표시용 값 하나만 바뀐다.**
+    ///
+    /// id는 그대로다 — 이름은 identity가 아니라 metadata라서 같은 이름이 여럿
+    /// 있어도 된다. 서버(지갑 · 소유권 · 원장 · listing · snapshot)를 부르지 않는다.
+    ///
+    /// 판매 중인지 확인하는 일은 화면이 한다(`MirrorRenamePolicy`) — 여기서
+    /// 네트워크 상태를 알 수 없다.
+    @discardableResult
+    func rename(_ mirrorID: String, to raw: String) -> MirrorRenameOutcome {
+        guard let name = MirrorStoragePolicy.normalizedName(raw) else { return .invalidName }
+        guard let index = mirrors.firstIndex(where: { $0.id == mirrorID }) else { return .notFound }
+        // **한 서랍에 같은 이름을 두 개 두지 않는다.** 자기 자신은 세지 않는다 —
+        // 대소문자만 바꾸는 것도 정상적인 이름 바꾸기다.
+        guard isNameAvailable(name, excluding: mirrorID) else { return .duplicateName }
+        mirrors[index].name = name
+        persist()
+        return .renamed(name)
+    }
+
+    /// 이 서랍에서 쓸 수 있는 이름인가. **비교 규칙은 `ContentNameKey` 하나다.**
+    ///
+    /// 계정 안에서만 본다 — 상점의 전체 이름 겹침과는 다른 질문이다.
+    func isNameAvailable(_ raw: String, excluding mirrorID: String? = nil) -> Bool {
+        let key = ContentNameKey.canonical(raw)
+        guard !key.isEmpty else { return false }
+        return !mirrors.contains { $0.id != mirrorID && ContentNameKey.canonical($0.name) == key }
     }
 
     /// 이 저장이 새 거울을 만들지.

@@ -97,7 +97,12 @@ struct StickerStoreTests {
     @Test("스티커 화면은 로그인 없이 쓸 수 있다")
     func stickerScreenWorksSignedOut() throws {
         try withStores { _, stickers, _, mirrors in
-            let session = AuthSession(store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore())
+            let session = AuthSession(
+                store: InMemoryIdentityStore(), sessions: InMemoryServerSessionStore(),
+                lastActiveUser: LastActiveUser(
+                    defaults: UserDefaults(suiteName: "ggumirror.tests.\(UUID().uuidString)")!
+                )
+            )
             #expect(session.state == .signedOut)
             // 로그인 상태와 무관하게 목록 · 만들기 · 등록 준비가 모두 동작한다.
             let saved = try #require(stickers.save(design(), name: "로그아웃", context: .createNew))
@@ -524,8 +529,8 @@ struct StickerStoreTests {
             stickers.saveDraft(draft)
             store.flush()
 
-            // UI-P3에서 확정됐다 — 스티커 5, 거울 10.
-            #expect(StickerPublishPolicy.feeInShards == 5)
+            // 1.1.0에서 확정됐다 — 등록비는 둘 다 10이다.
+            #expect(StickerPublishPolicy.feeInShards == 10)
             #expect(MirrorPublishPolicy.feeInShards == 10)
             // 상점에는 여전히 아무 listing도 없다.
             #expect(stickers.projects.count == 1)

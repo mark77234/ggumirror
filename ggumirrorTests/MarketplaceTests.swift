@@ -11,9 +11,12 @@
 //    4. 조각을 앱이 직접 바꾸지 않는가
 //
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @testable import ggumirror
 
 // MARK: - fake backend
@@ -186,7 +189,8 @@ private func listing(
 ) -> MarketplaceListing {
     MarketplaceListing(
         id: id, contentType: contentType, title: "상품 \(id)", description: "설명",
-        priceShards: price, downloadCount: downloads, likeCount: likes, publishedAt: published
+        priceShards: price, downloadCount: downloads, likeCount: likes, publishedAt: published,
+        sellerDisplayName: nil
     )
 }
 
@@ -1535,16 +1539,26 @@ struct StoreScrollHierarchyTests {
 
     @Test("UI-P2의 tab bar 여백이 유지된다")
     func tabBarClearanceSurvives() throws {
+        // 여백을 주는 방법은 **`inkTabBarSafeContent()` 한 곳**이 갖는다.
+        // 예전에는 화면마다 `contentMargins(...)`를 직접 적었고, 이 테스트도 그
+        // 형태를 봤다 — 값이 modifier로 빠지면서 stale해졌다. 지킬 것은 형태가
+        // 아니라 "탭 막대가 마지막 상품을 덮지 않는다"이므로 그것을 본다.
         let code = try source("Store/StoreView.swift")
-        #expect(code.contains("InkTabBar.reservedHeight"))
-        #expect(code.contains("contentMargins(.bottom"))
-        #expect(code.contains("for: .scrollContent"))
-        // scroll이 하나이므로 여백도 한 곳에서만 준다.
-        #expect(code.components(separatedBy: "contentMargins(.bottom").count - 1 == 1)
+        #expect(code.contains("inkTabBarSafeContent()"))
+        // scroll이 하나이므로 여백도 한 번만 준다.
+        #expect(code.components(separatedBy: "inkTabBarSafeContent()").count - 1 == 1)
+
+        // 그 modifier가 실제로 탭 막대 높이만큼 scroll content를 띄운다.
+        let bar = try source("Shared/InkTabBar.swift")
+        let start = try #require(bar.range(of: "func inkTabBarSafeContent()"))
+        let body = String(bar[start.upperBound...].prefix(220))
+        #expect(body.contains("contentMargins("))
+        #expect(body.contains("InkTabBar.reservedHeight"))
+        #expect(body.contains("for: .scrollContent"))
     }
 
-    @Test("공개 거울 탭은 사용자 상품 → 내장 목록 순서다")
-    func publicMirrorOrder() throws {
+    @Test("공개 거울 탭은 grid 하나다 — 구획으로 나뉘지 않는다")
+    func publicMirrorGridIsUnified() throws {
         // **판매자 관리는 여기 없다** — `내 판매` 탭으로 갔다(Marketplace UX hardening).
         // 공개 목록에 draft가 섞이면 무엇이 실제로 팔리는지 알 수 없었다.
         let code = codeOnly(try source("Store/StoreView.swift"))
@@ -1552,10 +1566,11 @@ struct StoreScrollHierarchyTests {
         let body = String(code[start.upperBound...])
 
         #expect(!body.contains("MyListingsSection"), "공개 목록에 판매자 관리가 섞였다")
-
-        let others = try #require(body.range(of: "MarketplaceSection"))
-        let builtIn = try #require(body.range(of: "LazyVGrid"))
-        #expect(others.lowerBound < builtIn.lowerBound, "사용자 상품이 내장 목록보다 뒤에 있다")
+        // 구획을 따로 그리면 앞 구획이 홀수 개일 때 빈 칸이 남는다.
+        #expect(!body.contains("MarketplaceSection"), "사용자 상품이 따로 그려진다")
+        // grid는 하나뿐이고 두 출처가 같은 목록에서 나온다.
+        #expect(body.components(separatedBy: "LazyVGrid").count - 1 == 1)
+        #expect(body.contains("ForEach(mirrorItems)"))
     }
 
     @Test("제어부 순서가 요구대로다")
@@ -1944,15 +1959,18 @@ struct SellerPreviewUITests {
     func cardRendersPreview() throws {
         let code = try source("Store/MyListingsSection.swift")
         #expect(code.contains("store.myPreviews[listing.id]"))
-        #expect(code.contains("Image(uiImage:"))
         #expect(code.contains("loadMyPreview"))
+        // 그림은 **공용 view가 그린다** — 화면이 직접 해독하지 않는다(I-3).
+        #expect(code.contains("MarketplaceListingPreview("))
+        #expect(try source("Store/MarketplaceListingPreview.swift").contains("Image(uiImage:"))
     }
 
     @Test("받는 중 · 실패 자리표시자가 구분된다")
     func placeholdersAreDistinct() throws {
-        let code = try source("Store/MyListingsSection.swift")
-        #expect(code.contains("myPreviewFailures"))
-        #expect(code.contains("미리보기를 불러오지 못했어요"))
+        // 실패 상태를 화면이 넘기고, 문구는 공용 view가 낸다.
+        #expect(try source("Store/MyListingsSection.swift").contains("myPreviewFailures"))
+        #expect(try source("Store/MarketplaceListingPreview.swift")
+            .contains("미리보기를 불러오지 못했어요"))
     }
 
     @Test("draft 문구가 '등록 미완료'다")
@@ -2088,9 +2106,11 @@ struct MarketplaceDeleteTests {
         let code = codeWithoutComments(try String(
             contentsOf: root.appending(path: "Store/MySalesSection.swift"), encoding: .utf8
         ))
-        // 새 UI는 "내리기"를 쓰지 않는다.
-        #expect(!code.contains("상점에서 내리기"))
+        // **내리기와 삭제는 다른 동작이고 둘 다 있다.** 삭제 확인 문구가
+        // 되돌릴 수 있는 쪽을 가리켜 준다 — 그래야 잘못 누르지 않는다.
+        #expect(code.contains("\"상점에서 내리기\""))
         #expect(code.contains("\"삭제\""))
+        #expect(code.contains("되돌릴 수 없어요"))
         // 확인 문구에 환불 없음과 기존 구매자 보존이 들어 있다.
         #expect(code.contains("환불되지 않아요"))
         #expect(code.contains("이미 받은 사용자는 계속 사용할 수 있어요"))
@@ -2254,7 +2274,7 @@ struct StoreIAHardeningTests {
         let code = try source("Store/MySalesSection.swift")
         #expect(code.contains("\"판매 중\""))
         #expect(code.contains("\"등록 미완료\""))
-        #expect(code.contains("filter(\\.isPublished)"))
+        #expect(code.contains("filter(\\.isPubliclyVisible)"))
         #expect(code.contains("filter(\\.isDraft)"))
         // 서버가 authority다.
         #expect(code.contains("refreshMyListings"))
@@ -2267,10 +2287,16 @@ struct StoreIAHardeningTests {
             guard let c = line.range(of: "//") else { return String(line) }
             return String(line[..<c.lowerBound])
         }.joined(separator: "\n")
+        // 세로 scroll은 상점 화면에 하나뿐이다 — 중첩되면 상단 제어부가
+        // 상품과 함께 밀려 올라가지 않는다.
         #expect(stripped.components(separatedBy: "ScrollView {").count - 1 == 1)
-        #expect(code.contains("InkTabBar.reservedHeight"))
-        // 내 판매도 같은 scroll 안에 있다.
-        #expect(!(try source("Store/MySalesSection.swift")).contains("ScrollView"))
+        // 그 하나에만 탭 막대 여백을 준다(`inkTabBarSafeContent`가 그 authority다).
+        #expect(code.contains("inkTabBarSafeContent()"))
+        // 안쪽 구획은 자기 scroll을 갖지 않는다 — 중첩되면 상단 제어부가 따라 오지 않는다.
+        // 주석의 낱말이 아니라 **실제로 만드는가**(`ScrollView {`)를 본다.
+        for inner in ["Store/MySalesSection.swift", "Store/StickerStoreView.swift"] {
+            #expect(!(try source(inner)).contains("ScrollView {"), "\(inner)")
+        }
     }
 
     @Test("내장 카드는 서버가 센 값만 보여 준다")
@@ -2279,7 +2305,10 @@ struct StoreIAHardeningTests {
         // 하드코딩 값을 쓰지 않는다.
         let store = try source("Store/StoreView.swift")
         #expect(store.contains("catalogStats.downloadCount(template.id)"))
-        #expect(store.contains("if let downloadCount"))
+        // "모르면 안 보여 준다"는 판단은 공통 카드가 한다 —
+        // 사용자 상품과 내장 템플릿이 한 컴포넌트를 쓰기 때문이다.
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("if let downloadCount = model.downloadCount"))
 
         let detail = try source("Store/TemplateDetailView.swift")
         #expect(detail.contains("catalogStats.downloadCount(template.id)"))
@@ -2303,19 +2332,20 @@ struct StoreIAHardeningTests {
 
     @Test("공개 카드에 좋아요 하트가 있다")
     func publicCardHasHeart() throws {
-        let code = try source("Store/MarketplaceGallery.swift")
-        #expect(code.contains("onToggleLike"))
-        #expect(code.contains("heart.fill"))
+        #expect(try source("Store/MarketplaceGallery.swift").contains("onToggleLike"))
+        // 하트를 그리는 자리는 공용 카드 하나다.
+        let card = try source("Store/StoreMirrorCard.swift")
+        #expect(card.contains("heart.fill"))
         // 손가락이 닿는 자리를 확보한다.
-        #expect(code.contains("minWidth: 44, minHeight: 44"))
+        #expect(card.contains("minWidth: InkTapTarget.minimum"))
     }
 
     @Test("자기 상품에는 하트를 누를 수 없다")
     func ownListingHeartIsNotTappable() throws {
-        let code = try source("Store/MarketplaceGallery.swift")
-        #expect(code.contains("isMine"))
+        #expect(try source("Store/MarketplaceGallery.swift").contains("isMine"))
         // 실패할 CTA를 보여 주지 않는다.
-        #expect(code.contains("내 상품이라 누를 수 없어요"))
+        #expect(try source("Store/StoreMirrorCard.swift")
+            .contains("내 상품이라 누를 수 없어요"))
     }
 
     @Test("좋아요 상태는 서버 목록에서 온다")
@@ -2335,5 +2365,228 @@ struct StoreIAHardeningTests {
         // 제목 매칭이 없다.
         #expect(!code.contains("$0.name == "))
         #expect(!code.contains("title =="))
+    }
+}
+
+// MARK: - 스티커 가져오기 (B-7H)
+
+/// **스티커 획득의 경제 경로는 거울과 같다.** 서버는 `POST /listings/{id}/purchase`
+/// 하나뿐이고, `contentType`은 원장 reason 문자열을 고를 때만 쓰인다 —
+/// 소유권 생성 · 지갑 이동 · `downloadCount` · 멱등 열쇠가 모두 같은 transaction이다.
+///
+/// 다른 것은 **받은 뒤 기기에 담는 부분**뿐이라 여기서 그것만 시험한다.
+/// 예전에는 이 자리에 아무 test도 없었고, production에도 무료 스티커 후보가 없어
+/// 실기기로도 확인할 수 없었다 — 5조각을 쓰지 않고 이 구멍을 닫는다.
+@Suite("스티커 가져오기")
+@MainActor
+struct MarketplaceStickerImportTests {
+
+    private func withStores(
+        _ body: (StickerProjectStore, StickerLibrary, MirrorStore) async throws -> Void
+    ) async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ggumirror-b7h-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let stickerStore = StickerProjectStore(root: root)
+        let mirrorStore = MirrorStore(root: root)
+        defer {
+            stickerStore.flush()
+            mirrorStore.flush()
+            try? FileManager().removeItem(at: root)
+        }
+        try await body(stickerStore, StickerLibrary(store: stickerStore), mirrorStore)
+    }
+
+    /// 판매자 기기에서 올라간 것과 같은 모양의 manifest.
+    private func manifest(
+        id: String = "seller-side-id", name: String = "판매자가 붙인 이름",
+        finalAsset: UUID? = nil, origin: StickerProjectOrigin = .made
+    ) throws -> Data {
+        var project = StickerProject(id: id, name: name, origin: origin)
+        project.finalAssetID = finalAsset
+        return try JSONEncoder.marketplace.encode(project)
+    }
+
+    /// 1×1 투명 PNG. `readAsset`이 CGImage로 되읽으므로 진짜 그림이어야 한다.
+    private static func onePixelPNG() -> Data {
+        let context = CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        let image = context.makeImage()!
+        let out = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(
+            out, UTType.png.identifier as CFString, 1, nil
+        )!
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return out as Data
+    }
+
+    private func session() -> ServerSession {
+        ServerSession(accessToken: "token", expiresAt: .distantFuture, userID: "user-1")
+    }
+
+    @Test("받으면 내 스티커에 담긴다")
+    func importAddsToLibrary() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "내가 받은 스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+
+            // **지역 id는 listingID다.** manifest의 id는 판매자 기기의 것이라
+            // 그대로 쓰면 내가 이미 가진 것과 부딪힌다.
+            #expect(project.id == "listing-9")
+            #expect(project.name == "내가 받은 스티커")
+            #expect(library.projects.contains { $0.id == "listing-9" })
+        }
+    }
+
+    @Test("제목이 비어 있으면 manifest의 이름을 쓴다")
+    func emptyTitleFallsBack() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(name: "원래 이름")
+            let importer = MarketplaceImporter(backend: backend)
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            #expect(project.name == "원래 이름")
+        }
+    }
+
+    @Test("완성 그림을 그 assetID로 내려놓는다")
+    func finalAssetIsStored() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let assetID = UUID()
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(finalAsset: assetID)
+            backend.assetResults = [assetID: Self.onePixelPNG()]
+            let importer = MarketplaceImporter(backend: backend)
+
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // manifest가 가리키는 그 id로 내려가야 참조가 맞는다.
+            #expect(project.finalAssetID == assetID)
+            stickerStore.flush()
+            #expect(stickerStore.readAsset(assetID) != nil)
+            #expect(backend.calls.contains("templateAsset(\(assetID.uuidString))"))
+        }
+    }
+
+    @Test("이미 있는 그림을 덮어쓰지 않는다")
+    func existingAssetIsNotOverwritten() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let assetID = UUID()
+            stickerStore.writeAsset(Self.onePixelPNG(), id: assetID)
+            stickerStore.flush()
+
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(finalAsset: assetID)
+            backend.assetResults = [assetID: Self.onePixelPNG()]
+            let importer = MarketplaceImporter(backend: backend)
+            _ = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+
+            // UUID가 겹쳤을 때 남의 바이트로 내 그림을 갈아치우는 것이 최악이다.
+            // **받으러 가지도 않는다** — 이미 있는 것을 확인하고 건너뛴다.
+            #expect(!backend.calls.contains { $0.hasPrefix("templateAsset") })
+            #expect(stickerStore.readAsset(assetID) != nil)
+        }
+    }
+
+    @Test("로그인 없이 받지 않는다")
+    func requiresSignIn() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+
+            await #expect(throws: MarketplaceImportFailure.remote(.notSignedIn)) {
+                try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: nil,
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            // **서버에 보내 401을 받고 나서 알리지 않는다.** 요청 자체가 없다.
+            #expect(backend.calls.isEmpty)
+            #expect(library.projects.isEmpty)
+        }
+    }
+
+    @Test("읽을 수 없는 manifest는 반쪽으로 담지 않는다")
+    func unreadableManifestSavesNothing() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = Data("맞지 않는 JSON".utf8)
+            let importer = MarketplaceImporter(backend: backend)
+
+            await #expect(throws: MarketplaceImportFailure.unreadableManifest) {
+                try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: session(),
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            #expect(library.projects.isEmpty)
+        }
+    }
+
+    @Test("두 번 받아도 하나다")
+    func importIsIdempotentLocally() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+            for _ in 0..<2 {
+                _ = try await importer.importSticker(
+                    listingID: "listing-9", title: "스티커", session: session(),
+                    library: library, stickerStore: stickerStore, store: mirrorStore
+                )
+            }
+            #expect(library.projects.filter { $0.id == "listing-9" }.count == 1)
+        }
+    }
+
+    @Test("AI 출처는 지우지 않고 생성 기록은 옮기지 않는다")
+    func originIsPreservedAndGenerationsAreNot() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest(origin: .aiGenerated)
+            let importer = MarketplaceImporter(backend: backend)
+            let project = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // 여기서 `.made`로 덮으면 출처 표시가 조용히 사라진다.
+            #expect(project.origin == .aiGenerated)
+            // 생성 기록 id는 판매자 기기의 것이다 — 내 기록으로 옮기지 않는다.
+            #expect(project.generationIDs.isEmpty)
+        }
+    }
+
+    @Test("경제 상태를 건드리지 않는다")
+    func importIsNotAnEconomicAction() async throws {
+        try await withStores { stickerStore, library, mirrorStore in
+            let backend = FakeMarketplaceBackend()
+            backend.manifestResult = try manifest()
+            let importer = MarketplaceImporter(backend: backend)
+            _ = try await importer.importSticker(
+                listingID: "listing-9", title: "스티커", session: session(),
+                library: library, stickerStore: stickerStore, store: mirrorStore
+            )
+            // 담기는 **이미 산 것을 기기로 옮기는 일**이다. 사는 요청이 아니다.
+            #expect(!backend.calls.contains { $0.hasPrefix("purchase") })
+            #expect(!backend.calls.contains { $0.hasPrefix("like") })
+        }
     }
 }

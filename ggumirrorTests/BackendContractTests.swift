@@ -245,3 +245,84 @@ struct BackendContractTests {
         init?(intValue: Int) { self.intValue = intValue; stringValue = "\(intValue)" }
     }
 }
+
+// MARK: - 내장 템플릿 통계 URL (release hardening)
+
+/// **query를 path 문자열에 붙이지 않는다.**
+///
+/// `send`는 `appending(path:)`로 URL을 만든다 — `?`가 `%3F`로 인코딩되어 query가
+/// 경로의 일부가 된다. 그래서 이 요청은 production에서 **언제나 404**였고
+/// 내장 템플릿 다운로드 수가 한 번도 뜨지 않았다(Cloud Run 로그로 확인).
+@Suite(.serialized)
+struct CatalogStatsURLTests {
+
+    private func client(json: String) -> BackendClient {
+        let session = StubURLProtocol.session()
+        StubURLProtocol.next = .init(status: 200, body: Data(json.utf8))
+        StubURLProtocol.requestedPaths = []
+        StubURLProtocol.requestedQueries = []
+        return BackendClient(baseURL: URL(string: "https://backend.test")!, session: session)
+    }
+
+    @Test("ids는 query로 간다 — path에 붙지 않는다")
+    func idsGoInTheQuery() async throws {
+        let subject = client(json: "[]")
+        _ = try? await subject.templateStats(ids: ["a", "b"])
+
+        let path = try #require(StubURLProtocol.requestedPaths.first)
+        let query = try #require(StubURLProtocol.requestedQueries.first)
+
+        #expect(path == "/catalog/templates/stats")
+        // 이 두 줄이 실제 production 404의 원인을 고정한다.
+        #expect(!path.contains("?"))
+        #expect(!path.contains("%3F"))
+        #expect(query.contains("ids=a,b") || query.contains("ids=a%2Cb"))
+    }
+
+    @Test("빈 목록은 요청하지 않는다")
+    func emptyIdsSendNothing() async throws {
+        let subject = client(json: "[]")
+        let result = try await subject.templateStats(ids: [])
+        #expect(result.isEmpty)
+        // `?ids=` 빈 요청을 새로 만들지 않는다.
+        #expect(StubURLProtocol.requestedPaths.isEmpty)
+    }
+
+    /// 경로로 쓰이는 문자열 리터럴만 골라낸다 — `"users/me/..."` 같은 것.
+    /// 사람이 읽는 문구(`"로그인이 필요해요."`)를 잡지 않도록 소문자/슬래시로 시작하는
+    /// ASCII 경로 모양만 본다.
+    private func pathLiterals(in code: String) -> [String] {
+        var found: [String] = []
+        var rest = Substring(code)
+        while let open = rest.firstIndex(of: "\"") {
+            let after = rest.index(after: open)
+            guard let close = rest[after...].firstIndex(of: "\"") else { break }
+            let literal = String(rest[after..<close])
+            let looksLikePath = literal.first.map { $0.isLowercase && $0.isASCII } == true
+                && literal.contains("/")
+            if looksLikePath { found.append(literal) }
+            rest = rest[rest.index(after: close)...]
+        }
+        return found
+    }
+
+    @Test("query를 path에 넣는 call site가 남아 있지 않다")
+    func noCallSiteBuildsQueryInsideAPath() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "ggumirror/Backend")
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        for file in files where file.pathExtension == "swift" {
+            let code = codeWithoutComments(try String(contentsOf: file, encoding: .utf8))
+            // **줄 단위로 보지 않는다.** 실제 버그는 `request(` 다음 줄에 문자열이
+            // 있었고, 줄 단위 검사는 그것을 놓친다. 경로처럼 생긴 **문자열 리터럴**
+            // 안에 `?...=`가 있는지를 본다.
+            for literal in pathLiterals(in: code) {
+                #expect(
+                    !literal.contains("?"),
+                    "\(file.lastPathComponent): query가 path 문자열 안에 있다 — \(literal)"
+                )
+            }
+        }
+    }
+}

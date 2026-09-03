@@ -45,11 +45,15 @@ struct CameraSwitchFlashTests {
         #expect(MirrorCamera.Position.initial == .front)
         #expect(MirrorCamera(role: .mirror).position == .front)
 
-        // 저장소에 카메라 위치를 남기는 코드가 없다.
+        // 저장소에 카메라 **위치**를 남기는 코드가 없다. framing은 저장하지만
+        // (사용자가 고른 화면 채우기 방식) 위치는 언제나 전면에서 시작한다.
         let camera = codeOnly(try repoFile("ggumirror/Mirror/MirrorCamera.swift"))
-        for forbidden in ["UserDefaults", "AppStorage", "MirrorStore", "@AppStorage"] {
+        for forbidden in ["AppStorage", "MirrorStore", "positionKey", "camera.position\""] {
             #expect(!camera.contains(forbidden), "카메라 위치를 저장하고 있다: \(forbidden)")
         }
+        // UserDefaults를 쓰는 자리는 framing 하나뿐이다.
+        #expect(camera.components(separatedBy: "preferences.").count - 1 <= 4)
+        #expect(camera.contains("private static let framingKey"))
         let view = codeOnly(try repoFile("ggumirror/Mirror/MirrorView.swift"))
         #expect(!view.contains("UserDefaults"))
         #expect(!view.contains("AppStorage"))
@@ -466,7 +470,7 @@ struct CameraSwitchFlashTests {
         let source = codeOnly(try repoFile("ggumirror/Mirror/MirrorCamera.swift"))
         #expect(source.contains("if role == .mirror { addPhotoOutput() }"))
         // 기본 role이 viewfinder라 extension이 따라 바뀌지 않는다.
-        #expect(source.contains("init(role: Role = .viewfinder)"))
+        #expect(source.contains("init(role: Role = .viewfinder,"))
     }
 
     // MARK: - C-2A / C-1 회귀

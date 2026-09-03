@@ -97,10 +97,15 @@ struct AccountSection: View {
 
             InkSeparator()
 
-            Button("로그아웃") { Task { await session.signOut() } }
-                .font(InkFont.button)
+            Button {
+                Task { await session.signOut() }
+            } label: {
+                Text("로그아웃")
+                    .font(InkFont.button)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+            }
                 .tint(PaperTheme.ink)
-                .frame(minHeight: 44)
                 .accessibilityIdentifier("signOut")
         }
     }

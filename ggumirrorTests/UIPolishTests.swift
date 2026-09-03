@@ -14,6 +14,16 @@ import SwiftUI
 import UIKit
 @testable import ggumirror
 
+/// 저장소 경로 기준으로 source를 읽는다. 주석을 지워서, 주석에 적힌 단어가
+/// 구현에 있는 것처럼 통과하지 않게 한다.
+private func polishSource(_ path: String) throws -> String {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+    return codeWithoutComments(
+        try String(contentsOf: root.appending(path: path), encoding: .utf8)
+    )
+}
+
 @MainActor
 struct UIPolishTests {
 
@@ -105,24 +115,40 @@ struct UIPolishTests {
         #expect(UIImage(named: ShardIcon.assetName) != nil, "asset을 찾지 못했다")
     }
 
-    @Test("조각 아이콘은 원본 색을 유지한다")
-    func shardIconKeepsItsOwnColors() throws {
-        // template rendering으로 단색을 입히면 브랜드 재화가 화면마다 다른 색이 된다.
-        // 컬러 asset이면 채널이 서로 다른 픽셀이 반드시 있다.
+    @Test("조각 아이콘은 원본 그대로 그려진다 — 단색으로 눌리지 않는다")
+    func shardIconIsNotFlattened() throws {
+        // 지키려는 것은 **template rendering이 아이콘을 뭉개지 않는 것**이다.
+        // 그렇게 되면 브랜드 재화가 화면의 tint를 따라 색이 바뀐다.
+        //
+        // 예전에는 "채널이 서로 다른 픽셀이 있는가"로 봤다. 지금 asset은
+        // 회색조 토큰이라(1.0.7부터 그렇다) 그 방법으로는 정상 asset도 실패한다 —
+        // 기준을 낮추는 대신 **무엇이 망가지는지**를 직접 본다.
+        //
+        // template rendering은 한 가지 색을 alpha만 달리해 칠한다. 그래서 불투명한
+        // 곳의 밝기가 사실상 한 값으로 모인다. 원본은 음영이 있어 여러 값이 남는다.
         let image = try #require(render(ShardIcon(size: 44), size: CGSize(width: 44, height: 44)))
         let data = pixels(image)
-        var colored = 0
+        var levels = Set<Int>()
         for index in stride(from: 0, to: data.count, by: 4) where data[index + 3] > 120 {
             let r = Int(data[index]), g = Int(data[index + 1]), b = Int(data[index + 2])
-            if abs(r - g) > 8 || abs(g - b) > 8 { colored += 1 }
+            levels.insert((r * 299 + g * 587 + b * 114) / 1000)
         }
-        #expect(colored > 20, "단색으로 보인다 — template rendering이 걸렸을 수 있다 (\(colored)px)")
+        #expect(levels.count > 8, "밝기가 한 값으로 모였다 — template rendering이 걸렸을 수 있다 (\(levels.count)단계)")
+
+        // 코드에서도 막는다. 위 그림 검사만으로는 tint가 우연히 음영을 남길 때 통과한다.
+        let source = try polishSource("ggumirror/Shared/InkComponents.swift")
+        let start = try #require(source.range(of: "struct ShardIcon")).upperBound
+        let end = try #require(source.range(of: "struct ShardAmount", range: start..<source.endIndex)).lowerBound
+        let icon = source[start..<end]
+        #expect(!icon.contains("renderingMode(.template)"))
+        #expect(!icon.contains("foregroundStyle"))
+        #expect(!icon.contains("tint("))
     }
 
     @Test("조각 아이콘은 정사각 frame에서도 비율을 지킨다", arguments: [CGFloat(16), 24, 36])
     func shardIconKeepsAspectRatio(size: CGFloat) throws {
-        // asset이 정사각형이 아니다(1312 × 1199). scaledToFit이라 가로를 꽉 채우고
-        // 위아래가 남아야 한다 — 늘어나면(scaledToFill/aspect 무시) 남는 줄이 사라진다.
+        // asset에 위아래 여백이 있다. scaledToFit이라 가로를 꽉 채우고 위아래가
+        // 남아야 한다 — 늘어나면(scaledToFill/aspect 무시) 남는 줄이 사라진다.
         let image = try #require(render(ShardIcon(size: size), size: CGSize(width: size, height: size)))
         let data = pixels(image)
         let width = image.width

@@ -220,11 +220,17 @@ final class StickerLibrary {
     /// 저장 파일이 이 앱보다 새 버전이면 읽지도 덮어쓰지도 않는다.
     private var isReadOnly: Bool
 
-    /// **guest 서랍에서 시작한다.** 로그인 상태를 알기 전에는 남의 스티커를 보여 주지 않는다.
-    static let live = StickerLibrary(store: .store(for: .guest))
+    /// **거울과 같은 서랍에서 시작한다**(`LastActiveUser`). 계정 privacy는 거울과
+    /// 스티커를 구분하지 않으므로 둘이 같은 순간에 같은 주인을 본다 —
+    /// 한쪽만 미리 열면 Editor의 스티커 목록만 잠시 비어 있게 된다.
+    static let live = {
+        let owner = LastActiveUser.shared.owner
+        return StickerLibrary(store: .store(for: owner), owner: owner)
+    }()
 
-    init(store: StickerProjectStore? = nil) {
+    init(store: StickerProjectStore? = nil, owner: MirrorLibraryOwner = .guest) {
         self.store = store
+        self.owner = owner
         guard let store else {
             isReadOnly = false
             return
@@ -351,6 +357,29 @@ final class StickerLibrary {
         projects.append(project)
         persist()
         return project
+    }
+
+    /// 스티커 이름을 바꾼다. **표시용 값 하나만 바뀐다.**
+    ///
+    /// 거울과 같은 규칙이다 — id는 그대로이고(이름은 identity가 아니다),
+    /// 같은 이름이 여럿 있어도 되며, 서버를 부르지 않는다.
+    /// 판매 중인지 확인하는 일은 화면이 한다(`MirrorRenamePolicy`).
+    @discardableResult
+    func rename(_ projectID: String, to raw: String) -> MirrorRenameOutcome {
+        guard let name = StickerProjectPolicy.normalizedName(raw) else { return .invalidName }
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return .notFound }
+        // 거울과 **같은 규칙**이다 — 한 서랍에 같은 이름을 두 개 두지 않는다.
+        guard isNameAvailable(name, excluding: projectID) else { return .duplicateName }
+        projects[index].name = name
+        persist()
+        return .renamed(name)
+    }
+
+    /// 이 서랍에서 쓸 수 있는 이름인가. 비교 규칙은 `ContentNameKey` 하나다.
+    func isNameAvailable(_ raw: String, excluding projectID: String? = nil) -> Bool {
+        let key = ContentNameKey.canonical(raw)
+        guard !key.isEmpty else { return false }
+        return !projects.contains { $0.id != projectID && ContentNameKey.canonical($0.name) == key }
     }
 
     /// 복제. **새 id · 새 완성 PNG**를 만든다. 원본은 그대로 둔다.

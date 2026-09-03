@@ -35,6 +35,9 @@ struct InkTabBar: View {
     /// 콘텐츠가 탭바에 가리지 않도록 스크롤 뷰가 비워둬야 하는 높이.
     static let reservedHeight: CGFloat = 108
 
+    /// 막대 위에 남겨 두는 숨 쉴 자리. 마지막 줄이 막대에 딱 붙지 않게 한다.
+    static let contentBreathingRoom: CGFloat = 24
+
     @ScaledMetric(relativeTo: .caption) private var itemHeight: CGFloat = 52
 
     var body: some View {
@@ -104,4 +107,24 @@ struct InkUnderline: Shape {
         InkTabBar(selection: $tab)
     }
     .paperBackground()
+}
+
+
+// MARK: - 스크롤 화면의 아래 여백
+
+extension View {
+    /// 탭 막대에 가리지 않도록 스크롤 내용 **아래를 띄운다.**
+    ///
+    /// 막대는 `ZStack`의 형제라 화면 위에 겹쳐 그려진다 — 홈 탭 자신은 아래 여백을
+    /// 갖고 있지만, 거기서 밀어 올린 화면(설정 · 프로필 · 알림 · 상점 관리)은
+    /// 그 여백을 물려받지 않는다. 그래서 마지막 줄이 막대 밑으로 들어갔다.
+    ///
+    /// 화면마다 숫자를 적지 않는다. 막대 높이가 바뀌면 여기 한 곳만 바뀐다.
+    func inkTabBarSafeContent() -> some View {
+        contentMargins(
+            .bottom,
+            InkTabBar.reservedHeight + InkTabBar.contentBreathingRoom,
+            for: .scrollContent
+        )
+    }
 }

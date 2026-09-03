@@ -25,6 +25,9 @@ struct StickerStoreView: View {
     @State private var publishTarget: StickerProject?
     @State private var isChoosingStart = false
     @State private var notice: String?
+    /// 이름을 바꾸는 중인 스티커.
+    @State private var renameTarget: StickerProject?
+    @State private var renameText = ""
     /// 상점에 들어오면 언제나 최신 순이다. 거울 상점과 같은 규칙·같은 enum이다.
     @State private var sort: StoreSort = .default
     @Environment(MarketplaceStore.self) private var store
@@ -139,6 +142,10 @@ struct StickerStoreView: View {
                 onSaved: { creatorRequest = nil }
             )
         }
+        .inkBottomSheet(item: $renameTarget, size: .fraction(0.5)) { project in
+            // 거울과 **같은 시트**를 쓴다 — 입력 규칙도 44pt 버튼 규칙도 같다.
+            MirrorNameSheet(initialName: renameText, isNewMirror: false) { commitRename(project, to: $0) }
+        }
         .inkBottomSheet(item: $publishTarget, size: .fraction(0.92)) { project in
             PublishStickerView(project: project, library: library)
         }
@@ -211,7 +218,10 @@ struct StickerStoreView: View {
     }
 
     private var grid: some View {
-        LazyVGrid(columns: GalleryLayout.columns(for: dynamicTypeSize), spacing: 18) {
+        LazyVGrid(
+            columns: GalleryLayout.columns(for: dynamicTypeSize),
+            spacing: GalleryLayout.spacing
+        ) {
             ForEach(library.projects.reversed()) { project in
                 VStack(spacing: 6) {
                     Button { actionTarget = project } label: {
@@ -223,7 +233,7 @@ struct StickerStoreView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, GalleryLayout.horizontalPadding)
     }
 
     /// 실제 서버 목록. 상품이 없으면 **비어 있다고 말한다** — 가짜 목록을 만들지 않는다.
@@ -314,6 +324,51 @@ struct StickerStoreView: View {
         .accessibilityLabel("\(project.name) 상점에 등록")
     }
 
+    // MARK: - 이름 변경
+
+    /// 지금 이 스티커의 이름을 바꿀 수 있는가.
+    ///
+    /// **거울과 같은 정책·같은 판단**이다. 다른 것은 문구의 명사뿐이라
+    /// 정책을 두 벌로 나누지 않았다. 판매 중인지는 서버가 준
+    /// `sourceContentId`로 본다 — 제목이나 그림이 닮았다고 잠그지 않는다.
+    private func renameAvailability(_ project: StickerProject) -> MirrorRenameAvailability {
+        MirrorRenamePolicy.availability(
+            isSignedIn: session.server != nil,
+            hasSellerLinkHint: library.draft(for: project.id) != nil,
+            sellerListingsAreKnown: store.myListingsAreKnown,
+            isPublishedOriginal: store.sellingListing(
+                forContentID: project.id, contentType: RenameableAssetKind.sticker.contentType
+            ) != nil
+        )
+    }
+
+    private func beginRename(_ project: StickerProject) {
+        let availability = renameAvailability(project)
+        guard availability.isAllowed else {
+            notice = availability.message(for: .sticker)
+            return
+        }
+        renameText = project.name
+        renameTarget = project
+    }
+
+    /// **저장 직전에 다시 확인한다.** 창을 열어 둔 사이에 등록이 끝났을 수 있다.
+    private func commitRename(_ project: StickerProject, to newName: String) {
+        let availability = renameAvailability(project)
+        guard availability.isAllowed else {
+            renameTarget = nil
+            notice = availability.message(for: .sticker)
+            return
+        }
+        if case .invalidName = library.rename(project.id, to: newName) {
+            renameTarget = nil
+            notice = "이름을 입력해 주세요."
+            return
+        }
+        // 성공은 목록이 바로 바뀌는 것으로 충분하다 — 창을 하나 더 띄우지 않는다.
+        renameTarget = nil
+    }
+
     private func actions(for project: StickerProject) -> [InkDialogAction] {
         [
             InkDialogAction("사용하기", role: .primary) {
@@ -327,6 +382,7 @@ struct StickerStoreView: View {
                 )
             },
             InkDialogAction("사진에 저장") { saveSticker(project) },
+            InkDialogAction("이름 변경") { beginRename(project) },
             // 상점 등록은 **카드 아래 CTA 한 곳**에서만 한다 — 같은 동작을 두 곳에 두지 않는다.
             InkDialogAction("삭제", role: .destructive) { library.delete(project) },
             InkDialogAction("닫기"),

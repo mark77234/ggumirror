@@ -7,6 +7,7 @@
 //
 
 import PhotosUI
+import StoreKit
 import SwiftUI
 
 struct EditorView: View {
@@ -64,6 +65,13 @@ struct EditorView: View {
     @State private var pendingCreatorRequest: StickerCreatorRequest?
     @State private var creatorRequest: StickerCreatorRequest?
     @Environment(\.dismiss) private var dismiss
+    /// Apple 공식 리뷰 요청. **우리가 별점 UI를 만들지 않는다.**
+    @Environment(\.requestReview) private var requestReview
+    /// 언제 물어봐도 되는지 아는 값. optional이라 이 화면을 따로 그리는 곳에서도 안전하다.
+    @Environment(ReviewPromptTracker.self) private var reviewPrompt: ReviewPromptTracker?
+    /// 매일 알림. 첫 저장 뒤에 권한을 묻는 자리라 여기서 본다.
+    /// **미리보기·테스트에는 없을 수 있어** optional이다.
+    @Environment(DailyReminderScheduler.self) private var reminder: DailyReminderScheduler?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,9 +88,9 @@ struct EditorView: View {
         }
         .inkBottomSheet(isPresented: $isNamingMirror) {
             MirrorNameSheet(
-                name: $draftName,
+                initialName: draftName,
                 isNewMirror: true,
-                onSave: { saveMirror() }
+                onSave: { saveMirror(named: $0) }
             )
         }
         .inkMirrorStorageFullDialog(
@@ -165,7 +173,7 @@ struct EditorView: View {
             )
         }
         .inkBottomSheet(isPresented: $isEditingText) {
-            TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
+            TextInputSheet(initialText: draftText, isNew: isAddingText) { commitText($0) }
         }
         .inkBottomSheet(isPresented: $isChoosingTextColor) {
             if let text = selectedText {
@@ -226,8 +234,13 @@ struct EditorView: View {
 
     private var header: some View {
         HStack {
-            Button("취소") { dismiss() }
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                dismiss()
+            } label: {
+                Text("취소")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
 
             Spacer()
 
@@ -237,9 +250,14 @@ struct EditorView: View {
 
             Spacer()
 
-            Button("저장") { beginSave() }
-                .font(InkFont.body.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                beginSave()
+            } label: {
+                Text("저장")
+                    .font(InkFont.body.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
         }
         .foregroundStyle(PaperTheme.ink)
         .padding(.horizontal, 16)
@@ -411,7 +429,7 @@ struct EditorView: View {
     private func beginSave() {
         guard library.needsName(for: saveContext) else {
             // 홈에서 들어왔으면 이름을 묻지 않는다. 새로 만들어야 하면 자동 이름이 붙는다.
-            saveMirror()
+            saveMirror(named: draftName)
             return
         }
         // 복제로 들어왔으면 원본 이름을 바탕으로 채워두고, 사용자가 고칠 수 있게 한다.
@@ -419,10 +437,13 @@ struct EditorView: View {
         isNamingMirror = true
     }
 
-    private func saveMirror() {
-        switch library.save(design, name: draftName, context: saveContext) {
+    /// 이름은 시트가 넘겨준 값을 쓴다. 시트가 없는 경로(홈에서 들어온 저장)는
+    /// `draftName`이 그대로 들어온다 — 그때는 라이브러리가 자동 이름을 붙인다.
+    private func saveMirror(named name: String) {
+        switch library.save(design, name: name, context: saveContext) {
         case .updated:
             isNamingMirror = false
+            recordSuccessfulSave()
             onSaved()
             dismiss()
         case .created(let id, let name):
@@ -431,11 +452,44 @@ struct EditorView: View {
             design.id = id
             design.name = name
             saveContext = .editCurrent
+            recordSuccessfulSave()
             onSaved()
             dismiss()
         case .needsMoreSlots:
             isNamingMirror = false
             if !library.hasFreeMirrorSlot { showsSlotFull = true }
+        }
+    }
+
+    /// **성공한 직후에만** 리뷰를 묻는다. 저장 실패나 보관 공간 부족에서는 묻지 않는다 —
+    /// 방금 막힌 사람에게 별점을 부탁하는 셈이 된다.
+    ///
+    /// 실제로 창이 뜰지는 OS가 정한다. 우리는 물어봐도 되는 상태인지만 판단한다.
+    private func recordSuccessfulSave() {
+        reviewPrompt?.recordSuccessfulSave()
+        guard reviewPrompt?.shouldRequest() == true else {
+            // 리뷰를 묻지 않는 저장이다. **여기가 알림 권한을 묻기 좋은 자리다** —
+            // 방금 거울 하나를 만들어 본 사람이라 앱이 무엇인지 안다.
+            askForNotificationsOnce()
+            return
+        }
+        reviewPrompt?.recordRequestAttempt()
+        requestReview()
+    }
+
+    /// 알림 권한을 **딱 한 번** 묻는다.
+    ///
+    /// 앱을 켜자마자 묻지 않는 이유: 앱이 무엇인지 보기도 전에 창이 뜨면 대부분
+    /// 거부하고, 거부는 설정 앱에 들어가야 되돌릴 수 있다.
+    ///
+    /// 리뷰 요청과 같은 저장에서 겹치지 않게 한다 — 시스템 창 두 개가 연달아 뜨면
+    /// 둘 다 무시된다. `canAsk`가 `notAsked`에서만 참이라 두 번 묻지 않는다.
+    private func askForNotificationsOnce() {
+        guard let reminder, reminder.isOn else { return }
+        Task {
+            await reminder.refreshPermission()
+            guard reminder.permission.canAsk else { return }
+            await reminder.enable()
         }
     }
 
@@ -700,9 +754,9 @@ struct EditorView: View {
     }
 
     /// 시트의 "추가" / "저장". 빈 문자열은 정책 단계에서 걸러진다.
-    private func commitText() {
+    private func commitText(_ draft: String) {
         defer { isEditingText = false }
-        guard let value = TextPolicy.normalized(draftText) else { return }
+        guard let value = TextPolicy.normalized(draft) else { return }
 
         if isAddingText {
             let object = TextPlacement.insert(value, in: design, visibleRect: visibleRect)
@@ -1048,17 +1102,22 @@ private struct EditorPreviewView: View {
             MirrorCanvasView(design: design)
                 .padding(24)
 
-            Button("닫기") { dismiss() }
-                .font(InkFont.body.weight(.semibold))
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(minHeight: 44)
-                .background {
-                    Capsule().fill(PaperTheme.subtleSurface)
-                        .overlay(Capsule().stroke(PaperTheme.ink, lineWidth: 1.6))
-                }
-                .padding(16)
+            Button {
+                dismiss()
+            } label: {
+                Text("닫기")
+                    .font(InkFont.body.weight(.semibold))
+                    .foregroundStyle(PaperTheme.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .background {
+                        Capsule().fill(PaperTheme.subtleSurface)
+                            .overlay(Capsule().stroke(PaperTheme.ink, lineWidth: 1.6))
+                    }
+                    .padding(16)
+                    .contentShape(.rect)
+            }
         }
         .paperBackground()
     }

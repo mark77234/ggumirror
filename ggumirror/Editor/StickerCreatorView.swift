@@ -129,7 +129,7 @@ struct StickerCreatorView: View {
             )
         }
         .inkBottomSheet(isPresented: $isEditingText) {
-            TextInputSheet(text: $draftText, isNew: isAddingText) { commitText() }
+            TextInputSheet(initialText: draftText, isNew: isAddingText) { commitText($0) }
         }
         .inkBottomSheet(isPresented: $isChoosingTextColor) {
             if let text = selectedText {
@@ -208,7 +208,7 @@ struct StickerCreatorView: View {
                 : [InkDialogAction("확인", role: .primary)]
         }
         .inkBottomSheet(isPresented: $isNaming) {
-            MirrorNameSheet(name: $draftName, isNewMirror: true, onSave: { saveProject() })
+            MirrorNameSheet(initialName: draftName, isNewMirror: true) { saveProject(named: $0) }
         }
         .inkDialog(
             "사진에서 피사체를 찾지 못했어요",
@@ -227,9 +227,14 @@ struct StickerCreatorView: View {
     private var header: some View {
         HStack {
             // 취소는 원본을 건드리지 않는다. 사본에서만 작업했다.
-            Button("취소") { dismiss() }
-                .font(InkFont.body)
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                dismiss()
+            } label: {
+                Text("취소")
+                    .font(InkFont.body)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
 
             Spacer(minLength: 8)
 
@@ -239,9 +244,14 @@ struct StickerCreatorView: View {
 
             Spacer(minLength: 8)
 
-            Button("저장") { beginSave() }
-                .font(InkFont.body.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
+            Button {
+                beginSave()
+            } label: {
+                Text("저장")
+                    .font(InkFont.body.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
                 .disabled(isEmpty)
         }
         .foregroundStyle(PaperTheme.ink)
@@ -442,10 +452,13 @@ struct StickerCreatorView: View {
                 iconButton("복제", icon: "plus.square.on.square", action: onDuplicate)
                 iconButton("삭제", icon: "trash", action: onDelete)
                 Spacer(minLength: 0)
-                Button("완료", action: onDone)
-                    .font(InkFont.button)
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(minHeight: 44)
+                Button(action: onDone) {
+                    Text("완료")
+                        .font(InkFont.button)
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -612,8 +625,8 @@ struct StickerCreatorView: View {
         isEditingText = true
     }
 
-    private func commitText() {
-        guard let text = TextPolicy.normalized(draftText) else { return }
+    private func commitText(_ draft: String) {
+        guard let text = TextPolicy.normalized(draft) else { return }
         if isAddingText {
             let object = TextPlacement.insert(text, in: design, visibleRect: visibleRect)
             history.apply(.addText(object), to: &design.snapshot)
@@ -691,14 +704,14 @@ struct StickerCreatorView: View {
     private func beginSave() {
         // 편집이면 이름을 다시 묻지 않는다 — 같은 스티커를 고치는 것이다.
         if context.existingID != nil {
-            saveProject()
+            saveProject(named: draftName)
         } else {
             isNaming = true
         }
     }
 
-    private func saveProject() {
-        library.save(design, name: draftName, context: context, generationIDs: aiGenerationIDs)
+    private func saveProject(named name: String) {
+        library.save(design, name: name, context: context, generationIDs: aiGenerationIDs)
         onSaved()
         dismiss()
     }

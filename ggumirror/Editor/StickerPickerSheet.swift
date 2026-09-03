@@ -144,10 +144,15 @@ struct StickerPickerSheet: View {
                     .font(InkFont.body)
                     .foregroundStyle(PaperTheme.ink)
                 if let onCreateSticker {
-                    Button("스티커 만들기") { onCreateSticker() }
-                        .font(InkFont.button)
-                        .foregroundStyle(PaperTheme.ink)
-                        .frame(minHeight: 44)
+                    Button {
+                        onCreateSticker()
+                    } label: {
+                        Text("스티커 만들기")
+                            .font(InkFont.button)
+                            .foregroundStyle(PaperTheme.ink)
+                            .frame(minHeight: 44)
+                            .contentShape(.rect)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)

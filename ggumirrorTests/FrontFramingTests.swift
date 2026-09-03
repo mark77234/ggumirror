@@ -37,23 +37,32 @@ private let sensor43 = CGSize(width: 1440, height: 1920)
 /// iPhone 15 Pro 화면 픽셀.
 private let screen = CGSize(width: 1179, height: 2556)
 
+/// 아무도 고른 적 없는 기기. 실기기 `UserDefaults.standard`를 읽으면 이 테스트가
+/// 개발자가 앱에서 눌러 둔 값에 따라 달라진다.
+private func emptyPreferences() -> UserDefaults {
+    UserDefaults(suiteName: "ggumirror.tests.framing.\(UUID().uuidString)")!
+}
+
 @MainActor
 @Suite("전면 framing 기본값")
 struct FrontFramingDefaultTests {
 
-    @Test("첫 진입은 넓게 보기다")
-    func defaultIsWide() {
-        #expect(Framing.initial == .wide)
-        let camera = MirrorCamera(role: .mirror)
-        #expect(camera.frontFraming == .wide)
+    @Test("첫 진입은 화면 채우기다")
+    func defaultFills() {
+        // **실기기 QA**에서 바뀐 값이다. 넓게 보기는 위아래에 검은 자리가 남아
+        // 거울을 처음 열었을 때 화면이 비어 보였다. `넓게`는 그대로 고를 수 있다.
+        #expect(Framing.default == .fill)
+        #expect(Framing.initial == .fill)
+        let camera = MirrorCamera(role: .mirror, preferences: emptyPreferences())
+        #expect(camera.frontFraming == .fill)
     }
 
     @Test("후면은 언제나 꽉 채운다")
     func rearAlwaysFills() {
-        let camera = MirrorCamera(role: .mirror)
+        let camera = MirrorCamera(role: .mirror, preferences: emptyPreferences())
         // 시작은 전면이다.
         #expect(camera.position == .front)
-        #expect(camera.framing == .wide)
+        #expect(camera.framing == .fill)
 
         // 후면에서는 전면 선택과 무관하게 fill이다.
         let source = try! framingSource("ggumirror/Mirror/MirrorCamera.swift")
@@ -61,13 +70,22 @@ struct FrontFramingDefaultTests {
         #expect(source.contains("role == .mirror && status == .ready && position == .front"))
     }
 
-    @Test("session 안에서만 산다 — 저장하지 않는다")
-    func framingIsNotPersisted() throws {
+    @Test("고른 값은 남고 기본값은 적어 두지 않는다")
+    func onlyAnExplicitChoiceIsPersisted() throws {
         let source = try framingSource("ggumirror/Mirror/MirrorCamera.swift")
-        #expect(!source.contains("UserDefaults"))
-        #expect(!source.contains("AppStorage"))
+        // 사용자가 고른 것만 적는다 — 고르는 자리는 `setFrontFraming` 하나다.
+        let setter = try #require(source.range(of: "func setFrontFraming(_ next: Framing)"))
+        #expect(String(source[setter.upperBound...].prefix(400))
+            .contains("preferences.set(next.rawValue, forKey: Self.framingKey)"))
+
+        // 시작할 때는 읽기만 한다. 기본값을 미리 적어 두면 나중에 기본이 바뀌어도
+        // "이미 고른 사람"으로 취급돼 따라오지 못한다.
+        let store = emptyPreferences()
+        _ = MirrorCamera(role: .mirror, preferences: store)
+        #expect(store.string(forKey: "ggumirror.camera.frontFraming") == nil)
+
         // 전면 선택은 카메라 객체가 들고 있으므로 후면에 갔다 와도 살아 있다.
-        #expect(source.contains("var frontFraming: Framing = .initial"))
+        #expect(source.contains("var frontFraming: Framing"))
     }
 }
 
@@ -272,9 +290,11 @@ struct FramingSelectorUITests {
         let view = try framingSource("ggumirror/Mirror/MirrorView.swift")
         #expect(view.contains("framingOptions: camera.canChooseFraming ? MirrorCamera.Framing.allCases : []"))
 
-        let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        // 후면이면 빈 배열이 오고 그리지 않는다.
-        #expect(controls.contains("if framingOptions.count > 1"))
+        // 후면이면 빈 배열이 오고 그리지 않는다. **칩을 그리는 곳이 판단한다** —
+        // 칩은 `MirrorFramingSelector`로 빠졌고(상점 미리보기가 같은 것을 쓴다)
+        // 그래서 이 규칙도 거기 하나에만 있다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        #expect(selector.contains("if options.count > 1"))
     }
 
     @Test("사용자 말로 적는다 — 비율을 보여 주지 않는다")
@@ -295,11 +315,18 @@ struct FramingSelectorUITests {
     @Test("배율과 다른 묶음이다")
     func framingIsNotAZoomChip() throws {
         let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        // 배율 칩 목록 안에 섞어 넣지 않는다.
-        #expect(controls.contains("ForEach(framingOptions, id: \\.self)"))
+        // 배율 칩 목록 안에 섞어 넣지 않는다. 섞으면 "넓게 보기"가 배율처럼 읽힌다.
+        // framing은 자기 view로 그리고, 배율만 여기서 ForEach를 돈다.
         #expect(controls.contains("ForEach(zoomPresets, id: \\.self)"))
-        // 손이 닿는 자리는 배율 칩과 같은 규칙이다.
-        #expect(controls.components(separatedBy: "frame(minHeight: 44)").count - 1 >= 1)
+        #expect(!controls.contains("ForEach(framingOptions"))
+        #expect(controls.contains("framingSelector"))
+
+        // 칩 자체는 자기 ForEach를 갖는다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        #expect(selector.contains("ForEach(options, id: \\.self)"))
+        // 손이 닿는 자리는 배율 칩과 같은 규칙이다. **숫자를 다시 적지 않는다** —
+        // 44를 두 곳에 적으면 한쪽만 바뀐다(`ButtonHitAreaTests`가 값을 고정한다).
+        #expect(selector.contains("frame(minHeight: InkTapTarget.minimum)"))
     }
 
     @Test("배율이 하나뿐인 기기에서도 고를 수 있다")
@@ -310,8 +337,16 @@ struct FramingSelectorUITests {
 
     @Test("배율 버튼과 같은 auto-hide를 쓴다")
     func framingUsesTheSameTimer() throws {
+        // 고르기 **전에** 타이머를 다시 돌린다. 순서가 뒤집히면 고르는 순간
+        // 컨트롤이 사라진다.
+        let selector = try framingSource("ggumirror/Mirror/MirrorFramingSelector.swift")
+        let tap = try #require(selector.range(of: "onInteraction()"))
+        #expect(selector[tap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            .hasPrefix("onSelect(option)"))
+
+        // 실제 거울이 그 hook에 auto-hide 타이머를 실제로 연결한다.
         let controls = try framingSource("ggumirror/Mirror/MirrorControls.swift")
-        #expect(controls.contains("onInteraction()\n            onSelectFraming(option)"))
+        #expect(controls.contains("onInteraction: onInteraction"))
     }
 }
 
@@ -357,7 +392,9 @@ struct FramingCameraSwitchTests {
 
     @Test("잠금화면 viewfinder에는 framing 선택이 없다")
     func lockScreenKeepsOldBehaviour() {
-        let viewfinder = MirrorCamera(role: .viewfinder)
+        let store = emptyPreferences()
+        store.set("wide", forKey: "ggumirror.camera.frontFraming")
+        let viewfinder = MirrorCamera(role: .viewfinder, preferences: store)
         #expect(!viewfinder.canChooseFraming)
         viewfinder.setFrontFraming(.fill)
         // role guard가 막는다 — extension 동작이 따라 바뀌지 않는다.

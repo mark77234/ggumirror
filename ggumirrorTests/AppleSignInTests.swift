@@ -52,7 +52,11 @@ struct AppleSignInTests {
             store: identities,
             sessions: saved,
             credentials: StubCredentials(result: credentials),
-            backend: backend
+            backend: backend,
+            // 테스트가 실제 사용자 설정(= 다음 실행의 서랍)을 정해 버리지 않게 한다.
+            lastActiveUser: LastActiveUser(
+                defaults: UserDefaults(suiteName: "ggumirror.tests.\(UUID().uuidString)")!
+            )
         )
     }
 

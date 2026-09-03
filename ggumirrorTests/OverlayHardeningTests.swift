@@ -126,8 +126,12 @@ struct OwnedTemplateCTATests {
         // id로 판단한다. 제목으로 맞추지 않는다.
         #expect(code.contains("library?.mirrors.contains { $0.id == template.id }"))
         #expect(!code.contains("$0.name == template.name"))
-        #expect(code.contains("\"이미 내 거울에 있어요\""))
-        #expect(code.contains(".disabled(isOwned)"))
+        // 문구와 잠금은 이제 사용자 상품과 공유하는 상태 모델이 정한다.
+        #expect(code.contains("MirrorAcquireCTA.state("))
+        #expect(code.contains("existsLocally: isOwned"))
+        #expect(code.contains(".disabled(!cta.isEnabled)"))
+        #expect(MirrorAcquireCTA.state(price: 0, isSignedIn: true, existsLocally: true)
+                .title == "이미 내 거울에 있어요")
     }
 
     @Test("같은 템플릿을 두 번 받아도 하나다")
@@ -252,10 +256,14 @@ struct LikeVisibilityTests {
 
     @Test("누른 상태가 칩 전체로 드러난다")
     func likedStateInvertsTheChip() throws {
-        let code = try overlaySource("Store/MarketplaceGallery.swift")
-        #expect(code.contains("shape.fill(isLiked ? PaperTheme.ink : PaperTheme.paper)"))
-        #expect(code.contains("isLiked ? PaperTheme.subtleSurface : PaperTheme.ink"))
+        // 카드를 하나로 합치면서 스티커 전용 칩이 사라졌다. 그 칩이 있었던 이유
+        // (caption 크기에서 빈 하트와 찬 하트의 차이가 너무 미묘하다)는 색으로 살렸다 —
+        // 눌리면 속이 찬 하트 + 진한 먹지가 된다.
+        let code = try overlaySource("Store/StoreMirrorCard.swift")
+        #expect(code.contains("like.isLiked ? \"heart.fill\" : \"heart\""))
+        #expect(code.contains("like.isLiked ? PaperTheme.ink : PaperTheme.secondaryInk"))
         // 손이 닿는 자리는 그대로 44pt다.
-        #expect(code.contains("minWidth: 44, minHeight: 44"))
+        #expect(code.contains("minWidth: InkTapTarget.minimum"))
+        #expect(InkTapTarget.minimum == 44)
     }
 }

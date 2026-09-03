@@ -17,11 +17,13 @@ extension BackendClient: CatalogBackend {
         guard !ids.isEmpty else { return [] }
         // id는 우리 상수 목록이지만 그대로 붙이지 않는다.
         let joined = ids.joined(separator: ",")
-        let escaped = joined.addingPercentEncoding(
-            withAllowedCharacters: .urlQueryAllowed
-        ) ?? joined
+        // **`?`를 path 문자열에 붙이지 않는다.** `send`가 `appending(path:)`로 URL을
+        // 만들기 때문에 `?`가 `%3F`로 인코딩되어 query가 경로의 일부가 된다 —
+        // 그러면 이 요청은 **언제나 404**이고 내장 템플릿 다운로드 수가 영영 뜨지 않는다.
+        // 인코딩은 우리가 하지 않고 query builder에게 맡긴다.
         let data = try await request(
-            "catalog/templates/stats?ids=\(escaped)", method: "GET"
+            "catalog/templates/stats", method: "GET",
+            query: [URLQueryItem(name: "ids", value: joined)]
         )
         return try decodeCatalog(
             [CatalogTemplateStat].self, from: data, path: "GET /catalog/templates/stats"
@@ -39,6 +41,34 @@ extension BackendClient: CatalogBackend {
         return try decodeCatalog(
             CatalogAcquisition.self, from: data,
             path: "POST /catalog/templates/{id}/acquire"
+        )
+    }
+
+    /// 내가 가진 내장 템플릿 id. **CTA가 이 값으로 갈린다.**
+    func ownedTemplateIDs(accessToken: String) async throws -> [String] {
+        struct Payload: Decodable { let templateIds: [String] }
+        let data = try await request(
+            "catalog/templates/mine", method: "GET", accessToken: accessToken
+        )
+        return try decodeCatalog(
+            Payload.self, from: data, path: "GET /catalog/templates/mine"
+        ).templateIds
+    }
+
+    /// 조각을 내고 내장 템플릿을 산다. **body가 없다** —
+    /// 가격도 수량도 사용자도 client가 정하는 자리가 없다. 값은 서버 표가 정한다.
+    ///
+    /// 이미 가진 것은 값을 내지 않고 그대로 돌려준다(`firstAcquisition=false`).
+    /// 같은 요청을 여러 번 보내도 조각은 한 번만 빠진다 — 서버가 멱등이다.
+    func purchaseTemplate(id: String, accessToken: String) async throws -> CatalogAcquisition {
+        let data = try await request(
+            "catalog/templates/\(try catalogPathComponent(id))/purchases",
+            method: "POST",
+            accessToken: accessToken
+        )
+        return try decodeCatalog(
+            CatalogAcquisition.self, from: data,
+            path: "POST /catalog/templates/{id}/purchases"
         )
     }
 

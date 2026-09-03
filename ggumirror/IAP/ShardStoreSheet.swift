@@ -73,14 +73,19 @@ struct ShardStoreSheet: View {
                 // StoreKit이 준 오류 문자열을 그대로 보여주지 않는다.
                 VStack(alignment: .leading, spacing: 10) {
                     message("상품 정보를 불러오지 못했어요")
-                    Button("다시 시도") { Task { await controller.reloadProducts() } }
-                        .font(InkFont.body.weight(.semibold))
-                        .foregroundStyle(PaperTheme.ink)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background {
-                            UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                                .stroke(PaperTheme.ink, lineWidth: 1.6)
-                        }
+                    Button {
+                        Task { await controller.reloadProducts() }
+                    } label: {
+                        Text("다시 시도")
+                            .font(InkFont.body.weight(.semibold))
+                            .foregroundStyle(PaperTheme.ink)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background {
+                                UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                                    .stroke(PaperTheme.ink, lineWidth: 1.6)
+                            }
+                            .contentShape(.rect)
+                    }
                         .buttonStyle(InkPressStyle())
                 }
             }
@@ -183,14 +188,19 @@ struct ShardStoreSheet: View {
                     .frame(maxWidth: .infinity)
             }
 
-            Button("닫기") { dismiss() }
-                .font(InkFont.body)
-                .foregroundStyle(PaperTheme.ink)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background {
-                    UnevenRoundedRectangle.ink(16, 13, 17, 12)
-                        .stroke(PaperTheme.ink, lineWidth: 1.6)
-                }
+            Button {
+                dismiss()
+            } label: {
+                Text("닫기")
+                    .font(InkFont.body)
+                    .foregroundStyle(PaperTheme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background {
+                        UnevenRoundedRectangle.ink(16, 13, 17, 12)
+                            .stroke(PaperTheme.ink, lineWidth: 1.6)
+                    }
+                    .contentShape(.rect)
+            }
                 .buttonStyle(InkPressStyle())
         }
         .padding(.horizontal, 20)
