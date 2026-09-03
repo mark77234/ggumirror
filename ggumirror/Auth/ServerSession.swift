@@ -18,10 +18,30 @@ nonisolated struct ServerSession: Equatable, Codable {
     let expiresAt: Date
     /// 꾸미러 내부 user id(UUID). Apple 식별자가 아니다.
     let userID: String
+    /// 서버가 발급한 **익명 신원**. 조각을 사고 쓰는 데는 계정이 필요 없다.
+    /// Apple 로그인으로 만들어진 계정과 구분하는 데만 쓴다(판매자 기능 등).
+    let isGuest: Bool
 
     enum CodingKeys: String, CodingKey {
-        case accessToken, expiresAt
+        case accessToken, expiresAt, isGuest
         case userID = "userId"
+    }
+
+    init(accessToken: String, expiresAt: Date, userID: String, isGuest: Bool = false) {
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+        self.userID = userID
+        self.isGuest = isGuest
+    }
+
+    /// **예전에 저장된 세션에는 `isGuest`가 없다.** 없으면 계정으로 읽는다 —
+    /// 여기서 실패하면 이미 로그인한 사용자가 업데이트만으로 로그아웃된다.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try container.decode(String.self, forKey: .accessToken)
+        expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        userID = try container.decode(String.self, forKey: .userID)
+        isGuest = try container.decodeIfPresent(Bool.self, forKey: .isGuest) ?? false
     }
 
     func isValid(at moment: Date = Date()) -> Bool { expiresAt > moment }

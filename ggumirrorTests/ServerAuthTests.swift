@@ -33,6 +33,19 @@ final class FakeAuthBackend: AuthBackend, @unchecked Sendable {
     private(set) var receivedIdentityTokens: [String] = []
     private(set) var receivedNonces: [String] = []
     private(set) var logoutCount = 0
+    /// 로그인 요청에 실려 온 guest token. 지갑을 넘겨받는 유일한 근거다.
+    private(set) var receivedGuestTokens: [String?] = []
+    /// `POST /auth/guest`가 받은 연장 대상 token.
+    private(set) var guestRenewals: [String?] = []
+    /// 익명 세션 발급 결과. 실패로 두면 발급이 안 되는 상황을 흉내 낸다.
+    var guestOutcome: Outcome = .success(
+        ServerSession(
+            accessToken: "guest-token-1",
+            expiresAt: Date(timeIntervalSinceNow: 30 * 86_400),
+            userID: "00000000-0000-0000-0000-0000000000AA",
+            isGuest: true
+        )
+    )
 
     init(
         signInOutcome: Outcome = .success(
@@ -50,12 +63,22 @@ final class FakeAuthBackend: AuthBackend, @unchecked Sendable {
     /// 마지막 로그인 요청에 담긴 이름. Apple이 준 값이 실제로 실려 가는지 본다.
     var sawDisplayName: String?
 
+    func startGuest(renewing: String?) async throws -> ServerSession {
+        guestRenewals.append(renewing)
+        switch guestOutcome {
+        case .success(let session): return session
+        case .failure(let error): throw error
+        }
+    }
+
     func signIn(
-        identityToken: String, nonce: String, displayName: String? = nil
+        identityToken: String, nonce: String, displayName: String? = nil,
+        guestAccessToken: String? = nil
     ) async throws -> ServerSession {
         sawDisplayName = displayName
         receivedIdentityTokens.append(identityToken)
         receivedNonces.append(nonce)
+        receivedGuestTokens.append(guestAccessToken)
         switch signInOutcome {
         case .success(let session): return session
         case .failure(let error): throw error
@@ -401,8 +424,11 @@ struct ServerAuthTests {
         await signIn(auth)
         await auth.signOut()
 
-        #expect(auth.server == nil)
-        #expect(sessions.load() == nil)
+        // **계정은 지운다.** 남는 것은 로그인 없이 조각을 사고 쓸 익명 세션뿐이고,
+        // 그것은 방금 서버에서 새로 받은 것이라 이전 계정의 지갑이 아니다.
+        #expect(auth.account == nil)
+        #expect(auth.server?.isGuest == true)
+        #expect(sessions.load()?.isGuest == true)
         #expect(identities.load() == nil)
         #expect(auth.state == .signedOut)
         #expect(backend.logoutCount == 1)
@@ -417,7 +443,8 @@ struct ServerAuthTests {
         await auth.signOut()
 
         #expect(auth.state == .signedOut)
-        #expect(sessions.load() == nil)
+        #expect(auth.account == nil)
+        #expect(sessions.load()?.isGuest == true)
         #expect(identities.load() == nil)
     }
 

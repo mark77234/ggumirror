@@ -44,12 +44,14 @@ struct AccountSection: View {
 
     private var signedOut: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("꾸미기는 로그인 없이 계속 쓸 수 있어요.")
+            Text("꾸미기 · 조각 충전 · 상점에서 사기는 로그인 없이 쓸 수 있어요.")
                 .font(InkFont.body)
                 .foregroundStyle(PaperTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("나중에 상점에 거울을 올리거나 조각으로 구매할 때 계정이 필요해요.")
+            // **사는 데는 계정이 필요 없다.** 계정이 필요한 것은 판매자 신원처럼
+            // 정말로 사람에 묶이는 일뿐이다. 로그인하면 지금 지갑을 그대로 가져간다.
+            Text("상점에 거울을 올려 팔거나 판매를 관리할 때 계정이 필요해요. 로그인해도 지금 갖고 있는 조각은 그대로 이어져요.")
                 .font(InkFont.caption)
                 .foregroundStyle(PaperTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)

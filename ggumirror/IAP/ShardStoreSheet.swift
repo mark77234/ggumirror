@@ -14,13 +14,11 @@ import SwiftUI
 struct ShardStoreSheet: View {
     let controller: ShardPurchaseController
     let wallet: ShardWallet
-    let session: ServerSession?
-    /// 로그인이 필요할 때. 기존 Apple 로그인으로 보낸다 — 새 auth flow를 만들지 않는다.
-    let onNeedsSignIn: () -> Void
+    /// 결제의 주인을 정할 세션. **로그인이 아니어도 된다** — 서버가 발급한 익명 신원이면
+    /// 충분하다. 이 화면에는 로그인 관문이 없다.
+    let auth: AuthSession
 
     @Environment(\.inkModalDismiss) private var dismiss
-    /// 로그인이 필요할 때만 뜨는 안내. controller의 notice와 섞지 않는다.
-    @State private var signedOutNotice: String?
 
     var body: some View {
         ScrollView {
@@ -179,7 +177,7 @@ struct ShardStoreSheet: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
-            if let notice = signedOutNotice ?? controller.notice {
+            if let notice = controller.notice {
                 Text(notice)
                     .font(InkFont.caption)
                     .foregroundStyle(PaperTheme.secondaryInk)
@@ -210,19 +208,15 @@ struct ShardStoreSheet: View {
     // MARK: - 동작
 
     private func buy(_ product: ShardProductInfo) {
-        // 조각은 서버 경제라 로그인이 필요하다. **새 auth flow를 만들지 않고**
-        // 기존 gate에 "이걸 하려던 참이었다"만 기록한다.
+        // **로그인을 묻지 않는다.** 조각은 계정에 묶인 물건이 아니라 소모품이고,
+        // 결제의 주인은 서버가 발급한 신원(익명이어도 된다)이 정한다.
         //
-        // 로그인 뒤 결제를 **자동으로 이어가지 않는다.** 비동기 로그인 뒤에 결제창을
-        // 몰래 다시 띄우는 것보다, 사용자가 상품을 다시 고르는 편이 안전하다.
-        // pending purchase를 따로 저장하지도 않는다.
-        guard session != nil else {
-            onNeedsSignIn()
-            signedOutNotice = "조각을 충전하려면 로그인이 필요해요. 설정에서 Apple로 로그인해 주세요."
-            return
+        // 세션이 아직 없으면 **여기서 받아 온다** — 사용자에게는 그냥 결제가 시작된다.
+        // 이름 · 이메일 · Apple 계정을 묻는 자리가 이 경로에 없다.
+        Task {
+            await auth.ensureServerSession()
+            await controller.purchase(product.id, session: auth.server, wallet: wallet)
         }
-        signedOutNotice = nil
-        Task { await controller.purchase(product.id, session: session, wallet: wallet) }
     }
 
     private func message(_ text: String) -> some View {

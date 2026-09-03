@@ -53,10 +53,8 @@ struct HomeView: View {
             ShardStoreSheet(
                 controller: shardStore,
                 wallet: shards,
-                session: session.server,
-                // 기존 gate를 그대로 쓴다 — 새 auth flow도, 새 로그인 UI도 만들지 않는다.
-                // 로그인 뒤 결제를 자동으로 이어가지 않는다(사용자가 상품을 다시 고른다).
-                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+                // **로그인 관문이 없다.** 세션이 없으면 시트가 익명 신원을 받아 온다.
+                auth: session
             )
         }
     }

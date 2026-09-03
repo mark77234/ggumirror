@@ -219,7 +219,7 @@ struct SettingsView: View {
                 }
 
                 // 계정을 만들 수 있으면 지울 수도 있어야 한다. 로그인한 사람에게만 보인다.
-                if session.server != nil {
+                if session.account != nil {
                     InkSeparator()
 
                     Button {

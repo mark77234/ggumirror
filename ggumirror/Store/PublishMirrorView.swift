@@ -230,7 +230,8 @@ struct PublishMirrorView: View {
     /// 이미지가 하나라도 없으면 **보내기 전에** 멈춘다 — 반쪽 꾸러미를 서버에
     /// 올리면 산 사람 기기에서 그림이 비어 보인다.
     private func publish() async {
-        guard session.server != nil else {
+        // **판매는 판매자 신원이 필요하다.** 조각 구매와 달리 계정을 요구한다.
+        guard session.account != nil else {
             _ = session.requireSignIn(for: .shardTransaction)
             return
         }
@@ -273,7 +274,7 @@ struct PublishMirrorView: View {
             title: title,
             description: MirrorPublishPolicy.normalizedDescription(draft.description),
             priceShards: draft.priceInShards,
-            session: session.server,
+            session: session.account,
             wallet: wallet
         )
         guard let result else {
@@ -330,7 +331,7 @@ struct PublishMirrorView: View {
                     Button("상점에서 내리기") {
                     Task {
                         guard await marketplace.unpublish(
-                            listingID: listingID, session: session.server
+                            listingID: listingID, session: session.account
                         ) != nil else {
                             didPublish = false
                             publishNotice = marketplace.failure?.message
@@ -345,7 +346,7 @@ struct PublishMirrorView: View {
                     Button(listing.isDraft ? "상점에 올리기" : "다시 올리기") {
                     Task {
                         guard let result = await marketplace.republish(
-                            listingID: listingID, session: session.server, wallet: wallet
+                            listingID: listingID, session: session.account, wallet: wallet
                         ) else {
                             didPublish = false
                             publishNotice = marketplace.failure?.message

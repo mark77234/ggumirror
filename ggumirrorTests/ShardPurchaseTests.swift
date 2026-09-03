@@ -101,6 +101,14 @@ struct ShardPurchaseTests {
         )
     }
 
+    /// 로그인하지 않은 사람의 세션. **서버가 발급한** 익명 신원이고, client가 만들지 않는다.
+    static func guestSession(userID: String = userID) -> ServerSession {
+        ServerSession(
+            accessToken: "guest-token", expiresAt: Date().addingTimeInterval(3600),
+            userID: userID, isGuest: true
+        )
+    }
+
     static func world() -> (ShardPurchaseController, FakeStore, FakeBackend, ShardWallet) {
         let store = FakeStore()
         let backend = FakeBackend()
@@ -158,8 +166,10 @@ struct ShardPurchaseTests {
         #expect(store.purchaseCalls.first?.1 == UUID(uuidString: Self.userID))
     }
 
-    @Test("로그인하지 않으면 구매를 시작하지 않는다")
-    func purchaseRequiresSignIn() async {
+    /// **로그인 관문이 아니다.** 세션이 아예 없는 것은 익명 신원 발급까지 실패한
+    /// 상태이고(결제의 주인을 정할 수 없다), 그때만 시작하지 않는다.
+    @Test("세션이 없으면 구매를 시작하지 않는다")
+    func purchaseNeedsAnIdentity() async {
         let (controller, store, backend, wallet) = Self.world()
 
         await controller.purchase(Self.product10, session: nil, wallet: wallet)
@@ -167,6 +177,57 @@ struct ShardPurchaseTests {
         #expect(store.purchaseCalls.isEmpty)
         #expect(backend.submitted.isEmpty)
         #expect(wallet.balance == 0)
+    }
+
+    // MARK: - 로그인 없는 구매 (App Store 5.1.1(v))
+
+    @Test("로그인하지 않아도 조각을 산다")
+    func guestCanPurchase() async {
+        let (controller, store, backend, wallet) = Self.world()
+        let counter = FinishCounter()
+        store.outcome = .purchased(Self.transaction(counter: counter))
+        backend.receipt = ShardPurchaseReceipt(credited: true, amount: 10, balance: 10)
+
+        await controller.purchase(Self.product10, session: Self.guestSession(), wallet: wallet)
+
+        // 결제 · 서버 지급 · finish 전부 계정 세션과 **같은 경로**다.
+        #expect(store.purchaseCalls.count == 1)
+        #expect(backend.submitted == ["signed-jws-1"])
+        #expect(wallet.balance == 10)
+        #expect(counter.count == 1)
+        // 로그인을 요구하는 안내가 남지 않는다 — 남는 것은 성공 안내뿐이다.
+        #expect(controller.notice == "조각이 들어왔어요.")
+    }
+
+    @Test("익명 세션도 appAccountToken은 서버가 준 user id다")
+    func guestPurchaseCarriesServerIssuedToken() async {
+        let (controller, store, _, wallet) = Self.world()
+        let counter = FinishCounter()
+        store.outcome = .purchased(Self.transaction(counter: counter))
+
+        await controller.purchase(Self.product10, session: Self.guestSession(), wallet: wallet)
+
+        // client가 만든 UUID가 아니라 **세션의 user id**여야 한다.
+        #expect(store.purchaseCalls.first?.1 == UUID(uuidString: Self.userID))
+    }
+
+    @Test("같은 거래를 다시 보내도 익명 지갑이 두 번 늘지 않는다")
+    func guestDuplicateTransactionCreditsOnce() async {
+        let (controller, store, backend, wallet) = Self.world()
+        let counter = FinishCounter()
+        let session = Self.guestSession()
+        store.outcome = .purchased(Self.transaction(counter: counter))
+        backend.receipt = ShardPurchaseReceipt(credited: true, amount: 10, balance: 10)
+        await controller.purchase(Self.product10, session: session, wallet: wallet)
+
+        // 서버가 이미 지급했다고 답한다(전역 멱등). **실패가 아니다.**
+        backend.receipt = ShardPurchaseReceipt(credited: false, amount: 10, balance: 10)
+        await controller.purchase(Self.product10, session: session, wallet: wallet)
+
+        #expect(backend.submitted.count == 2)
+        // 잔액은 서버가 말한 값 그대로다 — client가 더하지 않으므로 20이 될 길이 없다.
+        #expect(wallet.balance == 10)
+        #expect(counter.count == 2)   // 확정된 거래라 둘 다 finish한다
     }
 
     @Test("만료된 세션으로는 구매를 시작하지 않는다")
@@ -520,15 +581,6 @@ struct ShardPurchaseTests {
         let code = Self.codeOnly(try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift"))
         #expect(!code.contains("import StoreKit"))
         #expect(code.contains("controller.purchase("))
-    }
-
-    @Test("로그아웃 상태에서는 기존 auth gate로 보낸다")
-    func signedOutUsesExistingAuthGate() throws {
-        let sheet = try Self.repoFile("ggumirror/IAP/ShardStoreSheet.swift")
-        #expect(sheet.contains("onNeedsSignIn"))
-        let home = try Self.repoFile("ggumirror/Home/HomeView.swift")
-        // 새 auth flow를 만들지 않고 기존 gate를 쓴다.
-        #expect(home.contains("requireSignIn(for: .shardTransaction)"))
     }
 
     @Test("상품 목록 상태 세 가지를 모두 다룬다")

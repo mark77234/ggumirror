@@ -119,7 +119,7 @@ struct ProfileView: View {
             notice = guidance
             return
         }
-        if let failure = await profile?.setDisplayName(name, session: session.server) {
+        if let failure = await profile?.setDisplayName(name, session: session.account) {
             notice = failure
             return
         }

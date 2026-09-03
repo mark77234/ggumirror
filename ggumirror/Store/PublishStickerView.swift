@@ -255,7 +255,8 @@ struct PublishStickerView: View {
     }
 
     private func publish() async {
-        guard session.server != nil else {
+        // **판매는 판매자 신원이 필요하다.** 조각 구매와 달리 계정을 요구한다.
+        guard session.account != nil else {
             _ = session.requireSignIn(for: .shardTransaction)
             return
         }
@@ -346,7 +347,7 @@ struct PublishStickerView: View {
                     Button("상점에서 내리기") {
                     Task {
                         guard await marketplace.unpublish(
-                            listingID: listingID, session: session.server
+                            listingID: listingID, session: session.account
                         ) != nil else {
                             didPublish = false
                             publishNotice = marketplace.failure?.message
@@ -361,7 +362,7 @@ struct PublishStickerView: View {
                     Button(listing.isDraft ? "상점에 올리기" : "다시 올리기") {
                     Task {
                         guard let result = await marketplace.republish(
-                            listingID: listingID, session: session.server, wallet: wallet
+                            listingID: listingID, session: session.account, wallet: wallet
                         ) else {
                             didPublish = false
                             publishNotice = marketplace.failure?.message

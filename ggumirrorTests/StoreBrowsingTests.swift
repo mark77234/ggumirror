@@ -216,7 +216,7 @@ struct GuestAuthGateTests {
     @Test("판매 관리는 로그인 전에 열리지 않는다")
     func mySalesIsGated() throws {
         let store = try browseSource("ggumirror/Store/StoreView.swift")
-        #expect(store.contains("guard item != .mySales || session.server != nil"))
+        #expect(store.contains("guard item != .mySales || session.account != nil"))
         #expect(store.contains("requireSignIn"))
     }
 
@@ -289,7 +289,7 @@ struct SignOutStateResetTests {
         // 로그아웃하면 이전 계정의 하트가 채워진 채 남아 있었다.
         let root = try browseSource("ggumirror/RootView.swift")
         #expect(root.contains("await marketplace.refreshMine(session: server)"))
-        #expect(root.contains("await marketplace.refreshMyListings(session: server)"))
+        #expect(root.contains("await marketplace.refreshMyListings(session: session.account)"))
         #expect(root.contains("if server == nil { catalogStats.clear() }"))
     }
 

@@ -84,7 +84,7 @@ struct StoreView: View {
                     case .mySales:
                         MySalesSection(
                             store: marketplace,
-                            session: session.server,
+                            session: session.account,
                             wallet: shards
                         )
                     }
@@ -129,8 +129,8 @@ struct StoreView: View {
             ShardStoreSheet(
                 controller: shardStore,
                 wallet: shards,
-                session: session.server,
-                onNeedsSignIn: { _ = session.requireSignIn(for: .shardTransaction) }
+                // **로그인 관문이 없다.** 세션이 없으면 시트가 익명 신원을 받아 온다.
+                auth: session
             )
         }
     }
@@ -183,7 +183,7 @@ struct StoreView: View {
                 Button {
                     // **판매 관리는 로그인이 필요하다.** 빈 목록이나 401을 보여 주지 않고
                     // 바로 안내한다 — 취소하면 보고 있던 갈래가 그대로 남는다.
-                    guard item != .mySales || session.server != nil else {
+                    guard item != .mySales || session.account != nil else {
                         _ = session.requireSignIn(for: .shardTransaction)
                         return
                     }

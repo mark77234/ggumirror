@@ -57,6 +57,15 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+/// stub은 **전역 상태**다(`next` · `requestedPaths`). `@Suite(.serialized)`는 한 suite
+/// **안에서만** 순서를 지키므로, 각자 붙여 놓아도 suite끼리는 여전히 겹쳐 돌았다 —
+/// `MarketplaceURLTests`가 `BackendContractTests`의 `/auth/apple` 응답을 받는 flake가
+/// 여기서 나왔다. stub을 쓰는 suite를 **모두 이 부모 밑에** 두어 서로도 겹치지 않게 한다.
+@Suite(.serialized)
+struct StubbedHTTP {}
+
+extension StubbedHTTP {
+
 /// stub이 전역 상태를 쓰므로 **직렬로** 돌린다. 병렬로 돌리면 서로의 응답을 덮는다.
 @Suite(.serialized)
 struct BackendContractTests {
@@ -326,3 +335,5 @@ struct CatalogStatsURLTests {
         }
     }
 }
+
+}   // extension StubbedHTTP

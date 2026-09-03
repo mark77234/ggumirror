@@ -1317,6 +1317,8 @@ struct MyListingsRuleTests {
 //
 // 여기서는 실제 `BackendClient`를 `StubURLProtocol`로 돌려 **나가는 경로를 본다.**
 
+extension StubbedHTTP {
+
 @Suite(.serialized)
 struct MarketplaceURLTests {
 
@@ -1470,6 +1472,8 @@ struct MarketplaceURLTests {
         """
     }
 }
+
+}   // extension StubbedHTTP
 
 
 // MARK: - 상점 scroll 계층 (B-7H UI hotfix)

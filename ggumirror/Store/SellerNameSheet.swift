@@ -114,7 +114,7 @@ struct SellerNameSheet: View {
     /// **서버가 받아 준 뒤에만** 닫는다. 저장되지 않은 이름을 정해진 것처럼 두지 않는다.
     private func save() async {
         guard canSave else { return }
-        if let failure = await profile?.setDisplayName(name, session: session.server) {
+        if let failure = await profile?.setDisplayName(name, session: session.account) {
             problem = failure
             return
         }

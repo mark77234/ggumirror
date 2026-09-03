@@ -62,8 +62,10 @@ private nonisolated struct AppleSignInResponse: Decodable {
         let id: String
     }
 
-    var session: ServerSession {
-        ServerSession(accessToken: accessToken, expiresAt: expiresAt, userID: user.id)
+    func session(isGuest: Bool = false) -> ServerSession {
+        ServerSession(
+            accessToken: accessToken, expiresAt: expiresAt, userID: user.id, isGuest: isGuest
+        )
     }
 }
 
@@ -71,8 +73,11 @@ private nonisolated struct AppleSignInResponse: Decodable {
 
 /// 테스트가 실제 network 없이 흐름을 확인할 수 있도록 protocol을 하나 둔다.
 nonisolated protocol AuthBackend: Sendable {
+    /// 로그인 없이 쓰는 익명 세션. **client가 user id를 만들지 않는다** — 서버가 발급한다.
+    /// `renewing`에 아직 살아 있는 guest token을 주면 **같은 지갑**으로 연장된다.
+    func startGuest(renewing: String?) async throws -> ServerSession
     func signIn(
-        identityToken: String, nonce: String, displayName: String?
+        identityToken: String, nonce: String, displayName: String?, guestAccessToken: String?
     ) async throws -> ServerSession
     func verify(accessToken: String) async throws -> String
     func logout(accessToken: String) async throws
@@ -96,8 +101,27 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
     ///   없으면 보내지 않는다 — 서버에서 optional이라 예전 모양 그대로 통한다.
     ///   이 값은 서명된 claim이 아니므로 서버도 신원 판단에 쓰지 않고, 아직 이름이
     ///   없을 때 첫 값을 채우는 데만 쓴다.
+    /// 익명 세션 발급. **body가 없다** — 이름 · 이메일 · 어떤 개인정보도 보내지 않는다.
+    ///
+    /// - Parameter renewing: 아직 살아 있는 guest token. 있으면 서버가 **같은 사용자**에게
+    ///   새 session을 준다 — 만료로 지갑을 잃지 않게.
+    func startGuest(renewing: String? = nil) async throws -> ServerSession {
+        let data = try await send("auth/guest", method: "POST", accessToken: renewing)
+        do {
+            let response = try JSONDecoder.backend.decode(AppleSignInResponse.self, from: data)
+            BackendLog.event("POST /auth/guest decode success")
+            return response.session(isGuest: true)
+        } catch {
+            BackendLog.event("POST /auth/guest decode failure \(BackendLog.category(error))")
+            throw BackendError.unexpected(status: 200)
+        }
+    }
+
+    /// - Parameter guestAccessToken: 아직 로그인 전에 쓰던 익명 세션. 있으면 함께 보낸다 —
+    ///   서버가 그 지갑을 이 계정으로 넘긴다. **client가 잔액을 옮기지 않는다.**
     func signIn(
-        identityToken: String, nonce: String, displayName: String? = nil
+        identityToken: String, nonce: String, displayName: String? = nil,
+        guestAccessToken: String? = nil
     ) async throws -> ServerSession {
         struct Body: Encodable {
             let identityToken: String
@@ -110,12 +134,13 @@ nonisolated struct BackendClient: AuthBackend, ShardBackend, ShardPurchaseBacken
             method: "POST",
             body: JSONEncoder.backend.encode(
                 Body(identityToken: identityToken, nonce: nonce, displayName: displayName)
-            )
+            ),
+            accessToken: guestAccessToken
         )
         do {
             let response = try JSONDecoder.backend.decode(AppleSignInResponse.self, from: data)
             BackendLog.event("POST /auth/apple decode success")
-            return response.session
+            return response.session()
         } catch {
             // 200인데 우리가 모르는 모양이다. **로그인됐다고 하지 않는다.**
             BackendLog.event("POST /auth/apple decode failure \(BackendLog.category(error))")
