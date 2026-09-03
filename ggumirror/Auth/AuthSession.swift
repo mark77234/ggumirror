@@ -24,7 +24,11 @@ final class AuthSession {
 
     private(set) var state: AuthState
     /// 서버가 내준 세션. 이게 없으면 서버에 인증된 것이 아니다.
+    /// **Apple 로그인과 같은 말이 아니다** — guest도 여기 들어온다.
     private(set) var server: ServerSession?
+    /// Apple 계정으로 만들어진 세션만. guest면 `nil`이다.
+    /// 판매자 기능처럼 **신원이 필요한 자리**가 이 값을 본다.
+    var account: ServerSession? { server?.isGuest == false ? server : nil }
     /// 로그인이 끝나면 이어서 할 일. 지금은 아무도 넣지 않는다(foundation).
     private(set) var pendingAction: AuthProtectedAction?
     /// 실제 오류일 때만 채운다. 취소는 오류가 아니라 항상 nil이다.
@@ -41,6 +45,8 @@ final class AuthSession {
     private let backend: any AuthBackend
     private let nonces = AppleNonceBox()
     private var revocationWatcher: Task<Void, Never>?
+    /// 진행 중인 guest 발급. 화면 여러 곳이 동시에 불러도 **세션은 하나**다.
+    private var guestBootstrap: Task<Void, Never>?
 
     init(
         store: any AuthIdentityStoring,
@@ -58,7 +64,12 @@ final class AuthSession {
         // 저장된 세션이 아직 유효할 때만 로그인 상태로 시작한다.
         // 서버 확인은 나중에 비동기로 한다 — 앱 시작은 언제나 Mirror가 먼저다.
         let saved = sessions.load()
-        if let saved, saved.isValid(), let identity = store.load() {
+        if let saved, saved.isValid(), saved.isGuest {
+            // **익명 세션도 그대로 이어 쓴다.** 새로 받으면 그 지갑의 조각을 잃는다.
+            // 로그인 상태는 아니므로 서랍 표시(`lastActiveUser`)는 건드리지 않는다.
+            server = saved
+            state = .signedOut
+        } else if let saved, saved.isValid(), let identity = store.load() {
             server = saved
             state = .signedIn(identity)
             // Keychain과 서랍 표시를 맞춰 둔다. 이미 같으면 같은 값을 다시 적을 뿐이다.
@@ -69,6 +80,53 @@ final class AuthSession {
             server = nil
             state = .signedOut
         }
+    }
+
+    // MARK: - 익명 세션
+
+    /// 서버 세션이 없으면 **익명 세션**을 받아 온다.
+    ///
+    /// 조각을 사고 쓰는 데는 계정이 필요 없다(App Review 5.1.1(v)). 로그인 창을 띄우지
+    /// 않고, 이름 · 이메일 · 어떤 개인정보도 보내지 않는다.
+    ///
+    /// **user id는 서버가 만든다.** client가 UUID를 지어내면 남의 지갑 id를 적어 넣는
+    /// 길이 열린다 — 그래서 여기에 `UUID()`가 없다.
+    ///
+    /// 여러 곳에서 동시에 불러도 요청은 한 번이다. 실패하면 조용히 두고 다음에 다시 받는다 —
+    /// 거울 · 촬영 · 꾸미기는 세션과 상관없이 그대로 동작한다.
+    func ensureServerSession() async {
+        // 계정 세션과 아직 여유가 남은 guest 세션은 그대로 쓴다.
+        if let server, server.isValid(), !needsGuestRenewal(server) { return }
+        // 계정 세션이 만료됐으면 다시 Apple 로그인할 일이다 — guest로 바꾸지 않는다.
+        if let server, !server.isGuest, state.isSignedIn { return }
+        if let guestBootstrap {
+            await guestBootstrap.value
+            return
+        }
+        let expiring = server?.isGuest == true ? server?.accessToken : nil
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                // 들고 있던 guest token을 함께 보낸다 — 서버가 **같은 지갑**을 이어 준다.
+                let session = try await backend.startGuest(renewing: expiring)
+                // 기다리는 동안 Apple 로그인이 끝났을 수 있다. **계정을 덮지 않는다.**
+                guard self.server?.isGuest ?? true else { return }
+                self.persist(session)
+                self.server = session
+                AuthLog.state("guest session 발급")
+            } catch {
+                AuthLog.state("guest session 발급 실패 — 다음에 다시 시도한다")
+            }
+        }
+        guestBootstrap = task
+        await task.value
+        guestBootstrap = nil
+    }
+
+    /// guest 세션은 **만료 전에 미리 연장한다.** 만료되면 그 지갑에 다시 닿을 방법이
+    /// 없다 — 실제로 돈을 주고 산 조각이라 잃으면 안 된다.
+    private func needsGuestRenewal(_ session: ServerSession) -> Bool {
+        session.isGuest && !session.isValid(at: Date().addingTimeInterval(7 * 24 * 60 * 60))
     }
 
     // MARK: - 로그인
@@ -118,7 +176,10 @@ final class AuthSession {
             // Apple이 이름을 준 **최초 로그인에서만** 값이 있다. 서버는 아직 이름이
             // 없을 때만 이것을 쓰고, 이미 사용자가 정한 이름은 덮지 않는다.
             session = try await backend.signIn(
-                identityToken: identityToken, nonce: nonce.raw, displayName: result.displayName
+                identityToken: identityToken, nonce: nonce.raw, displayName: result.displayName,
+                // guest로 모아 둔 지갑을 이 계정이 이어받는다. **client가 잔액을 옮기지
+                // 않는다** — 서버가 원장 한 쌍으로 처리하고 멱등이다.
+                guestAccessToken: server?.isGuest == true ? server?.accessToken : nil
             )
         } catch {
             // 서버가 거부했거나 닿지 못했다. **로그인 상태로 만들지 않는다.**
@@ -227,6 +288,8 @@ final class AuthSession {
         clearServerSession()
         clearIdentity()
         AuthLog.state("signedOut")
+        // 로그아웃해도 조각은 살 수 있어야 한다 — 새 익명 세션으로 돌아간다.
+        await ensureServerSession()
     }
 
     private func clearIdentity() {

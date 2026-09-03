@@ -485,7 +485,7 @@ struct SellerNameRequiredTests {
     func theSheetTrustsTheServer() throws {
         let sheet = try qaSource("ggumirror/Store/SellerNameSheet.swift")
         // 저장은 서버를 지난다 — client가 "찾아보니 없더라"로 정하지 않는다.
-        #expect(sheet.contains("profile?.setDisplayName(name, session: session.server)"))
+        #expect(sheet.contains("profile?.setDisplayName(name, session: session.account)"))
         // 서버가 받아 준 뒤에만 닫는다.
         let save = try #require(sheet.range(of: "private func save() async {"))
         let body = String(sheet[save.upperBound...].prefix(400))

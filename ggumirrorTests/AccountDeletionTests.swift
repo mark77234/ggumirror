@@ -137,7 +137,8 @@ struct AccountDeletionUITests {
 
     @Test("로그인한 사람에게만 보인다")
     func onlyWhenSignedIn() throws {
-        #expect(try settings().contains("if session.server != nil"))
+        // 지울 계정이 있는 사람에게만. 익명 세션은 지울 계정이 아니다.
+        #expect(try settings().contains("if session.account != nil"))
     }
 
     @Test("확인을 먼저 받는다")

@@ -726,8 +726,10 @@ struct NotificationEntryTests {
     @Test("계정이 바뀌면 기기를 다시 묶는다")
     func rootRebindsOnAccountChange() throws {
         let code = try source("ggumirror/RootView.swift")
-        #expect(code.contains("pushRegistration.accountChanged(to: session.server)"))
-        #expect(code.contains("onChange(of: session.server?.userID)"))
+        // **익명 세션은 계정이 아니다.** 조각을 사도 기기를 다시 묶지 않는다 —
+        // guest에게는 판매 알림이 없고, 로그인해야 비로소 이 기기의 주인이 정해진다.
+        #expect(code.contains("pushRegistration.accountChanged(to: session.account)"))
+        #expect(code.contains("onChange(of: session.account?.userID)"))
     }
 
     @Test("APNs 자격 증명이 앱에 없다")

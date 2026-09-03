@@ -193,7 +193,7 @@ struct ColdLaunchRestoreTests {
         #expect(between.contains("Task {"))
         // 서랍을 여는 그 줄 자체가 기다리는 호출이 아니다.
         #expect(!String(code[..<hydrate.lowerBound]).hasSuffix("await "))
-        let guardLine = try #require(code.range(of: "if let restored = session.server?.userID"))
+        let guardLine = try #require(code.range(of: "if let restored = session.account?.userID"))
         #expect(guardLine.lowerBound < refresh.lowerBound)
     }
 

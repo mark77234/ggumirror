@@ -94,7 +94,7 @@ struct RootView: View {
                     // 허락하면 기존 등록 흐름을 그대로 탄다 — 새 경로를 만들지 않는다.
                     await dailyReminder.enable()
                     await pushRegistration.startIfAllowed()
-                    await pushRegistration.accountChanged(to: session.server)
+                    await pushRegistration.accountChanged(to: session.account)
                 } onLater: {
                     // 시스템 창을 부르지 않는다. 설정에서 언제든 켤 수 있다.
                 }
@@ -119,7 +119,8 @@ struct RootView: View {
                     // (서버 값은 그대로 남는다 — 이 기기의 표시만 바뀐다).
                     // **내 거울 서랍을 계정에 맞춘다.** 로그아웃하면 guest(비어 있음)로,
                     // 로그인하면 그 사용자 서랍으로 간다. 파일은 지우지 않는다.
-                    activateLibraries(owner: MirrorLibraryOwner(userID: server?.userID))
+                    // **익명 세션은 계정이 아니다** — 조각을 사도 서랍은 guest 그대로다.
+                    activateLibraries(owner: MirrorLibraryOwner(userID: session.account?.userID))
                     if server == nil {
                         mirrorCapacity.clear(library: library)
                     } else {
@@ -131,19 +132,19 @@ struct RootView: View {
                     // 공개 목록 `.task`는 정렬과 갈래로만 다시 도는지라, 상점 화면에
                     // 머문 채 로그아웃하면 **이전 계정의 하트가 채워진 채 남아 있었다.**
                     await marketplace.refreshMine(session: server)
-                    await marketplace.refreshMyListings(session: server)
+                    await marketplace.refreshMyListings(session: session.account)
                     // 다음 사용자가 자기 내장 템플릿을 다시 맞춰 볼 수 있게 한다.
                     if server == nil { catalogStats.clear() }
                     // AI 스티커도 로그인 상태에 따라 켜지고 꺼진다. 로그아웃하면 CTA가 사라진다.
                     await aiStickers.refresh(session: server)
                     // 로그인 직후 광고를 미리 받아 둔다. 로그아웃하면 받지 않는다.
-                    if server != nil, shards.remainingAdsToday > 0 {
+                    if session.account != nil, shards.remainingAdsToday > 0 {
                         await rewardedAds.prepare()
                     }
                     // 로그인이 준비되면 못 끝낸 결제를 되찾는다. 서버 멱등이라 여러 번 와도 한 번만 지급된다.
                     await shardStore.recoverUnfinished(session: server, wallet: shards)
                     // 이름도 계정을 따라간다. 로그아웃이면 `refresh`가 비운다.
-                    await profile.refresh(session: server)
+                    await profile.refresh(session: session.account)
                     await catalogStats.refreshOwned(session: server)
                 }
             }
@@ -158,8 +159,8 @@ struct RootView: View {
             }
             // 계정이 바뀌면 기기를 다시 묶는다. **로그아웃도 여기로 온다** —
             // 떼어 내지 않으면 다음 사람의 판매 알림이 이 기기로 온다.
-            .onChange(of: session.server?.userID) { _, _ in
-                Task { await pushRegistration.accountChanged(to: session.server) }
+            .onChange(of: session.account?.userID) { _, _ in
+                Task { await pushRegistration.accountChanged(to: session.account) }
             }
             // 현재 거울이 바뀌면(다른 거울 선택 · 꾸미기 저장) 잠금화면 프레임도 따라간다.
             // 사용자가 "동기화"를 누를 일은 없다.
@@ -197,15 +198,18 @@ struct RootView: View {
                 // `MirrorLibrary.live`도 지난 실행의 주인으로 이미 열려 있다.
                 // 여기서는 그 둘이 어긋날 때만 곧바로 맞춘다 — **파일 읽기 하나**이고
                 // network가 아니다. 확인은 그 뒤에 하고, 결과가 다르면 그때 다시 맞춘다.
-                if let restored = session.server?.userID {
+                if let restored = session.account?.userID {
                     activateLibraries(owner: .user(restored))
                 }
                 Task {
                     // 세션 확인 → 그 결과로 지갑/AI/복구. 이 셋은 순서가 의미 있다.
                     await session.refreshServerSession()
+                    // **세션이 없으면 익명으로 하나 받는다.** 조각을 사고 쓰는 데
+                    // 로그인이 필요 없다 — 그 지갑의 주인은 서버가 발급한다.
+                    await session.ensureServerSession()
                     // **서버가 답한 뒤 다시 맞춘다.** 세션이 거절됐으면 여기서 guest로
                     // 돌아가고, 그대로면 주인이 같아 아무 일도 일어나지 않는다.
-                    activateLibraries(owner: MirrorLibraryOwner(userID: session.server?.userID))
+                    activateLibraries(owner: MirrorLibraryOwner(userID: session.account?.userID))
                     await mirrorCapacity.refresh(session: session.server, library: library)
                     await shards.refresh(session: session.server)
                     await aiStickers.refresh(session: session.server)
@@ -217,12 +221,12 @@ struct RootView: View {
                     // **상품 조회(`Product.products`)는 여기서 하지 않는다** —
                     // 조각 상점을 열 때만 한다(거울 시작을 StoreKit에 묶지 않는다).
                     await shardStore.recoverUnfinished(session: session.server, wallet: shards)
-                    await profile.refresh(session: session.server)
+                    await profile.refresh(session: session.account)
                     await catalogStats.refreshOwned(session: session.server)
                     // 세션이 확정된 뒤에 기기를 묶는다. **여기서 권한 창을 띄우지
                     // 않는다** — 이미 허락한 사람만 APNs 등록으로 간다.
                     await pushRegistration.startIfAllowed()
-                    await pushRegistration.accountChanged(to: session.server)
+                    await pushRegistration.accountChanged(to: session.account)
                 }
                 Task {
                     // 매일 알림 다시 채우기. 권한이 없으면 아무것도 하지 않는다.
@@ -234,7 +238,7 @@ struct RootView: View {
                     // 별도 갈래라 이게 느려도 지갑·AI·결제 복구가 기다리지 않는다.
                     await adsConsent.bootstrap()
                     rewardedAds.consentChanged(canRequestAds: adsConsent.canRequestAds)
-                    if session.server != nil, shards.remainingAdsToday > 0 {
+                    if session.account != nil, shards.remainingAdsToday > 0 {
                         await rewardedAds.prepare()
                     }
                 }

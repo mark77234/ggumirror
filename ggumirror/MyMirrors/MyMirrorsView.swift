@@ -85,7 +85,7 @@ struct MyMirrorsView: View {
         }
         // 판매 상태는 서버가 authority다. 화면에 들어올 때와 로그인이 바뀔 때 받는다.
         .task(id: session.server?.userID) {
-            await marketplace.refreshMyListings(session: session.server)
+            await marketplace.refreshMyListings(session: session.account)
         }
         .inkDialog(isPresented: Binding(
             get: { actionTarget != nil },

@@ -172,14 +172,17 @@ final class ShardPurchaseController {
 
     // MARK: - 구매
 
-    /// 조각을 산다. **로그인하지 않았으면 시작하지 않는다.**
+    /// 조각을 산다. **로그인은 필요 없다.**
     ///
-    /// 서버 경제라 결제의 주인을 서명에 실어야 하고, 그 값이 로그인한 사용자의 UUID다.
-    /// 임의의 로컬 UUID를 만들지 않는다 — 그러면 서버가 주인을 확인할 수 없다.
+    /// 서버 경제라 결제의 주인을 서명에 실어야 하고, 그 값은 **서버가 발급한** user UUID다
+    /// (익명 신원이어도 된다). client가 만든 로컬 UUID를 쓰지 않는다 —
+    /// 그러면 서버가 주인을 확인할 수 없고, 아무 지갑이나 가리킬 수 있다.
     func purchase(_ productID: String, session: ServerSession?, wallet: ShardWallet) async {
         guard !isBusy else { return }   // 버튼 연타로 두 번 사지 않는다
+        // **로그인 관문이 아니다.** 세션은 익명이어도 되고, 화면이 미리 받아 온다.
+        // 여기까지 없이 왔다면 발급이 실패한 것이라 잠시 뒤 다시 하는 편이 맞다.
         guard let session, session.isValid() else {
-            notice = "조각을 충전하려면 로그인이 필요해요."
+            notice = "지금은 충전할 수 없어요. 잠시 뒤 다시 시도해 주세요."
             return
         }
         guard let token = UUID(uuidString: session.userID) else {
